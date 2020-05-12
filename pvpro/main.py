@@ -6,6 +6,7 @@ from collections import OrderedDict
 # from functools import partial
 import scipy
 import datetime
+import os
 
 from pvlib.singlediode import _lambertw_i_from_v, _lambertw_v_from_i, _golden_sect_DataFrame, _pwr_optfcn
 
@@ -1279,18 +1280,48 @@ class pvproHandler:
         self.fit_params = self.p0.keys()
 
 
-    def get_df_for_iteration(self,k):
+    def get_df_for_iteration(self,k,
+                             use_clear_times=False):
 
-        idx = np.logical_and(
-            self.df.index >= self.df.index[0] + datetime.timedelta(
-                int(self.iteration_start_days[k])),
-            self.df.index < self.df.index[0] + datetime.timedelta(
-                int(self.iteration_start_days[k] + self.days_per_run)))
+
+        if use_clear_times:
+
+
+            if not 'clear_time' in self.df.keys():
+                raise Exception('Need to find clear times using find_clear_times() first.')
+
+            idx = np.logical_and.reduce((
+                self.df.index >= self.df.index[0] + datetime.timedelta(
+                    int(self.iteration_start_days[k])),
+                self.df.index < self.df.index[0] + datetime.timedelta(
+                    int(self.iteration_start_days[k] + self.days_per_run)),
+                self.df['clear_time']
+            ))
+        else:
+
+            idx = np.logical_and.reduce((
+                self.df.index >= self.df.index[0] + datetime.timedelta(
+                    int(self.iteration_start_days[k])),
+                self.df.index < self.df.index[0] + datetime.timedelta(
+                    int(self.iteration_start_days[k] + self.days_per_run))
+            ))
 
         # print('Current index for df', idx)
         return self.df[idx]
 
-    def execute(self,iteration='all',verbose=True,method='minimize'):
+    def find_clear_times(self,
+                         min_length=2,
+                         smoothness_hyperparam=5000):
+
+
+        self.dh.find_clear_times(min_length=min_length,
+                                 smoothness_hyperparam=smoothness_hyperparam)
+        self.dh.augment_data_frame(self.dh.boolean_masks.clear_times,
+                                  'clear_time')
+
+    def execute(self,iteration='all',verbose=True,method='minimize',
+                save_figs=True,
+                save_figs_directory='figures'):
 
         # Set cell temperature according to model.
         self.calculate_cell_temperature()
@@ -1316,7 +1347,8 @@ class pvproHandler:
 
             print('\n--\nPercent complete: {:1.1%}, Iteration: {}'.format(
                     k / len(self.iteration_start_days),k))
-            df = self.get_df_for_iteration(k)
+            df = self.get_df_for_iteration(k,
+                                           use_clear_times=self.use_clear_times)
 
             number_points_in_time_step_all = len(df)
 
@@ -1332,44 +1364,53 @@ class pvproHandler:
 
             if len(df)>10:
 
-                try:
-                    if self.use_clear_times:
-                        df = df[df['clear_times'] == True].copy()
+                # try:
 
-                    # Can update p0 each iteration in future.
-                    if self.start_point_method=='fixed':
+
+                # Can update p0 each iteration in future.
+                if self.start_point_method=='fixed':
+                    p0.loc[k] = self.p0
+                elif self.start_point_method=='last':
+                    if n==0:
                         p0.loc[k] = self.p0
-                    elif self.start_point_method=='last':
-                        if n==0:
-                            p0.loc[k] = self.p0
-                        else:
-                            p0.loc[k] = pfit_iter
                     else:
-                        raise ValueError('start_point_method must be "fixed" or "last"')
+                        p0.loc[k] = pfit_iter
+                else:
+                    raise ValueError('start_point_method must be "fixed" or "last"')
 
-                    pfit_iter, residual, fit_result_iter = production_data_curve_fit(
-                        temperature_cell=np.array(df['temperature_cell']),
-                        effective_irradiance=np.array(df[self.irradiance_poa_key]),
-                        operating_cls=np.array(df['operating_cls']),
-                        voltage=df[self.voltage_key] / self.modules_per_string,
-                        current=df[self.current_key] / self.parallel_strings,
-                        cells_in_series=self.cells_in_series,
-                        alpha_isc=self.alpha_isc,
-                        lower_bounds=self.lower_bounds,
-                        upper_bounds=self.upper_bounds,
-                        p0=p0.loc[k],
-                        scale=self.scale,
-                        verbose=verbose,
-                        solver=self.solver,
-                        method=method
-                    )
-                    pfit.iloc[k] = pfit_iter
-                    # print(res)
-                    pfit.loc[k, 'residual'] = residual
-                    fit_result.append(fit_result_iter)
-                    n = n + 1
-                except:
-                    print('** Error with this iteration.')
+                pfit_iter, residual, fit_result_iter = production_data_curve_fit(
+                    temperature_cell=np.array(df['temperature_cell']),
+                    effective_irradiance=np.array(df[self.irradiance_poa_key]),
+                    operating_cls=np.array(df['operating_cls']),
+                    voltage=df[self.voltage_key] / self.modules_per_string,
+                    current=df[self.current_key] / self.parallel_strings,
+                    cells_in_series=self.cells_in_series,
+                    alpha_isc=self.alpha_isc,
+                    lower_bounds=self.lower_bounds,
+                    upper_bounds=self.upper_bounds,
+                    p0=p0.loc[k],
+                    scale=self.scale,
+                    verbose=verbose,
+                    solver=self.solver,
+                    method=method
+                )
+                pfit.iloc[k] = pfit_iter
+                # print(res)
+                pfit.loc[k, 'residual'] = residual
+                fit_result.append(fit_result_iter)
+
+                if save_figs:
+                    self.plot_Vmp_Imp_scatter(p_plot=pfit_iter,
+                                          figure_number=100,
+                                          iteration=k,
+                                          use_clear_times=self.use_clear_times)
+
+                    plt.savefig( os.path.join(save_figs_directory, '{}_MPP-fig_{}.png'.format(self.system_name,k)),
+                                 resolution=200,
+                                 bbox_inches='tight')
+                n = n + 1
+                # except:
+                #     print('** Error with this iteration.')
 
             self.result = dict(
                 p=pfit,
@@ -1449,7 +1490,8 @@ class pvproHandler:
                              figure_number=0,
                              iteration=1,
                              vmin=0,
-                             vmax=70):
+                             vmax=70,
+                             use_clear_times=None):
         """
         Make Vmp, Imp scatter plot.
 
@@ -1465,15 +1507,20 @@ class pvproHandler:
         -------
 
         """
+        if use_clear_times==None:
+            use_clear_times = self.use_clear_times
+
+
 
         # Make figure for inverter on.
-        plt.figure(figure_number,figsize=(6.5,3.5))
+        fig = plt.figure(figure_number,figsize=(6.5,3.5))
         plt.clf()
         ax = plt.axes()
 
         temp_limits = np.linspace(vmin,vmax, 8)
 
-        df = self.get_df_for_iteration(iteration)
+        df = self.get_df_for_iteration(iteration,
+                                       use_clear_times=use_clear_times)
 
 
 
@@ -1486,12 +1533,16 @@ class pvproHandler:
         imp_max = np.nanmax(self.df.loc[self.df['operating_cls']==0,self.current_key]/self.parallel_strings)*1.1
         vmp_max = np.nanmax(self.df.loc[self.df['operating_cls']==0,self.voltage_key]/self.modules_per_string)*1.1
 
+        print('color axis')
+        print(df.loc[inv_on_points,'temperature_cell'].min())
+        print(df.loc[inv_on_points,'temperature_cell'].max())
         h_sc = plt.scatter(vmp,imp,
                     c=df.loc[inv_on_points,'temperature_cell'],
                     s=0.2,
-                           cmap='jet',
-                           vmin=vmin,
-                           vmax=vmax)
+                    cmap='jet',
+                    vmin=0,
+                    vmax=70)
+
 
 
         one_sun_points = np.logical_and.reduce((df['operating_cls']==0,
@@ -1499,7 +1550,7 @@ class pvproHandler:
                                                 df[self.irradiance_poa_key] < 1005,
                                                 ))
         if len(one_sun_points)>0:
-            print('number one sun points: ', len(one_sun_points))
+            # print('number one sun points: ', len(one_sun_points))
             plt.scatter(df.loc[one_sun_points, self.voltage_key]/self.modules_per_string,
                         df.loc[one_sun_points, self.current_key]/self.parallel_strings,
                         c=df.loc[one_sun_points, 'temperature_cell'],
@@ -1509,23 +1560,30 @@ class pvproHandler:
 
 
         # Plot temperature scan
-        temperature_smooth = np.linspace(25,70,100)
-        voltage_plot, current_plot = pv_system_single_diode_model(
-            effective_irradiance=1000,
-            temperature_cell=temperature_smooth,
-            operating_cls=np.zeros_like(temperature_smooth),
-            **p_plot,
-            cells_in_series=self.cells_in_series,
-            alpha_isc=self.alpha_isc,
-        )
-        plt.plot(voltage_plot, current_plot,'k--')
+        temperature_smooth = np.linspace(0,70,20)
+
+        for effective_irradiance in [100, 1000]:
+            voltage_plot, current_plot = pv_system_single_diode_model(
+                effective_irradiance=effective_irradiance,
+                temperature_cell=temperature_smooth,
+                operating_cls=np.zeros_like(temperature_smooth),
+                **p_plot,
+                cells_in_series=self.cells_in_series,
+                alpha_isc=self.alpha_isc,
+            )
+            plt.plot(voltage_plot, current_plot,'k:')
+            plt.text(voltage_plot[0]+0.5, current_plot[0],
+                     '{:.1g} sun'.format(effective_irradiance/1000),
+                     horizontalalignment='left',
+                     verticalalignment='center',
+                     fontsize=8)
 
 
 
 
         # Plot irradiance scan
-        for j in np.flip(np.arange(len(temp_limits) - 1)):
-            temp_curr = np.mean(temp_limits[j:j + 2])
+        for j in np.flip(np.arange(len(temp_limits) )):
+            temp_curr = temp_limits[j]
             irrad_smooth = np.linspace(1, 1200, 500)
 
             voltage_plot, current_plot = pv_system_single_diode_model(
@@ -1572,7 +1630,7 @@ class pvproHandler:
                'reference_saturation_current: {:1.2f} pA\n'.format(p_plot['saturation_current_ref']*1e12) + \
                'resistance_series: {:1.2f} Ohm\n'.format(p_plot['resistance_series_ref']) + \
                'resistance_shunt: {:1.2f} Ohm\n\n'.format(p_plot['resistance_shunt_ref']) + \
-            'Clear time: {}\n'.format(self.use_clear_times) + \
+            'Clear time: {}\n'.format(use_clear_times) + \
             'Lower Irrad limit: {}\n'.format(self.irradiance_lower_lim)
 
         plt.text(0.05,0.95,text_str,
@@ -1581,20 +1639,21 @@ class pvproHandler:
                  transform = ax.transAxes,
                  fontsize=8)
 
-        # plt.ylim([1, 2e3])
-        # plt.legend(fontsize=9,loc=(1.3,0.))
         plt.xlim([0,vmp_max])
         plt.ylim([0,imp_max])
-        # plt.xlim([0,df[voltage].max()*1.1/string_size])
-        # plt.ylim([0,df[current].max()*1.1/parallel_strings ])
         plt.xticks(fontsize=9)
         plt.yticks(fontsize=9)
-        pcbar = plt.colorbar()
+        pcbar = plt.colorbar(h_sc)
         pcbar.set_label('Cell Temperature (C)')
+
         plt.xlabel('Vmp (V)',fontsize=9)
         plt.ylabel('Imp (A)',fontsize=9)
-        # plt.yscale('log')
+
+
+
         plt.show()
+
+        return fig
         # mpp_fig_fname = 'figures/{}_fleets16_simultfit-MPP_clear-times-{}_irraad-lower-lim-{}_alpha-isc-{}_days-per-run_{}_temperature-upper-lim-{}_deltaT-{}_{:02d}.png'.format(
         #         system, info['use_clear_times'], info['irradiance_lower_lim'], info['alpha_isc'], info['days_per_run'], info['temperature_cell_upper_lim'],info['delta_T'], d)
         # plt.savefig(mpp_fig_fname,
