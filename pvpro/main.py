@@ -6,6 +6,7 @@ from collections import OrderedDict
 # from functools import partial
 import scipy
 import datetime
+import os
 
 from pvlib.singlediode import _lambertw_i_from_v, _lambertw_v_from_i, _golden_sect_DataFrame, _pwr_optfcn
 
@@ -275,15 +276,16 @@ def singlediode(photocurrent, saturation_current, resistance_series,
 
 def pvlib_single_diode(
         effective_irradiance,
-        temp_cell,
+        temperature_cell,
         resistance_shunt_ref,
         resistance_series_ref,
-        diode_ideality_factor,
-        number_cells_in_series,
+        diode_factor,
+        cells_in_series,
         alpha_isc,
-        reference_photocurrent,
-        reference_saturation_current,
-        reference_Eg=1.121,
+        photocurrent_ref,
+        saturation_current_ref,
+        Eg_ref=1.121,
+        dEgdT=-0.0002677,
         reference_irradiance=1000,
         reference_temperature=25,
         method='newton',
@@ -363,33 +365,48 @@ def pvlib_single_diode(
     q = 1.602e-19
 
 
-    photocurrent = effective_irradiance/reference_irradiance* \
-                   (reference_photocurrent + alpha_isc*(temp_cell - reference_temperature))
+    # photocurrent = effective_irradiance/reference_irradiance* \
+    #                (reference_photocurrent + alpha_isc*(temp_cell - reference_temperature))
 
-    Eg = reference_Eg*(1 - 0.0002677*(temp_cell - reference_temperature))
+    # Eg = reference_Eg*(1 - 0.0002677*(temperature_cell - reference_temperature))
 
-    saturation_current = reference_saturation_current*\
-                         (temp_cell+217.15)**3/(reference_temperature+217.15)**3*\
-                         np.exp( q/kB*(reference_Eg/(reference_temperature+273.15)  - Eg/(temp_cell+273.15) ))
+    # saturation_current = reference_saturation_current*\
+    #                      (temperature_cell+217.15)**3/(reference_temperature+217.15)**3*\
+    #                      np.exp( q/kB*(reference_Eg/(reference_temperature+273.15)  - Eg/(temp_cell+273.15) ))
+    #
 
 
+    # nNsVth = diode_ideality_factor*cells_in_series*kB*(temp_cell+273.15)/q
 
-    nNsVth = diode_ideality_factor*number_cells_in_series*kB*(temp_cell+273.15)/q
+    # a_ref = diode_factor*cells_in_series*kB/q*(273.15 + temperature_cell)
 
-    if verbose:
-        print('Photocurrent')
-        print(photocurrent)
-        print('Eg')
-        print(Eg)
-        print('Saturation current')
-        print(saturation_current)
-        print('nNsVth')
-        print(nNsVth)
+    iph, io, rs, rsh, nNsVth = pvlib.pvsystem.calcparams_desoto(
+        effective_irradiance,
+        temperature_cell,
+        alpha_sc=alpha_isc,
+        a_ref=diode_factor*cells_in_series*kB/q*(273.15 + temperature_cell),
+        I_L_ref=photocurrent_ref,
+        I_o_ref=saturation_current_ref,
+        R_sh_ref=resistance_shunt_ref,
+        R_s=resistance_series_ref,
+        EgRef=Eg_ref,
+        dEgdT=dEgdT,
+        )
 
-    out = singlediode(photocurrent,
-                      saturation_current,
-                      resistance_series_ref,
-                      resistance_shunt_ref,
+    # if verbose:
+    #     print('Photocurrent')
+    #     print(photocurrent)
+    #     print('Eg')
+    #     print(Eg)
+    #     print('Saturation current')
+    #     print(saturation_current)
+    #     print('nNsVth')
+    #     print(nNsVth)
+
+    out = singlediode(iph,
+                      io,
+                      rs,
+                      rsh,
                       nNsVth,
                       method=method,
                       calculate_all=calculate_all)
@@ -667,6 +684,7 @@ def pv_system_single_diode_model(
         cells_in_series,
         alpha_isc,
         band_gap_ref=1.121,
+        dEgdT=-0.0002677,
         **kwargs
         ):
 
@@ -705,7 +723,8 @@ def pv_system_single_diode_model(
         alpha_isc, # note alpha_isc is fixed.
         photocurrent_ref,
         saturation_current_ref,
-        reference_Eg=band_gap_ref)
+        Eg_ref=band_gap_ref,
+        dEgdT=dEgdT)
 
     # First, set all points to
     voltage_fit = out['v_mp']
@@ -1029,13 +1048,273 @@ def production_data_curve_fit(
         model_kwargs['alpha_isc'] = alpha_isc
 
 
+    # Functions for translating from optimization quantity (x) to physical parameter (p)
+    def x_to_p(x, key):
+        """
+        Change from numerical fit value (x) to physical parameter (p).
+
+        Parameters
+        ----------
+        x
+        key
+
+        Returns
+        -------
+
+        """
+        if key == 'diode_factor':
+            return x
+        elif key == 'photocurrent_ref':
+            return x
+        elif key == 'saturation_current_ref':
+            return np.exp(x - 21)
+            # return x*1e-10
+        elif key == 'resistance_series_ref':
+            return x
+        elif key == 'resistance_shunt_ref':
+            return np.exp(2*(x-1))
+
+    def p_to_x(p, key):
+        if key == 'diode_factor':
+            return p
+        elif key == 'photocurrent_ref':
+            return p
+        elif key == 'saturation_current_ref':
+            return np.log(p) + 21
+            # return p*1e10
+        elif key == 'resistance_series_ref':
+            return p
+        elif key == 'resistance_shunt_ref':
+            return np.log(p)/2+1
+
     # note that this will be the order of parameters in the model function.
     fit_params = p0.keys()
 
     def model(x):
         p = model_kwargs.copy()
         n = 0
-        # Change scale
+        for param in fit_params:
+
+            p[param] = x_to_p(x[n],param)
+            # p[param] = x[n] * scale[param]
+            n = n + 1
+        return pv_system_single_diode_model(**p)
+
+    def residual(x):
+
+        voltage_fit, current_fit = model(x)
+        return np.nanmean(
+            np.abs(voltage_fit - voltage) ** 2 + np.abs(current_fit - current) ** 2)
+
+    # print(signature(model))
+
+    print('Starting residual: ', residual([p_to_x(p0[k],k) for k in fit_params]))
+
+
+
+    # bounds = scipy.optimize.Bounds(
+    #     [lower_bounds[k] / scale[k] for k in fit_params],
+    #     [upper_bounds[k] / scale[k] for k in fit_params])
+
+
+    if method=='minimize':
+        bounds = scipy.optimize.Bounds(
+            [p_to_x(lower_bounds[k],k) for k in fit_params],
+            [p_to_x(upper_bounds[k],k) for k in fit_params])
+
+
+        x0 = [p_to_x(p0[k],k) for k in fit_params]
+
+        print('Starting x0: ', x0)
+        print('bounds:', bounds)
+        res = scipy.optimize.minimize(residual,
+                                  x0=x0,
+                                  bounds=bounds,
+                                  options=dict(
+                                      maxiter=100,
+                                      disp=verbose
+                                  ),
+                                  method=solver
+                                  )
+
+
+        # print(res)
+        n = 0
+        p_fit = {}
+        for param in fit_params:
+            p_fit[param] = x_to_p(res.x[n],param)
+            n = n + 1
+
+        # print('Best fit parameters (with scale included):')
+        # for p in x_fit:
+        #     print('{}: {}'.format(p, x_fit[p]))
+        print('Final Residual: {}'.format(res['fun']))
+        return p_fit, res['fun'], res
+
+
+
+
+def production_data_curve_fit_old(
+        temperature_cell,
+        effective_irradiance,
+        operating_cls,
+        voltage,
+        current,
+        lower_bounds,
+        upper_bounds,
+        scale,
+        alpha_isc=None,
+        diode_factor=None,
+        photocurrent_ref=None,
+        saturation_current_ref=None,
+        resistance_series_ref=None,
+        resistance_shunt_ref=None,
+        p0=dict(
+            diode_factor=1.0,
+            photocurrent_ref=8,
+            saturation_current_ref=10,
+            resistance_series_ref=10,
+            resistance_shunt_ref=10
+        ),
+        cells_in_series=72,
+        band_gap_ref=1.121,
+        verbose=False,
+        solver='Nelder-Mead',
+        method='minimize',
+        brute_number_grid_points=2,
+    ):
+    """
+    Use curve fitting to find best-fit single-diode-model paramters given the
+    operating data.
+
+    Data to be fit is supplied in 1xN vectors as the inputs temperature_cell,
+    effective_irradiance, operation_cls, voltage and current. Each of these
+    inputs must have the same length.
+
+    The inputs lower_bound, upper_bound, scale and p0 are all dictionaries
+    with the same keys.
+
+    Parameters
+    ----------
+    temperature_cell : ndarray
+
+        Temperature of PV cell in C.
+
+    effective_irradiance : ndarray
+
+        Effective irradiance reaching module in W/m2.
+
+    operating_cls : ndarray
+
+        Integer describing the type of operating point. See
+        classify_operating_mode for a description of the operating points.
+
+    voltage : ndarray
+
+        DC voltage of the PV module. To get from a string voltage to the
+        effective module voltage, divide by the string size.
+
+    current : ndarray
+
+        DC current of the PV module. To get from an array current to the
+        effective module current, divide by the number of strings in parallel.
+
+    lower_bounds : dict
+
+        dictionary of the lower bound for each fit parameter.
+
+    upper_bounds : dict
+
+        dictionary of the upper bound for each fit parameter.
+
+    scale : dict
+
+        dictionary providing a prescaling factor for optimization. For
+        example, saturation_current is typically a number around 1e-10,
+        in order to avoid numeric issues, set a scale factor to around 1e-10.
+
+    alpha_isc : numeric
+
+        Temperature coefficient of short circuit current in A/C. If not
+        provided then alpha_isc is a fit paramaeter. Typically it is not
+        suggested to make alpha_isc a fit parameter since it only slightly
+        affects module operating voltage/current.
+
+    diode_factor : numeric or None (default).
+
+        diode ideality factor. If not provided, then diode_factor is a fit
+        parameter.
+
+    photocurrent_ref : numeric or None (default)
+
+        Reference photocurrent in A. If not provided, then photocurrent_ref
+        is a fit parameter.
+
+    saturation_current_ref : numeric or None (default)
+
+        Reference saturation current in A. If not provided or if set to None,
+        then saturation_current_ref is a fit parameter.
+
+    resistance_series_ref : numeric or None (default)
+
+        Reference series resistance in Ohms. If not provided or if set to None,
+        then resistance_series_ref is a fit parameter.
+
+    resistance_shunt_ref : numeric or None (default)
+
+        Reference shunt resistance in Ohms. If not provided or if set to None,
+        then resistance_shunt_ref is a fit parameter.
+
+    p0 : dict
+
+        Dictionary providing startpoint.
+
+    cells_in_series : int
+
+        Number of cells in series in the module.
+
+    band_gap_ref : float
+
+        Band gap at reference conditions in eV.
+
+    verbose : bool
+
+        Display fit output.
+
+    Returns
+    -------
+
+    """
+
+    model_kwargs = dict(
+        effective_irradiance=effective_irradiance,
+        temperature_cell=temperature_cell,
+        operating_cls=operating_cls,
+        cells_in_series=cells_in_series,
+        band_gap_ref=band_gap_ref
+    )
+
+    if not diode_factor == None:
+        model_kwargs['diode_factor'] = diode_factor
+    if not photocurrent_ref == None:
+        model_kwargs['photocurrent_ref'] = photocurrent_ref
+    if not saturation_current_ref == None:
+        model_kwargs['saturation_current_ref'] = saturation_current_ref
+    if not resistance_series_ref == None:
+        model_kwargs['resistance_series_ref'] = resistance_series_ref
+    if not resistance_shunt_ref == None:
+        model_kwargs['resistance_shunt_ref'] = resistance_shunt_ref
+    if not alpha_isc == None:
+        model_kwargs['alpha_isc'] = alpha_isc
+
+
+    # note that this will be the order of parameters in the model function.
+    fit_params = p0.keys()
+
+    def model(x):
+        p = model_kwargs.copy()
+        n = 0
+        # Want to add more arbitrary parameter changes here using mathematical fit params and scaled params
         for param in fit_params:
             p[param] = x[n] * scale[param]
             n = n + 1
@@ -1049,7 +1328,7 @@ def production_data_curve_fit(
 
     # print(signature(model))
 
-    print('Starting residual: ', residual([p0[k] for k in fit_params]))
+    # print('Starting residual: ', residual([p0[k] for k in fit_params]))
 
     # bounds = scipy.optimize.Bounds(
     #     [lower_bounds[k] / scale[k] for k in fit_params],
@@ -1104,7 +1383,6 @@ def production_data_curve_fit(
             n = n + 1
 
         return p_fit, fval, (grid, jout)
-
 
 
 class pvproHandler:
@@ -1279,18 +1557,48 @@ class pvproHandler:
         self.fit_params = self.p0.keys()
 
 
-    def get_df_for_iteration(self,k):
+    def get_df_for_iteration(self,k,
+                             use_clear_times=False):
 
-        idx = np.logical_and(
-            self.df.index >= self.df.index[0] + datetime.timedelta(
-                int(self.iteration_start_days[k])),
-            self.df.index < self.df.index[0] + datetime.timedelta(
-                int(self.iteration_start_days[k] + self.days_per_run)))
+
+        if use_clear_times:
+
+
+            if not 'clear_time' in self.df.keys():
+                raise Exception('Need to find clear times using find_clear_times() first.')
+
+            idx = np.logical_and.reduce((
+                self.df.index >= self.df.index[0] + datetime.timedelta(
+                    int(self.iteration_start_days[k])),
+                self.df.index < self.df.index[0] + datetime.timedelta(
+                    int(self.iteration_start_days[k] + self.days_per_run)),
+                self.df['clear_time']
+            ))
+        else:
+
+            idx = np.logical_and.reduce((
+                self.df.index >= self.df.index[0] + datetime.timedelta(
+                    int(self.iteration_start_days[k])),
+                self.df.index < self.df.index[0] + datetime.timedelta(
+                    int(self.iteration_start_days[k] + self.days_per_run))
+            ))
 
         # print('Current index for df', idx)
         return self.df[idx]
 
-    def execute(self,iteration='all',verbose=True,method='minimize'):
+    def find_clear_times(self,
+                         min_length=2,
+                         smoothness_hyperparam=5000):
+
+
+        self.dh.find_clear_times(min_length=min_length,
+                                 smoothness_hyperparam=smoothness_hyperparam)
+        self.dh.augment_data_frame(self.dh.boolean_masks.clear_times,
+                                  'clear_time')
+
+    def execute(self,iteration='all',verbose=True,method='minimize',
+                save_figs=True,
+                save_figs_directory='figures'):
 
         # Set cell temperature according to model.
         self.calculate_cell_temperature()
@@ -1316,7 +1624,8 @@ class pvproHandler:
 
             print('\n--\nPercent complete: {:1.1%}, Iteration: {}'.format(
                     k / len(self.iteration_start_days),k))
-            df = self.get_df_for_iteration(k)
+            df = self.get_df_for_iteration(k,
+                                           use_clear_times=self.use_clear_times)
 
             number_points_in_time_step_all = len(df)
 
@@ -1326,50 +1635,62 @@ class pvproHandler:
                     df['temperature_cell'] < self.temperature_cell_upper_lim
                 ))].copy()
 
-            if verbose:
-                print('Dataframe for this iteration: ', df)
-
 
             if len(df)>10:
 
-                try:
-                    if self.use_clear_times:
-                        df = df[df['clear_times'] == True].copy()
+                # try:
 
-                    # Can update p0 each iteration in future.
-                    if self.start_point_method=='fixed':
+
+                # Can update p0 each iteration in future.
+                if self.start_point_method=='fixed':
+                    p0.loc[k] = self.p0
+                elif self.start_point_method=='last':
+                    if n==0:
                         p0.loc[k] = self.p0
-                    elif self.start_point_method=='last':
-                        if n==0:
-                            p0.loc[k] = self.p0
-                        else:
-                            p0.loc[k] = pfit_iter
                     else:
-                        raise ValueError('start_point_method must be "fixed" or "last"')
+                        p0.loc[k] = pfit_iter
+                else:
+                    raise ValueError('start_point_method must be "fixed" or "last"')
 
-                    pfit_iter, residual, fit_result_iter = production_data_curve_fit(
-                        temperature_cell=np.array(df['temperature_cell']),
-                        effective_irradiance=np.array(df[self.irradiance_poa_key]),
-                        operating_cls=np.array(df['operating_cls']),
-                        voltage=df[self.voltage_key] / self.modules_per_string,
-                        current=df[self.current_key] / self.parallel_strings,
-                        cells_in_series=self.cells_in_series,
-                        alpha_isc=self.alpha_isc,
-                        lower_bounds=self.lower_bounds,
-                        upper_bounds=self.upper_bounds,
-                        p0=p0.loc[k],
-                        scale=self.scale,
-                        verbose=verbose,
-                        solver=self.solver,
-                        method=method
-                    )
-                    pfit.iloc[k] = pfit_iter
-                    # print(res)
-                    pfit.loc[k, 'residual'] = residual
-                    fit_result.append(fit_result_iter)
-                    n = n + 1
-                except:
-                    print('** Error with this iteration.')
+                pfit_iter, residual, fit_result_iter = production_data_curve_fit(
+                    temperature_cell=np.array(df['temperature_cell']),
+                    effective_irradiance=np.array(df[self.irradiance_poa_key]),
+                    operating_cls=np.array(df['operating_cls']),
+                    voltage=df[self.voltage_key] / self.modules_per_string,
+                    current=df[self.current_key] / self.parallel_strings,
+                    cells_in_series=self.cells_in_series,
+                    alpha_isc=self.alpha_isc,
+                    lower_bounds=self.lower_bounds,
+                    upper_bounds=self.upper_bounds,
+                    p0=p0.loc[k],
+                    scale=self.scale,
+                    verbose=verbose,
+                    solver=self.solver,
+                    method=method
+                )
+                pfit.iloc[k] = pfit_iter
+                # print(res)
+                pfit.loc[k, 'residual'] = residual
+                fit_result.append(fit_result_iter)
+
+                if verbose:
+                    print('Startpoint:')
+                    print(p0.loc[k])
+                    print('Fit result:')
+                    print(pfit.loc[k])
+
+                if save_figs:
+                    self.plot_Vmp_Imp_scatter(p_plot=pfit_iter,
+                                          figure_number=100,
+                                          iteration=k,
+                                          use_clear_times=self.use_clear_times)
+
+                    plt.savefig( os.path.join(save_figs_directory, '{}_MPP-fig_{}.png'.format(self.system_name,k)),
+                                 resolution=200,
+                                 bbox_inches='tight')
+                n = n + 1
+                # except:
+                #     print('** Error with this iteration.')
 
             self.result = dict(
                 p=pfit,
@@ -1437,7 +1758,7 @@ class pvproHandler:
         saturation_current_ref = self.estimate_saturation_current_ref(photocurrent_ref)
 
         self.p0 = dict(
-            diode_factor=1.0,
+            diode_factor=1.10,
             photocurrent_ref=photocurrent_ref,
             saturation_current_ref=saturation_current_ref,
             resistance_series_ref=0.4,
@@ -1449,7 +1770,8 @@ class pvproHandler:
                              figure_number=0,
                              iteration=1,
                              vmin=0,
-                             vmax=70):
+                             vmax=70,
+                             use_clear_times=None):
         """
         Make Vmp, Imp scatter plot.
 
@@ -1465,15 +1787,20 @@ class pvproHandler:
         -------
 
         """
+        if use_clear_times==None:
+            use_clear_times = self.use_clear_times
+
+
 
         # Make figure for inverter on.
-        plt.figure(figure_number,figsize=(6.5,3.5))
+        fig = plt.figure(figure_number,figsize=(6.5,3.5))
         plt.clf()
         ax = plt.axes()
 
         temp_limits = np.linspace(vmin,vmax, 8)
 
-        df = self.get_df_for_iteration(iteration)
+        df = self.get_df_for_iteration(iteration,
+                                       use_clear_times=use_clear_times)
 
 
 
@@ -1489,9 +1816,10 @@ class pvproHandler:
         h_sc = plt.scatter(vmp,imp,
                     c=df.loc[inv_on_points,'temperature_cell'],
                     s=0.2,
-                           cmap='jet',
-                           vmin=vmin,
-                           vmax=vmax)
+                    cmap='jet',
+                    vmin=0,
+                    vmax=70)
+
 
 
         one_sun_points = np.logical_and.reduce((df['operating_cls']==0,
@@ -1499,7 +1827,7 @@ class pvproHandler:
                                                 df[self.irradiance_poa_key] < 1005,
                                                 ))
         if len(one_sun_points)>0:
-            print('number one sun points: ', len(one_sun_points))
+            # print('number one sun points: ', len(one_sun_points))
             plt.scatter(df.loc[one_sun_points, self.voltage_key]/self.modules_per_string,
                         df.loc[one_sun_points, self.current_key]/self.parallel_strings,
                         c=df.loc[one_sun_points, 'temperature_cell'],
@@ -1509,23 +1837,30 @@ class pvproHandler:
 
 
         # Plot temperature scan
-        temperature_smooth = np.linspace(25,70,100)
-        voltage_plot, current_plot = pv_system_single_diode_model(
-            effective_irradiance=1000,
-            temperature_cell=temperature_smooth,
-            operating_cls=np.zeros_like(temperature_smooth),
-            **p_plot,
-            cells_in_series=self.cells_in_series,
-            alpha_isc=self.alpha_isc,
-        )
-        plt.plot(voltage_plot, current_plot,'k--')
+        temperature_smooth = np.linspace(0,70,20)
+
+        for effective_irradiance in [100, 1000]:
+            voltage_plot, current_plot = pv_system_single_diode_model(
+                effective_irradiance=effective_irradiance,
+                temperature_cell=temperature_smooth,
+                operating_cls=np.zeros_like(temperature_smooth),
+                **p_plot,
+                cells_in_series=self.cells_in_series,
+                alpha_isc=self.alpha_isc,
+            )
+            plt.plot(voltage_plot, current_plot,'k:')
+            plt.text(voltage_plot[0]+0.5, current_plot[0],
+                     '{:.1g} sun'.format(effective_irradiance/1000),
+                     horizontalalignment='left',
+                     verticalalignment='center',
+                     fontsize=8)
 
 
 
 
         # Plot irradiance scan
-        for j in np.flip(np.arange(len(temp_limits) - 1)):
-            temp_curr = np.mean(temp_limits[j:j + 2])
+        for j in np.flip(np.arange(len(temp_limits) )):
+            temp_curr = temp_limits[j]
             irrad_smooth = np.linspace(1, 1200, 500)
 
             voltage_plot, current_plot = pv_system_single_diode_model(
@@ -1572,7 +1907,7 @@ class pvproHandler:
                'reference_saturation_current: {:1.2f} pA\n'.format(p_plot['saturation_current_ref']*1e12) + \
                'resistance_series: {:1.2f} Ohm\n'.format(p_plot['resistance_series_ref']) + \
                'resistance_shunt: {:1.2f} Ohm\n\n'.format(p_plot['resistance_shunt_ref']) + \
-            'Clear time: {}\n'.format(self.use_clear_times) + \
+            'Clear time: {}\n'.format(use_clear_times) + \
             'Lower Irrad limit: {}\n'.format(self.irradiance_lower_lim)
 
         plt.text(0.05,0.95,text_str,
@@ -1581,20 +1916,21 @@ class pvproHandler:
                  transform = ax.transAxes,
                  fontsize=8)
 
-        # plt.ylim([1, 2e3])
-        # plt.legend(fontsize=9,loc=(1.3,0.))
         plt.xlim([0,vmp_max])
         plt.ylim([0,imp_max])
-        # plt.xlim([0,df[voltage].max()*1.1/string_size])
-        # plt.ylim([0,df[current].max()*1.1/parallel_strings ])
         plt.xticks(fontsize=9)
         plt.yticks(fontsize=9)
-        pcbar = plt.colorbar()
+        pcbar = plt.colorbar(h_sc)
         pcbar.set_label('Cell Temperature (C)')
+
         plt.xlabel('Vmp (V)',fontsize=9)
         plt.ylabel('Imp (A)',fontsize=9)
-        # plt.yscale('log')
+
+
+
         plt.show()
+
+        return fig
         # mpp_fig_fname = 'figures/{}_fleets16_simultfit-MPP_clear-times-{}_irraad-lower-lim-{}_alpha-isc-{}_days-per-run_{}_temperature-upper-lim-{}_deltaT-{}_{:02d}.png'.format(
         #         system, info['use_clear_times'], info['irradiance_lower_lim'], info['alpha_isc'], info['days_per_run'], info['temperature_cell_upper_lim'],info['delta_T'], d)
         # plt.savefig(mpp_fig_fname,
