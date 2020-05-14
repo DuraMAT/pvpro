@@ -1131,7 +1131,7 @@ def production_data_curve_fit(
                                   x0=x0,
                                   bounds=bounds,
                                   options=dict(
-                                      maxiter=100,
+                                      # maxiter=100,
                                       disp=verbose
                                   ),
                                   method=solver
@@ -1685,7 +1685,30 @@ class pvproHandler:
                                           iteration=k,
                                           use_clear_times=self.use_clear_times)
 
-                    plt.savefig( os.path.join(save_figs_directory, '{}_MPP-fig_{}.png'.format(self.system_name,k)),
+                    if not os.path.exists(save_figs_directory):
+                        os.mkdir(save_figs_directory)
+
+                    export_folders = [
+                        os.path.join(save_figs_directory,'Vmp_Imp'),
+                        os.path.join(save_figs_directory,'suns_Voc'),
+                    ]
+                    for folder in export_folders:
+                        if not os.path.exists(folder):
+                            os.mkdir(folder)
+
+                    plt.savefig( os.path.join(save_figs_directory,
+                                              'Vmp_Imp',
+                                              '{}_Vmp-Imp_{}.png'.format(self.system_name,k)),
+                                 resolution=200,
+                                 bbox_inches='tight')
+
+                    self.plot_suns_voc_scatter(p_plot=pfit_iter,
+                                               figure_number=101,
+                                               iteration=k,
+                                               use_clear_times=self.use_clear_times)
+                    plt.savefig( os.path.join(save_figs_directory,
+                                              'suns_Voc',
+                                              '{}_suns-Voc_{}.png'.format(self.system_name,k)),
                                  resolution=200,
                                  bbox_inches='tight')
                 n = n + 1
@@ -1701,6 +1724,7 @@ class pvproHandler:
 
 
     def estimate_imp_ref(self,makefigure=False):
+
         df_estimate = self.df[np.logical_and.reduce((
             self.df[self.irradiance_poa_key] < 1100,
             self.df[self.irradiance_poa_key] > 900
@@ -1711,7 +1735,12 @@ class pvproHandler:
         y = df_estimate[self.current_key] / df_estimate[
             self.irradiance_poa_key] * 1000 / self.parallel_strings
 
-        cax = np.logical_and(y > np.nanmean(y) * 0.8, y < np.nanmean(y) * 1.2)
+        #
+        # print('estimate imp ref')
+        # print('x: ', x)
+        # print('df_estimate: ', df_estimate)
+
+        cax = np.logical_and(y > np.nanmean(y) * 0.5, y < np.nanmean(y) * 1.5)
         x = x[cax]
         y = y[cax]
 
@@ -1762,7 +1791,7 @@ class pvproHandler:
             photocurrent_ref=photocurrent_ref,
             saturation_current_ref=saturation_current_ref,
             resistance_series_ref=0.4,
-            resistance_shunt_ref=1e6
+            resistance_shunt_ref=1e3
         )
 
     def plot_Vmp_Imp_scatter(self,
@@ -1849,9 +1878,9 @@ class pvproHandler:
                 alpha_isc=self.alpha_isc,
             )
             plt.plot(voltage_plot, current_plot,'k:')
-            plt.text(voltage_plot[0]+0.5, current_plot[0],
+            plt.text(voltage_plot[-1]-0.5, current_plot[-1],
                      '{:.1g} sun'.format(effective_irradiance/1000),
-                     horizontalalignment='left',
+                     horizontalalignment='right',
                      verticalalignment='center',
                      fontsize=8)
 
@@ -1861,7 +1890,7 @@ class pvproHandler:
         # Plot irradiance scan
         for j in np.flip(np.arange(len(temp_limits) )):
             temp_curr = temp_limits[j]
-            irrad_smooth = np.linspace(1, 1200, 500)
+            irrad_smooth = np.linspace(1, 1000, 500)
 
             voltage_plot, current_plot = pv_system_single_diode_model(
                 effective_irradiance=irrad_smooth,
