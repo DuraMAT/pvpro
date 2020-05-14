@@ -1,3 +1,3 @@
+from pvpro.main import *
 name = 'pvpro'
 
-from pvpro.main import *
