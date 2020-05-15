@@ -966,7 +966,6 @@ def production_data_curve_fit(
             return x
         elif key == 'saturation_current_ref':
             return np.exp(x - 21)
-            # return x*1e-10
         elif key == 'resistance_series_ref':
             return x
         elif key == 'resistance_shunt_ref':
@@ -979,7 +978,6 @@ def production_data_curve_fit(
             return p
         elif key == 'saturation_current_ref':
             return np.log(p) + 21
-            # return p*1e10
         elif key == 'resistance_series_ref':
             return p
         elif key == 'resistance_shunt_ref':
@@ -993,25 +991,18 @@ def production_data_curve_fit(
         n = 0
         for param in fit_params:
             p[param] = x_to_p(x[n], param)
-            # p[param] = x[n] * scale[param]
             n = n + 1
         return pv_system_single_diode_model(**p)
 
     def residual(x):
-
         voltage_fit, current_fit = model(x)
-        return np.nanmean(
-            np.abs(voltage_fit - voltage) ** 2 + np.abs(
-                current_fit - current) ** 2)
+        return np.nanmean(np.abs(voltage_fit - voltage) ** 2 + \
+                          np.abs(current_fit - current) ** 2)
 
     # print(signature(model))
 
     print('Starting residual: ',
           residual([p_to_x(p0[k], k) for k in fit_params]))
-
-    # bounds = scipy.optimize.Bounds(
-    #     [lower_bounds[k] / scale[k] for k in fit_params],
-    #     [upper_bounds[k] / scale[k] for k in fit_params])
 
     if method == 'minimize':
         bounds = scipy.optimize.Bounds(
@@ -1046,8 +1037,59 @@ def production_data_curve_fit(
         return p_fit, res['fun'], res
 
 
+def estimate_imp_ref(irradiance_poa,
+                     temperature_cell,
+                     imp,
+                     figure=False,
+                     figure_number=11,
+                     ):
+    """
+    Estimate imp_ref using operation data. Note that typically imp for an
+    array would be divided by parallel_strings before calling this function.
 
-class pvproHandler:
+    Parameters
+    ----------
+    irradiance_poa
+    temperature_cell
+    imp
+    makefigure
+
+    Returns
+    -------
+
+    """
+
+    cax = np.logical_and.reduce((
+        irradiance_poa > np.nanpercentile(irradiance_poa,90),
+        irradiance_poa < 1100,
+    ))
+
+    x = temperature_cell[cax]
+    y = imp[cax] / irradiance_poa[cax] * 1000
+
+    # # cax = np.logical_and(y > np.nanpercentile(y,80), y < np.nanmean(y) * 1.5)
+    # cax = y > np.nanpercentile(y,50)
+    # x = x[cax]
+    # y = y[cax]
+
+    imp_fit = np.polyfit(x, y, 1)
+    imp_ref_estimate = np.polyval(imp_fit, 25)
+
+    if figure:
+        plt.figure(figure_number)
+        plt.clf()
+
+        x_smooth = np.linspace(x.min(), x.max(), 5)
+        plt.hist2d(x, y, bins=(100, 100))
+        plt.plot(x_smooth, np.polyval(imp_fit, x_smooth), 'r')
+        plt.xlabel('Cell temperature (C)')
+        plt.ylabel('Imp (A)')
+        plt.show()
+
+    return imp_ref_estimate
+
+
+class PvProHandler:
     """
     Class for running pvpro analysis.
 
@@ -1072,27 +1114,9 @@ class pvproHandler:
                  alpha_isc=None,
                  start_point_method='last',
                  solver='Nelder-Mead',
-                 lower_bounds=dict(
-                     diode_factor=0.5,
-                     photocurrent_ref=0,
-                     saturation_current_ref=0,
-                     resistance_series_ref=0,
-                     resistance_shunt_ref=0
-                 ),
-                 upper_bounds=dict(
-                     diode_factor=2.5,
-                     photocurrent_ref=20,
-                     saturation_current_ref=1e4,
-                     resistance_series_ref=100,
-                     resistance_shunt_ref=2e6
-                 ),
-                 p0=dict(
-                     diode_factor=1.03,
-                     photocurrent_ref=4,
-                     saturation_current_ref=1e-11,
-                     resistance_series_ref=0.4,
-                     resistance_shunt_ref=1e6
-                 ),
+                 lower_bounds=None,
+                 upper_bounds=None,
+                 p0=None,
                  ):
 
         # Initialize datahandler object.
@@ -1116,9 +1140,29 @@ class pvproHandler:
         self.modules_per_string = modules_per_string
         self.parallel_strings = parallel_strings
 
-        self.lower_bounds = lower_bounds
-        self.upper_bounds = upper_bounds
-        self.p0 = p0
+        self.lower_bounds = lower_bounds or dict(
+            diode_factor=0.5,
+            photocurrent_ref=0,
+            saturation_current_ref=1e-13,
+            resistance_series_ref=0,
+            resistance_shunt_ref=0.01
+        )
+
+        self.upper_bounds = upper_bounds or dict(
+            diode_factor=2,
+            photocurrent_ref=20,
+            saturation_current_ref=1e-5,
+            resistance_series_ref=1,
+            resistance_shunt_ref=1e6
+        )
+
+        self.p0 = p0 or dict(
+            diode_factor=1.03,
+            photocurrent_ref=4,
+            saturation_current_ref=1e-11,
+            resistance_series_ref=0.4,
+            resistance_shunt_ref=1e6
+        )
 
         self.solver = solver
         self.start_point_method = start_point_method
@@ -1150,11 +1194,32 @@ class pvproHandler:
         """
         self.dh.data_frame = value
 
-    def make_power_column(self):
+    # @iteration_start_days.setter
+    # def iteration_start_days_setter(self, value):
+    #     print('Cannot set iteration start days directly.')
+
+    def simultation_setup(self):
+
+        # Remove nan from df.
+        keys = [self.voltage_key,
+                self.current_key,
+                self.temperature_module_key,
+                self.irradiance_poa_key]
+        self.df.dropna(axis=0, subset=keys, inplace=True)
+
+        # Make power column.
         self.df['power_dc'] = self.df[self.voltage_key] * self.df[
             self.current_key]
 
+        # Calculate iteration start days
+        self.iteration_start_days = np.round(
+            np.arange(0, self.dataset_length_days - self.days_per_run,
+                      self.time_step_between_iterations_days))
+
+
     def run_preprocess(self):
+
+        # Run solar-data-tools.
         self.dh.run_pipeline(power_col='power_dc',
                              correct_tz=True,
                              extra_cols=[self.temperature_module_key,
@@ -1163,50 +1228,53 @@ class pvproHandler:
                                          self.current_key]
                              )
 
-    def preprocess_report(self):
+        # Print report.
         self.dh.report()
 
-    def info(self):
-        # max_key_length = np.max([len(k) for k in pvp.__dict__.keys()])
 
-        for k in self.__dict__:
-            print('{:34}: {}'.format(k, self.__dict__[k]))
-
-    def remove_nan_from_df(self):
-        keys = [self.voltage_key,
-                self.current_key,
-                self.temperature_module_key,
-                self.irradiance_poa_key]
-
-        self.df.dropna(axis=0, subset=keys, inplace=True)
-
-    def calculate_iteration_start_days(self):
-        self.iteration_start_days = np.round(
-            np.arange(0, self.dataset_length_days - self.days_per_run,
-                      self.time_step_between_iterations_days))
-
-    def classify_operation_type(self):
-
+        # Calculate operating class.
         self.df.loc[:, 'operating_cls'] = classify_operating_mode(
             self.df[self.voltage_key],
             self.df[self.current_key])
 
-    def calculate_cell_temperature(self):
+        # Calculate cell temperature
         self.df.loc[:, 'temperature_cell'] = sapm_module_to_cell_temperature(
             self.df[self.temperature_module_key],
             self.df[self.irradiance_poa_key],
             delta_T=self.delta_T)
 
-    def calculate_iteration_time_step_limits(self):
-        pass
+        self.estimate_p0()
 
-    def calculate_iteration_time_axis(self):
-        self.time = []
-        for d in self.iteration_start_days:
-            self.time.append(self.df.index[0] + datetime.timedelta(int(d)))
 
-    def set_fit_params(self):
-        self.fit_params = self.p0.keys()
+    def info(self):
+        """
+        Print info about the class.
+
+        Returns
+        -------
+
+        """
+        keys = ['system_name', 'delta_T', 'days_per_run',
+                'time_step_between_iterations_days', 'use_clear_times',
+                'irradiance_lower_lim', 'temperature_cell_upper_lim',
+                'cells_in_series',
+                'alpha_isc', 'voltage_key', 'current_key',
+                'temperature_module_key',
+                'irradiance_poa_key', 'modules_per_string', 'parallel_strings',
+                'solver', 'start_point_method',
+                'dataset_length_days']
+
+        info_display = {}
+        for k in keys:
+            info_display[k] = self.__dict__[k]
+
+        print(pd.Series(info_display))
+
+    # def calculate_iteration_start_days(self):
+    #     self.iteration_start_days = np.round(
+    #         np.arange(0, self.dataset_length_days - self.days_per_run,
+    #                   self.time_step_between_iterations_days))
+
 
     def get_df_for_iteration(self, k,
                              use_clear_times=False):
@@ -1249,12 +1317,15 @@ class pvproHandler:
                 save_figs=True,
                 save_figs_directory='figures'):
 
-        # Set cell temperature according to model.
-        self.calculate_cell_temperature()
-
         # Fit params taken from p0
-        self.set_fit_params()
+        self.fit_params = self.p0.keys()
 
+        # Calculate iteration time axis
+        self.time = []
+        for d in self.iteration_start_days:
+            self.time.append(self.df.index[0] + datetime.timedelta(int(d)))
+
+        # Initialize pfit dataframe.
         pfit = pd.DataFrame(index=range(len(self.iteration_start_days)),
                             columns=[*self.fit_params, *['residual']])
 
@@ -1370,43 +1441,6 @@ class pvproHandler:
                 fit_result=fit_result
             )
 
-    def estimate_imp_ref(self, makefigure=False):
-
-        df_estimate = self.df[np.logical_and.reduce((
-            self.df[self.irradiance_poa_key] < 1100,
-            self.df[self.irradiance_poa_key] > 900
-        ))
-        ].copy()
-
-        x = df_estimate['temperature_cell']
-        y = df_estimate[self.current_key] / df_estimate[
-            self.irradiance_poa_key] * 1000 / self.parallel_strings
-
-        #
-        # print('estimate imp ref')
-        # print('x: ', x)
-        # print('df_estimate: ', df_estimate)
-
-        cax = np.logical_and(y > np.nanmean(y) * 0.5, y < np.nanmean(y) * 1.5)
-        x = x[cax]
-        y = y[cax]
-
-        imp_fit = np.polyfit(x, y, 1)
-        imp_ref_estimate = np.polyval(imp_fit, 25)
-
-        if makefigure:
-            plt.figure()
-            plt.clf()
-
-            x_smooth = np.linspace(x.min(), x.max(), 5)
-            plt.hist2d(x, y, bins=(100, 100))
-            plt.plot(x_smooth, np.polyval(imp_fit, x_smooth), 'r')
-            plt.xlabel('Cell temperature (C)')
-            plt.ylabel('Imp (A)')
-            plt.show()
-
-        return imp_ref_estimate
-
     def estimate_photocurrent_ref(self, imp_ref_estimate):
         return imp_ref_estimate / 0.934
 
@@ -1521,9 +1555,9 @@ class pvproHandler:
                 effective_irradiance=effective_irradiance,
                 temperature_cell=temperature_smooth,
                 operating_cls=np.zeros_like(temperature_smooth),
-                **p_plot,
                 cells_in_series=self.cells_in_series,
                 alpha_isc=self.alpha_isc,
+                **p_plot,
             )
             plt.plot(voltage_plot, current_plot, 'k:')
             plt.text(voltage_plot[-1] - 0.5, current_plot[-1],
@@ -1541,9 +1575,9 @@ class pvproHandler:
                 effective_irradiance=irrad_smooth,
                 temperature_cell=temp_curr + np.zeros_like(irrad_smooth),
                 operating_cls=np.zeros_like(irrad_smooth),
-                **p_plot,
                 cells_in_series=self.cells_in_series,
                 alpha_isc=self.alpha_isc,
+                **p_plot,
             )
 
             # out = pvlib_fit_fun( np.transpose(np.array(
@@ -1705,9 +1739,9 @@ class pvproHandler:
                 effective_irradiance=irrad_smooth,
                 temperature_cell=temp_curr + np.zeros_like(irrad_smooth),
                 operating_cls=np.zeros_like(irrad_smooth) + 1,
-                **p_plot,
                 cells_in_series=self.cells_in_series,
                 alpha_isc=self.alpha_isc,
+                **p_plot,
             )
 
             # out = pvlib_fit_fun( np.transpose(np.array(
