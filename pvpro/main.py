@@ -1060,7 +1060,7 @@ def estimate_imp_ref(irradiance_poa,
     """
 
     cax = np.logical_and.reduce((
-        irradiance_poa > np.nanpercentile(irradiance_poa,90),
+        irradiance_poa > np.nanpercentile(irradiance_poa, 90),
         irradiance_poa < 1100,
     ))
 
@@ -1087,6 +1087,133 @@ def estimate_imp_ref(irradiance_poa,
         plt.show()
 
     return imp_ref_estimate
+
+
+def estimate_vmp_ref(irradiance_poa,
+                     temperature_cell,
+                     vmp,
+                     figure=False,
+                     figure_number=12,
+                     ):
+    """
+    Estimate imp_ref using operation data. Note that typically imp for an
+    array would be divided by parallel_strings before calling this function.
+
+    Parameters
+    ----------
+    irradiance_poa
+    temperature_cell
+    imp
+    makefigure
+
+    Returns
+    -------
+
+    """
+
+    cax = np.logical_and.reduce((
+        irradiance_poa > np.nanpercentile(irradiance_poa, 90),
+        irradiance_poa < 1100,
+    ))
+
+    x = temperature_cell[cax]
+    y = vmp[cax]
+
+    # # cax = np.logical_and(y > np.nanpercentile(y,80), y < np.nanmean(y) * 1.5)
+    # cax = y > np.nanpercentile(y,50)
+    # x = x[cax]
+    # y = y[cax]
+
+    imp_fit = np.polyfit(x, y, 1)
+    imp_ref_estimate = np.polyval(imp_fit, 25)
+
+    if figure:
+        plt.figure(figure_number)
+        plt.clf()
+
+        x_smooth = np.linspace(x.min(), x.max(), 5)
+        plt.hist2d(x, y, bins=(100, 100))
+        plt.plot(x_smooth, np.polyval(imp_fit, x_smooth), 'r')
+        plt.xlabel('Cell temperature (C)')
+        plt.ylabel('Vmp (V)')
+        plt.show()
+
+    return imp_ref_estimate
+
+
+def estimate_photocurrent_ref(imp_ref_estimate):
+    return imp_ref_estimate / 0.934
+
+
+def estimate_saturation_current_ref(imp_ref,
+                                    photocurrent_ref,
+                                    vmp_ref=None,
+                                    resistance_series_ref=0.4,
+                                    cells_in_series=None):
+    kB = 1.381e-23
+    q = 1.602e-19
+    T = 25 + 273.15
+    Vth = kB * T / q
+    diode_factor = 1.1
+    # voc_cell = 0.6
+
+    # If cells in series is not provided, then use a standard value.
+    if cells_in_series == None or vmp_ref == None:
+        vmp_ref = 0.6
+        cells_in_series = 1
+
+    saturation_current_ref_estimate = (photocurrent_ref - imp_ref) / np.exp(
+        (vmp_ref + imp_ref * resistance_series_ref) / (
+                    cells_in_series * diode_factor * Vth))
+
+    return saturation_current_ref_estimate
+
+
+def estimate_desoto(irradiance_poa,
+                    temperature_cell,
+                    vmp,
+                    imp,
+                    resistance_series_ref=0.4,
+                    cells_in_series=None,
+                    figure=False):
+    """
+
+    Estimate the Desoto single diode model parameters.
+
+    Parameters
+    ----------
+    irradiance_poa
+    temperature_cell
+    vmp
+    imp
+    resistance_series_ref
+    cells_in_series
+    figure
+
+    Returns
+    -------
+
+    """
+    imp_ref = estimate_imp_ref(irradiance_poa, temperature_cell, imp,
+                               figure=figure)
+    vmp_ref = estimate_vmp_ref(irradiance_poa, temperature_cell, vmp,
+                               figure=figure)
+    photocurrent_ref = estimate_photocurrent_ref(imp_ref)
+
+    saturation_current_ref = estimate_saturation_current_ref(
+        imp_ref=imp_ref, photocurrent_ref=photocurrent_ref, vmp_ref=vmp_ref,
+        resistance_series_ref=resistance_series_ref,
+        cells_in_series=cells_in_series)
+
+    desoto_params = dict(
+        diode_factor=1.15,
+        photocurrent_ref=photocurrent_ref,
+        saturation_current_ref=saturation_current_ref,
+        resistance_series_ref=resistance_series_ref,
+        resistance_shunt_ref=1000
+    )
+
+    return desoto_params
 
 
 class PvProHandler:
@@ -1216,6 +1343,19 @@ class PvProHandler:
             np.arange(0, self.dataset_length_days - self.days_per_run,
                       self.time_step_between_iterations_days))
 
+        # Calculate operating class.
+        self.df.loc[:, 'operating_cls'] = classify_operating_mode(
+            self.df[self.voltage_key],
+            self.df[self.current_key])
+
+        self.calculate_cell_temperature()
+
+    def calculate_cell_temperature(self):
+        # Calculate cell temperature
+        self.df.loc[:, 'temperature_cell'] = sapm_module_to_cell_temperature(
+            self.df[self.temperature_module_key],
+            self.df[self.irradiance_poa_key],
+            delta_T=self.delta_T)
 
     def run_preprocess(self):
 
@@ -1231,20 +1371,7 @@ class PvProHandler:
         # Print report.
         self.dh.report()
 
-
-        # Calculate operating class.
-        self.df.loc[:, 'operating_cls'] = classify_operating_mode(
-            self.df[self.voltage_key],
-            self.df[self.current_key])
-
-        # Calculate cell temperature
-        self.df.loc[:, 'temperature_cell'] = sapm_module_to_cell_temperature(
-            self.df[self.temperature_module_key],
-            self.df[self.irradiance_poa_key],
-            delta_T=self.delta_T)
-
         self.estimate_p0()
-
 
     def info(self):
         """
@@ -1269,11 +1396,6 @@ class PvProHandler:
             info_display[k] = self.__dict__[k]
 
         print(pd.Series(info_display))
-
-    # def calculate_iteration_start_days(self):
-    #     self.iteration_start_days = np.round(
-    #         np.arange(0, self.dataset_length_days - self.days_per_run,
-    #                   self.time_step_between_iterations_days))
 
 
     def get_df_for_iteration(self, k,
@@ -1441,20 +1563,6 @@ class PvProHandler:
                 fit_result=fit_result
             )
 
-    def estimate_photocurrent_ref(self, imp_ref_estimate):
-        return imp_ref_estimate / 0.934
-
-    def estimate_saturation_current_ref(self, photocurrent_ref_estimate):
-
-        kB = 1.381e-23
-        q = 1.602e-19
-        T = 25 + 273.15
-        Vth = kB * T / q
-
-        saturation_current_ref_estimate = photocurrent_ref_estimate / np.exp(
-            0.600 / (1.0 * Vth))
-        return saturation_current_ref_estimate
-
     def estimate_p0(self):
         """
         Make a rough estimate of the startpoint for fitting the single diode
@@ -1464,18 +1572,32 @@ class PvProHandler:
         -------
 
         """
-        imp_ref = self.estimate_imp_ref()
-        photocurrent_ref = self.estimate_photocurrent_ref(imp_ref)
-        saturation_current_ref = self.estimate_saturation_current_ref(
-            photocurrent_ref)
 
-        self.p0 = dict(
-            diode_factor=1.10,
-            photocurrent_ref=photocurrent_ref,
-            saturation_current_ref=saturation_current_ref,
-            resistance_series_ref=0.4,
-            resistance_shunt_ref=1e3
+        self.simultation_setup()
+
+        cax = self.df['operating_cls'] == 0
+
+        self.p0 = estimate_desoto(
+            irradiance_poa=self.df.loc[cax, self.irradiance_poa_key],
+            temperature_cell=self.df.loc[cax, 'temperature_cell'],
+            vmp=self.df.loc[cax, self.voltage_key],
+            imp=self.df.loc[cax, self.current_key],
+            cells_in_series=self.cells_in_series
         )
+
+        #
+        # imp_ref = estimate_imp_ref()
+        # photocurrent_ref = self.estimate_photocurrent_ref(imp_ref)
+        # saturation_current_ref = self.estimate_saturation_current_ref(
+        #     photocurrent_ref)
+        #
+        # self.p0 = dict(
+        #     diode_factor=1.10,
+        #     photocurrent_ref=photocurrent_ref,
+        #     saturation_current_ref=saturation_current_ref,
+        #     resistance_series_ref=0.4,
+        #     resistance_shunt_ref=1e3
+        # )
 
     def plot_Vmp_Imp_scatter(self,
                              p_plot,
