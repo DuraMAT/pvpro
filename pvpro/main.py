@@ -384,7 +384,7 @@ def pvlib_single_diode(
         temperature_cell,
         alpha_sc=alpha_isc,
         a_ref=diode_factor * cells_in_series * kB / q * (
-                273.15 + temperature_cell),
+                273.15 + reference_temperature),
         I_L_ref=photocurrent_ref,
         I_o_ref=saturation_current_ref,
         R_sh_ref=resistance_shunt_ref,
@@ -1164,7 +1164,7 @@ def estimate_saturation_current_ref(imp_ref,
 
     saturation_current_ref_estimate = (photocurrent_ref - imp_ref) / np.exp(
         (vmp_ref + imp_ref * resistance_series_ref) / (
-                    cells_in_series * diode_factor * Vth))
+                cells_in_series * diode_factor * Vth))
 
     return saturation_current_ref_estimate
 
@@ -1396,7 +1396,6 @@ class PvProHandler:
             info_display[k] = self.__dict__[k]
 
         print(pd.Series(info_display))
-
 
     def get_df_for_iteration(self, k,
                              use_clear_times=False):
@@ -1641,10 +1640,13 @@ class PvProHandler:
         imp = np.array(
             df.loc[inv_on_points, self.current_key]) / self.parallel_strings
 
-        imp_max = np.nanmax(self.df.loc[self.df[
-                                            'operating_cls'] == 0, self.current_key] / self.parallel_strings) * 1.1
-        vmp_max = np.nanmax(self.df.loc[self.df[
-                                            'operating_cls'] == 0, self.voltage_key] / self.modules_per_string) * 1.1
+        imp_max = 1.1 * np.nanmax(
+            self.df.loc[self.df['operating_cls'] == 0,
+                        self.current_key] / self.parallel_strings)
+
+        vmp_max = 1.1 * np.nanmax(
+            self.df.loc[self.df['operating_cls'] == 0,self.voltage_key] /
+            self.modules_per_string)
 
         h_sc = plt.scatter(vmp, imp,
                            c=df.loc[inv_on_points, 'temperature_cell'],
@@ -1737,8 +1739,8 @@ class PvProHandler:
                    'n_diode: {:1.2f} \n'.format(p_plot['diode_factor']) + \
                    'reference_photocurrent: {:1.2f} A\n'.format(
                        p_plot['photocurrent_ref']) + \
-                   'reference_saturation_current: {:1.2f} pA\n'.format(
-                       p_plot['saturation_current_ref'] * 1e12) + \
+                   'saturation_current_ref: {:1.2f} nA\n'.format(
+                       p_plot['saturation_current_ref'] * 1e9) + \
                    'resistance_series: {:1.2f} Ohm\n'.format(
                        p_plot['resistance_series_ref']) + \
                    'resistance_shunt: {:1.2f} Ohm\n\n'.format(
@@ -1901,8 +1903,8 @@ class PvProHandler:
                    'n_diode: {:1.2f} \n'.format(p_plot['diode_factor']) + \
                    'reference_photocurrent: {:1.2f} A\n'.format(
                        p_plot['photocurrent_ref']) + \
-                   'reference_saturation_current: {:1.2f} pA\n'.format(
-                       p_plot['saturation_current_ref'] * 1e12) + \
+                   'saturation_current_ref: {:1.2f} nA\n'.format(
+                       p_plot['saturation_current_ref'] * 1e9) + \
                    'resistance_series: {:1.2f} Ohm\n'.format(
                        p_plot['resistance_series_ref']) + \
                    'resistance_shunt: {:1.2f} Ohm\n\n'.format(
