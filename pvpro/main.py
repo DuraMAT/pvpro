@@ -1371,6 +1371,7 @@ class PvProHandler:
         # Print report.
         self.dh.report()
 
+        # TODO: this always overwrites p0 and should be changed so that if the user has set p0, it is not changed.
         self.estimate_p0()
 
     def info(self):
