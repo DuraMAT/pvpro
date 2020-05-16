@@ -1,3 +1,9 @@
+"""
+Example full run of pv-pro analysis using synthetic data.
+
+@author: toddkarin
+"""
+
 import numpy as np
 import pandas as pd
 from pandas.plotting import register_matplotlib_converters
