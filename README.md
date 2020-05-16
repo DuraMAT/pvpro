@@ -8,3 +8,4 @@ This package, pvpro, automates the analysis of PV production data to extract the
 
 **The package is still under active development so don't expect it to work perfectly yet!**
 
+To try it out, you need to clone the most recent development branch of solar-data-tools and statistical-clear-sky.
