@@ -68,7 +68,7 @@ q = 1.60218e-19  # Elementary charge in units of coulombs
 kb = 1.38066e-23  # Boltzmann's constant in units of J/K
 
 # time vector in years
-t_years = (df.index-df.index[0]).seconds/60/60/24/365
+t_years = (df.index-df.index[0]).days/365
 
 def step_change(start_val, end_val, t_years, t_step):
     y = np.zeros_like(t_years) + start_val
@@ -88,7 +88,7 @@ df['saturation_current_ref'] = 1e-9
 df['resistance_shunt_ref'] = step_change(1000, 100, t_years, 2)
 # df['resistance_shunt_ref'] = 1000
 # df.loc[t_years>2,'resistance_shunt_ref'] = 13
-df['resistance_series_ref'] = 0.5
+df['resistance_series_ref'] = 0.5 + 0.02*t_years
 df['EgRef'] = 1.121
 df['dEgdT'] = -0.0002677
 
