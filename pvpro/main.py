@@ -1001,8 +1001,8 @@ def production_data_curve_fit(
 
     # print(signature(model))
 
-    print('Starting residual: ',
-          residual([p_to_x(p0[k], k) for k in fit_params]))
+    # print('Starting residual: ',
+    #       residual([p_to_x(p0[k], k) for k in fit_params]))
 
     if method == 'minimize':
         bounds = scipy.optimize.Bounds(
@@ -1011,8 +1011,8 @@ def production_data_curve_fit(
 
         x0 = [p_to_x(p0[k], k) for k in fit_params]
 
-        print('Starting x0: ', x0)
-        print('bounds:', bounds)
+        # print('p0: ', p0)
+        # print('bounds:', bounds)
         res = scipy.optimize.minimize(residual,
                                       x0=x0,
                                       bounds=bounds,
@@ -1033,7 +1033,7 @@ def production_data_curve_fit(
         # print('Best fit parameters (with scale included):')
         # for p in x_fit:
         #     print('{}: {}'.format(p, x_fit[p]))
-        print('Final Residual: {}'.format(res['fun']))
+        # print('Final Residual: {}'.format(res['fun']))
         return p_fit, res['fun'], res
 
 
@@ -1210,7 +1210,7 @@ def estimate_desoto(irradiance_poa,
         photocurrent_ref=photocurrent_ref,
         saturation_current_ref=saturation_current_ref,
         resistance_series_ref=resistance_series_ref,
-        resistance_shunt_ref=1000
+        resistance_shunt_ref=100
     )
 
     return desoto_params
@@ -1439,17 +1439,24 @@ class PvProHandler:
                 save_figs=True,
                 save_figs_directory='figures'):
 
+        q = 1.602e-19
+        kB = 1.381e-23
+
         # Fit params taken from p0
         self.fit_params = self.p0.keys()
 
         # Calculate iteration time axis
         self.time = []
         for d in self.iteration_start_days:
-            self.time.append(self.df.index[0] + datetime.timedelta(int(d)))
+            self.time.append(self.df.index[0] +
+                             datetime.timedelta(
+                                 int(d + 0.5 * self.days_per_run)))
 
         # Initialize pfit dataframe.
         pfit = pd.DataFrame(index=range(len(self.iteration_start_days)),
-                            columns=[*self.fit_params, *['residual']])
+                            columns=[*self.fit_params,
+                                     *['residual', 'i_sc', 'v_oc', 'i_mp',
+                                       'v_mp', 'p_mp', 'i_x', 'i_xx']])
 
         p0 = pd.DataFrame(index=range(len(self.iteration_start_days)),
                           columns=self.fit_params)
@@ -1508,9 +1515,14 @@ class PvProHandler:
                     solver=self.solver,
                     method=method
                 )
-                pfit.iloc[k] = pfit_iter
-                # print(res)
+                for p in pfit_iter:
+                    pfit.loc[k,p] = pfit_iter[p]
+                #
+                print('Best fit:')
+                print(pfit_iter)
+
                 pfit.loc[k, 'residual'] = residual
+                print('Final residual: {:.4f}'.format(residual))
                 fit_result.append(fit_result_iter)
 
                 if verbose:
@@ -1557,11 +1569,26 @@ class PvProHandler:
                 # except:
                 #     print('** Error with this iteration.')
 
-            self.result = dict(
-                p=pfit,
-                p0=p0,
-                fit_result=fit_result
-            )
+            # Calculate other parameters vs. time.
+            pfit.loc[k, 'nNsVth_ref'] = pfit.loc[k, 'diode_factor'] * kB / q * (
+                        25 + 273.15)
+
+            out = pvlib.pvsystem.singlediode(
+                photocurrent=pfit.loc[k, 'photocurrent_ref'],
+                saturation_current=pfit.loc[k, 'saturation_current_ref'],
+                resistance_series=pfit.loc[k, 'resistance_series_ref'],
+                resistance_shunt=pfit.loc[k, 'resistance_shunt_ref'],
+                nNsVth=pfit.loc[k, 'nNsVth_ref'])
+
+            for p in out.keys():
+                pfit.loc[k, p + '_ref'] = out[p]
+
+        self.result = dict(
+            p=pfit,
+            p0=p0,
+            fit_result=fit_result
+        )
+
 
     def estimate_p0(self):
         """
@@ -1598,6 +1625,7 @@ class PvProHandler:
         #     resistance_series_ref=0.4,
         #     resistance_shunt_ref=1e3
         # )
+
 
     def plot_Vmp_Imp_scatter(self,
                              p_plot,
@@ -1646,7 +1674,7 @@ class PvProHandler:
                         self.current_key] / self.parallel_strings)
 
         vmp_max = 1.1 * np.nanmax(
-            self.df.loc[self.df['operating_cls'] == 0,self.voltage_key] /
+            self.df.loc[self.df['operating_cls'] == 0, self.voltage_key] /
             self.modules_per_string)
 
         h_sc = plt.scatter(vmp, imp,
@@ -1768,6 +1796,7 @@ class PvProHandler:
         plt.show()
 
         return fig
+
 
     def plot_suns_voc_scatter(self,
                               p_plot,
