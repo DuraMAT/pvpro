@@ -1455,8 +1455,8 @@ class PvProHandler:
         # Initialize pfit dataframe.
         pfit = pd.DataFrame(index=range(len(self.iteration_start_days)),
                             columns=[*self.fit_params,
-                                     *['residual', 'i_sc', 'v_oc', 'i_mp',
-                                       'v_mp', 'p_mp', 'i_x', 'i_xx']])
+                                     *['residual', 'i_sc_ref', 'v_oc_ref', 'i_mp_ref',
+                                       'v_mp_ref', 'p_mp_ref', 'i_x_ref', 'i_xx_ref']])
 
         p0 = pd.DataFrame(index=range(len(self.iteration_start_days)),
                           columns=self.fit_params)
@@ -1519,7 +1519,7 @@ class PvProHandler:
                     pfit.loc[k,p] = pfit_iter[p]
                 #
                 print('Best fit:')
-                print(pfit_iter)
+                print(pd.Series(pfit_iter))
 
                 pfit.loc[k, 'residual'] = residual
                 print('Final residual: {:.4f}'.format(residual))
@@ -1570,7 +1570,7 @@ class PvProHandler:
                 #     print('** Error with this iteration.')
 
             # Calculate other parameters vs. time.
-            pfit.loc[k, 'nNsVth_ref'] = pfit.loc[k, 'diode_factor'] * kB / q * (
+            pfit.loc[k, 'nNsVth_ref'] = pfit.loc[k, 'diode_factor']*self.cells_in_series * kB / q * (
                         25 + 273.15)
 
             out = pvlib.pvsystem.singlediode(
@@ -1607,8 +1607,8 @@ class PvProHandler:
         self.p0 = estimate_desoto(
             irradiance_poa=self.df.loc[cax, self.irradiance_poa_key],
             temperature_cell=self.df.loc[cax, 'temperature_cell'],
-            vmp=self.df.loc[cax, self.voltage_key],
-            imp=self.df.loc[cax, self.current_key],
+            vmp=self.df.loc[cax, self.voltage_key]/self.modules_per_string,
+            imp=self.df.loc[cax, self.current_key]/self.parallel_strings,
             cells_in_series=self.cells_in_series
         )
 
