@@ -7,9 +7,11 @@ from collections import OrderedDict
 import scipy
 import datetime
 import os
+import warnings
+import time
 
-from pvlib.singlediode import _lambertw_i_from_v, _lambertw_v_from_i, \
-    _golden_sect_DataFrame, _pwr_optfcn
+from pvlib.singlediode import _lambertw_i_from_v, _lambertw_v_from_i
+from pvlib.pvsystem import calcparams_desoto
 
 import matplotlib
 
@@ -17,263 +19,8 @@ matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 from solardatatools import DataHandler
-
-
-def _lambertw(photocurrent, saturation_current, resistance_series,
-              resistance_shunt, nNsVth, ivcurve_pnts=None,
-              calculate_all=False):
-    if calculate_all:
-        # Compute short circuit current
-        i_sc = _lambertw_i_from_v(resistance_shunt, resistance_series, nNsVth,
-                                  0.,
-                                  saturation_current, photocurrent)
-
-    # Compute open circuit voltage
-    v_oc = _lambertw_v_from_i(resistance_shunt, resistance_series, nNsVth, 0.,
-                              saturation_current, photocurrent)
-
-    params = {'r_sh': resistance_shunt,
-              'r_s': resistance_series,
-              'nNsVth': nNsVth,
-              'i_0': saturation_current,
-              'i_l': photocurrent}
-
-    # Find the voltage, v_mp, where the power is maximized.
-    # Start the golden section search at v_oc * 1.14
-    p_mp, v_mp = _golden_sect_DataFrame(params, 0., v_oc * 1.14,
-                                        _pwr_optfcn)
-
-    # Find Imp using Lambert W
-    i_mp = _lambertw_i_from_v(resistance_shunt, resistance_series, nNsVth,
-                              v_mp, saturation_current, photocurrent)
-
-    if calculate_all:
-        # Find Ix and Ixx using Lambert W
-        i_x = _lambertw_i_from_v(resistance_shunt, resistance_series, nNsVth,
-                                 0.5 * v_oc, saturation_current, photocurrent)
-
-        i_xx = _lambertw_i_from_v(resistance_shunt, resistance_series, nNsVth,
-                                  0.5 * (v_oc + v_mp), saturation_current,
-                                  photocurrent)
-
-    if calculate_all:
-        out = (i_sc, v_oc, i_mp, v_mp, p_mp, i_x, i_xx)
-    else:
-        out = (v_oc, i_mp, v_mp, p_mp)
-
-    # create ivcurve
-    if ivcurve_pnts:
-        ivcurve_v = (np.asarray(v_oc)[..., np.newaxis] *
-                     np.linspace(0, 1, ivcurve_pnts))
-
-        ivcurve_i = _lambertw_i_from_v(resistance_shunt, resistance_series,
-                                       nNsVth, ivcurve_v.T, saturation_current,
-                                       photocurrent).T
-
-        out += (ivcurve_i, ivcurve_v)
-
-    return out
-
-
-# Sped up singlediode by 8% by not calculating I_
-def singlediode(photocurrent, saturation_current, resistance_series,
-                resistance_shunt, nNsVth, ivcurve_pnts=None,
-                method='lambertw',
-                calculate_all=False):
-    """
-    Solve the single-diode model to obtain a photovoltaic IV curve.
-
-    Singlediode solves the single diode equation [1]
-
-    .. math::
-
-        I = IL - I0*[exp((V+I*Rs)/(nNsVth))-1] - (V + I*Rs)/Rsh
-
-    for ``I`` and ``V`` when given ``IL, I0, Rs, Rsh,`` and ``nNsVth
-    (nNsVth = n*Ns*Vth)`` which are described later. Returns a DataFrame
-    which contains the 5 points on the I-V curve specified in
-    SAND2004-3535 [3]. If all IL, I0, Rs, Rsh, and nNsVth are scalar, a
-    single curve will be returned, if any are Series (of the same
-    length), multiple IV curves will be calculated.
-
-    The input parameters can be calculated using calcparams_desoto from
-    meteorological data.
-
-    Parameters
-    ----------
-    photocurrent : numeric
-        Light-generated current (photocurrent) in amperes under desired
-        IV curve conditions. Often abbreviated ``I_L``.
-        0 <= photocurrent
-
-    saturation_current : numeric
-        Diode saturation current in amperes under desired IV curve
-        conditions. Often abbreviated ``I_0``.
-        0 < saturation_current
-
-    resistance_series : numeric
-        Series resistance in ohms under desired IV curve conditions.
-        Often abbreviated ``Rs``.
-        0 <= resistance_series < numpy.inf
-
-    resistance_shunt : numeric
-        Shunt resistance in ohms under desired IV curve conditions.
-        Often abbreviated ``Rsh``.
-        0 < resistance_shunt <= numpy.inf
-
-    nNsVth : numeric
-        The product of three components. 1) The usual diode ideal factor
-        (n), 2) the number of cells in series (Ns), and 3) the cell
-        thermal voltage under the desired IV curve conditions (Vth). The
-        thermal voltage of the cell (in volts) may be calculated as
-        ``k*temp_cell/q``, where k is Boltzmann's constant (J/K),
-        temp_cell is the temperature of the p-n junction in Kelvin, and
-        q is the charge of an electron (coulombs).
-        0 < nNsVth
-
-    ivcurve_pnts : None or int, default None
-        Number of points in the desired IV curve. If None or 0, no
-        IV curves will be produced.
-
-    method : str, default 'lambertw'
-        Determines the method used to calculate points on the IV curve. The
-        options are ``'lambertw'``, ``'newton'``, or ``'brentq'``.
-
-    Returns
-    -------
-    OrderedDict or DataFrame
-
-    The returned dict-like object always contains the keys/columns:
-
-        * i_sc - short circuit current in amperes.
-        * v_oc - open circuit voltage in volts.
-        * i_mp - current at maximum power point in amperes.
-        * v_mp - voltage at maximum power point in volts.
-        * p_mp - power at maximum power point in watts.
-        * i_x - current, in amperes, at ``v = 0.5*v_oc``.
-        * i_xx - current, in amperes, at ``V = 0.5*(v_oc+v_mp)``.
-
-    If ivcurve_pnts is greater than 0, the output dictionary will also
-    include the keys:
-
-        * i - IV curve current in amperes.
-        * v - IV curve voltage in volts.
-
-    The output will be an OrderedDict if photocurrent is a scalar,
-    array, or ivcurve_pnts is not None.
-
-    The output will be a DataFrame if photocurrent is a Series and
-    ivcurve_pnts is None.
-
-    Notes
-    -----
-    If the method is ``'lambertw'`` then the solution employed to solve the
-    implicit diode equation utilizes the Lambert W function to obtain an
-    explicit function of :math:`V=f(I)` and :math:`I=f(V)` as shown in [2].
-
-    If the method is ``'newton'`` then the root-finding Newton-Raphson method
-    is used. It should be safe for well behaved IV-curves, but the ``'brentq'``
-    method is recommended for reliability.
-
-    If the method is ``'brentq'`` then Brent's bisection search method is used
-    that guarantees convergence by bounding the voltage between zero and
-    open-circuit.
-
-    If the method is either ``'newton'`` or ``'brentq'`` and ``ivcurve_pnts``
-    are indicated, then :func:`pvlib.singlediode.bishop88` [4] is used to
-    calculate the points on the IV curve points at diode voltages from zero to
-    open-circuit voltage with a log spacing that gets closer as voltage
-    increases. If the method is ``'lambertw'`` then the calculated points on
-    the IV curve are linearly spaced.
-
-    References
-    -----------
-    [1] S.R. Wenham, M.A. Green, M.E. Watt, "Applied Photovoltaics" ISBN
-    0 86758 909 4
-
-    [2] A. Jain, A. Kapoor, "Exact analytical solutions of the
-    parameters of real solar cells using Lambert W-function", Solar
-    Energy Materials and Solar Cells, 81 (2004) 269-277.
-
-    [3] D. King et al, "Sandia Photovoltaic Array Performance Model",
-    SAND2004-3535, Sandia National Laboratories, Albuquerque, NM
-
-    [4] "Computer simulation of the effects of electrical mismatches in
-    photovoltaic cell interconnection circuits" JW Bishop, Solar Cell (1988)
-    https://doi.org/10.1016/0379-6787(88)90059-2
-
-    See also
-    --------
-    sapm
-    calcparams_desoto
-    pvlib.singlediode.bishop88
-    """
-    # Calculate points on the IV curve using the LambertW solution to the
-    # single diode equation
-    if method.lower() == 'lambertw':
-        out = _lambertw(
-            photocurrent, saturation_current, resistance_series,
-            resistance_shunt, nNsVth, ivcurve_pnts,
-            calculate_all=calculate_all
-        )
-        if calculate_all:
-            i_sc, v_oc, i_mp, v_mp, p_mp, i_x, i_xx = out[:7]
-        else:
-            v_oc, i_mp, v_mp, p_mp = out[:7]
-
-        if ivcurve_pnts:
-            ivcurve_i, ivcurve_v = out[7:]
-    else:
-        # Calculate points on the IV curve using either 'newton' or 'brentq'
-        # methods. Voltages are determined by first solving the single diode
-        # equation for the diode voltage V_d then backing out voltage
-        args = (photocurrent, saturation_current, resistance_series,
-                resistance_shunt, nNsVth)  # collect args
-        v_oc = pvlib.singlediode.bishop88_v_from_i(
-            0.0, *args, method=method.lower()
-        )
-        i_mp, v_mp, p_mp = pvlib.singlediode.bishop88_mpp(
-            *args, method=method.lower()
-        )
-        if calculate_all:
-            i_sc = pvlib.singlediode.bishop88_i_from_v(
-                0.0, *args, method=method.lower())
-            i_x = pvlib.singlediode.bishop88_i_from_v(
-                v_oc / 2.0, *args, method=method.lower()
-            )
-            i_xx = pvlib.singlediode.bishop88_i_from_v(
-                (v_oc + v_mp) / 2.0, *args, method=method.lower()
-            )
-
-        # calculate the IV curve if requested using bishop88
-        if ivcurve_pnts:
-            vd = v_oc * (
-                    (11.0 - np.logspace(np.log10(11.0), 0.0,
-                                        ivcurve_pnts)) / 10.0
-            )
-            ivcurve_i, ivcurve_v, _ = pvlib.singlediode.bishop88(vd, *args)
-
-    out = OrderedDict()
-
-    out['v_oc'] = v_oc
-    out['i_mp'] = i_mp
-    out['v_mp'] = v_mp
-    out['p_mp'] = p_mp
-
-    if calculate_all:
-        out['i_sc'] = i_sc
-        out['i_x'] = i_x
-        out['i_xx'] = i_xx
-
-    if ivcurve_pnts:
-        out['v'] = ivcurve_v
-        out['i'] = ivcurve_i
-
-    if isinstance(photocurrent, pd.Series) and not ivcurve_pnts:
-        out = pd.DataFrame(out, index=photocurrent.index)
-
-    return out
-
+from scipy.optimize import basinhopping
+from pvlib.temperature import sapm_cell_from_module
 
 def pvlib_single_diode(
         effective_irradiance,
@@ -287,11 +34,14 @@ def pvlib_single_diode(
         saturation_current_ref,
         Eg_ref=1.121,
         dEgdT=-0.0002677,
+        conductance_shunt_extra=0,
         reference_irradiance=1000,
         reference_temperature=25,
         method='newton',
         verbose=False,
-        calculate_all=False):
+        ivcurve_pnts=None,
+        output_all_params=False
+):
     """
     Find points of interest on the IV curve given module parameters and
     operating conditions.
@@ -379,7 +129,149 @@ def pvlib_single_diode(
 
     # a_ref = diode_factor*cells_in_series*kB/q*(273.15 + temperature_cell)
 
-    iph, io, rs, rsh, nNsVth = pvlib.pvsystem.calcparams_desoto(
+    p = {}
+
+    iph, io, rs, rsh, nNsVth = calcparams_desoto(
+        effective_irradiance,
+        temperature_cell,
+        alpha_sc=alpha_isc,
+        a_ref=diode_factor * cells_in_series * kB / q * (
+                273.15 + reference_temperature),
+        I_L_ref=photocurrent_ref,
+        I_o_ref=saturation_current_ref,
+        R_sh_ref=resistance_shunt_ref,
+        R_s=resistance_series_ref,
+        EgRef=Eg_ref,
+        dEgdT=dEgdT,
+        irrad_ref=reference_irradiance,
+        temp_ref=reference_temperature
+    )
+
+    rsh = 1 / (1 / rsh + conductance_shunt_extra)
+
+    # if verbose:
+    #     print('Photocurrent')
+    #     print(photocurrent)
+    #     print('Eg')
+    #     print(Eg)
+    #     print('Saturation current')
+    #     print(saturation_current)
+    #     print('nNsVth')
+    #     print(nNsVth)
+
+    out = pvlib.pvsystem.singlediode(iph,
+                                     io,
+                                     rs,
+                                     rsh,
+                                     nNsVth,
+                                     method=method,
+                                     ivcurve_pnts=ivcurve_pnts,
+                                     )
+
+    if output_all_params:
+
+        params = {'photocurrent': iph,
+                  'saturation_current': io,
+                  'resistance_series': rs,
+                  'resistace_shunt': rsh,
+                  'nNsVth': nNsVth}
+
+        for p in params:
+            out[p] = params[p]
+
+    # out = pvlib.singlediode(photocurrent, saturation_current,
+    #                   resistance_series,
+    #                   resistance_shunt, nNsVth,
+    #                   method=method,
+    #                   calculate_all=calculate_all)
+
+    return out
+
+
+def singlediode_closest_point(
+        voltage,
+        current,
+        effective_irradiance,
+        temperature_cell,
+        resistance_shunt_ref,
+        resistance_series_ref,
+        diode_factor,
+        cells_in_series,
+        alpha_isc,
+        photocurrent_ref,
+        saturation_current_ref,
+        Eg_ref=1.121,
+        dEgdT=-0.0002677,
+        reference_irradiance=1000,
+        reference_temperature=25,
+        method='newton',
+        verbose=False,
+        ivcurve_pnts=1000):
+    out = pvlib_single_diode(
+        effective_irradiance=effective_irradiance,
+        temperature_cell=temperature_cell,
+        cells_in_series=cells_in_series,
+        alpha_isc=alpha_isc,
+        ivcurve_pnts=ivcurve_pnts,
+        resistance_series_ref=resistance_series_ref,
+        resistance_shunt_ref=resistance_shunt_ref,
+        diode_factor=diode_factor,
+        photocurrent_ref=photocurrent_ref,
+        saturation_current_ref=saturation_current_ref,
+        Eg_ref=Eg_ref,
+        dEgdT=dEgdT,
+        reference_irradiance=reference_irradiance,
+        reference_temperature=reference_temperature,
+        calculate_all=True,
+        method=method,
+        verbose=verbose,
+    )
+
+    # point_error[k] = np.sqrt(np.min(
+    #     (out['v'] - dfc['v_operation'][k]) ** 2 / out['v_oc'] ** 2 + (
+    #             out['i'] - dfc['i_operation'][k]) ** 2 / out['i_sc'] ** 2))
+
+    distance_to_curve_square = (out['v'] - voltage) ** 2 / out['v_oc'] ** 2 + \
+                               (out['i'] - current) ** 2 / out['i_sc'] ** 2
+
+    closest_distance_idx = np.argmin(distance_to_curve_square)
+
+    return {
+        'v_closest': out['v'][closest_distance_idx],
+        'i_closest': out['i'][closest_distance_idx],
+        'p_closest': out['i'][closest_distance_idx] * out['v'][
+            closest_distance_idx],
+        'v_target': voltage,
+        'i_target': current,
+        'p_target': current * voltage,
+        'distance': np.sqrt(distance_to_curve_square[closest_distance_idx]),
+        'v': out['v'],
+        'i': out['i'],
+    }
+
+
+def singlediode_v_from_i(
+        current,
+        effective_irradiance,
+        temperature_cell,
+        resistance_shunt_ref,
+        resistance_series_ref,
+        diode_factor,
+        cells_in_series,
+        alpha_isc,
+        photocurrent_ref,
+        saturation_current_ref,
+        Eg_ref=1.121,
+        dEgdT=-0.0002677,
+        reference_irradiance=1000,
+        reference_temperature=25,
+        method='newton',
+        verbose=False,
+):
+    kB = 1.381e-23
+    q = 1.602e-19
+
+    iph, io, rs, rsh, nNsVth = calcparams_desoto(
         effective_irradiance,
         temperature_cell,
         alpha_sc=alpha_isc,
@@ -392,247 +284,53 @@ def pvlib_single_diode(
         EgRef=Eg_ref,
         dEgdT=dEgdT,
     )
+    voltage = _lambertw_v_from_i(rsh, rs, nNsVth, current, io, iph)
 
-    # if verbose:
-    #     print('Photocurrent')
-    #     print(photocurrent)
-    #     print('Eg')
-    #     print(Eg)
-    #     print('Saturation current')
-    #     print(saturation_current)
-    #     print('nNsVth')
-    #     print(nNsVth)
-
-    out = singlediode(iph,
-                      io,
-                      rs,
-                      rsh,
-                      nNsVth,
-                      method=method,
-                      calculate_all=calculate_all)
-
-    # out = pvlib.singlediode(photocurrent, saturation_current,
-    #                   resistance_series,
-    #                   resistance_shunt, nNsVth,
-    #                   method=method,
-    #                   calculate_all=calculate_all)
-
-    return out
+    return voltage
 
 
-#
-# def classify_time_stamp(voltage, current, irrad, method='fraction'):
-#     """
-#
-#     Parameters
-#     ----------
-#     voltage
-#     current
-#     irrad
-#     method
-#
-#     Returns
-#     -------
-#     cls : array
-#
-#         Array of classifications of each time stamp:
-#             0: module at open circuit conditions, daytime
-#             1: module at maximum power point, daytime.
-#             2: Nighttime.
-#
-#     """
-#
-#
-#     cls = np.zeros(np.shape(voltage),dtype='int')
-#
-#     # Inverter off
-#     cls[np.logical_and(current<current.max()*0.01, voltage>voltage.max()*0.01) ] = 0
-#
-#     # Inverter on
-#     cls[np.logical_and(voltage>voltage.max()*0.01,current>current.max()*0.01, )] = 1
-#
-#     # Night
-#     cls[irrad<1] = 2
-#
-#     return cls
+def singlediode_i_from_v(
+        voltage,
+        effective_irradiance,
+        temperature_cell,
+        resistance_shunt_ref,
+        resistance_series_ref,
+        diode_factor,
+        cells_in_series,
+        alpha_isc,
+        photocurrent_ref,
+        saturation_current_ref,
+        Eg_ref=1.121,
+        dEgdT=-0.0002677,
+        reference_irradiance=1000,
+        reference_temperature=25,
+        method='newton',
+        verbose=False,
+):
+    kB = 1.381e-23
+    q = 1.602e-19
 
-
-def import_csv(filename):
-    """Import an NSRDB csv file.
-
-    The function (df,info) = import_csv(filename) imports an NSRDB formatted
-    csv file
-
-    Parameters
-    ----------
-    filename
-
-    Returns
-    -------
-    df
-        pandas dataframe of data
-    info
-        pandas dataframe of header data.
-    """
-
-    # filename = '1ad06643cad4eeb947f3de02e9a0d6d7/128364_38.29_-122.14_1998.csv'
-
-    info_df = pd.read_csv(filename, nrows=1)
-    info = {}
-    for p in info_df:
-        info[p] = info_df[p].iloc[0]
-
-    # See metadata for specified properties, e.g., timezone and elevation
-    # timezone, elevation = info['Local Time Zone'], info['Elevation']
-
-    # Return all but first 2 lines of csv to get data:
-    df = pd.read_csv(filename, skiprows=2)
-
-    # # Set the time index in the pandas dataframe:
-    # year=str(df['Year'][0])
-    #
-    #
-    # if np.diff(df[0:2].Minute) == 30:
-    #     interval = '30'
-    #     info['interval_in_hours']= 0.5
-    #     df = df.set_index(
-    #       pd.date_range('1/1/{yr}'.format(yr=year), freq=interval + 'Min',
-    #                     periods=60*24*365 / int(interval)))
-    # elif df['Minute'][1] - df['Minute'][0]==0:
-    #     interval = '60'
-    #     info['interval_in_hours'] = 1
-    #     df = df.set_index(
-    #         pd.date_range('1/1/{yr}'.format(yr=year), freq=interval + 'Min',
-    #                       periods=60*24*365 / int(interval)))
-    # else:
-    #     print('Interval not understood!')
-    #
-    # df.index = df.index.tz_localize(
-    #     pytz.FixedOffset(float(info['Time Zone'] * 60)))
-
-    return (df, info)
-
-
-def spectral_variation(spectral_data, reference_spectrum, wavelength):
-    dwavelength = np.diff(wavelength)
-    dwavelength = np.append(dwavelength, dwavelength[-1])
-
-    total_intensity = np.sum(np.array(spectral_data) * dwavelength, axis=1)
-
-    total_intensity_0 = np.sum(reference_spectrum * dwavelength)
-
-    delta_E = total_intensity_0 / \
-              np.reshape(total_intensity, (len(total_intensity), 1)) * \
-              np.array(spectral_data) - reference_spectrum
-
-    delta_E[total_intensity == 0, :] = 0
-
-    return delta_E
-
-
-def spectral_mismatch(spectral_data, reference_spectrum, eqe, wavelength):
-    dwavelength = np.diff(wavelength)
-    dwavelength = np.append(dwavelength, dwavelength[-1])
-
-    delta_E = spectral_variation(spectral_data, reference_spectrum, wavelength)
-
-    # # Check delta_E integrates to zero.
-    # delta_E_tot = np.sum(delta_E * dwavelength, axis=1)
-    # print('Delta E max: ', np.nanmax(np.abs(delta_E_tot)))
-
-    spectral_correction = 1 + np.sum(
-        delta_E * eqe * wavelength * dwavelength, axis=1) / np.sum(
-        reference_spectrum * eqe * wavelength * dwavelength)
-
-    return spectral_correction
-
-
-def find_runs(x):
-    """Find runs of consecutive items in an array.
-    https://gist.github.com/alimanfoo/c5977e87111abe8127453b21204c1065"""
-
-    # ensure array
-    x = np.asanyarray(x)
-    if x.ndim != 1:
-        raise ValueError('only 1D array supported')
-    n = x.shape[0]
-
-    # handle empty array
-    if n == 0:
-        return np.array([]), np.array([]), np.array([])
-
-    else:
-        # find run starts
-        loc_run_start = np.empty(n, dtype=bool)
-        loc_run_start[0] = True
-        np.not_equal(x[:-1], x[1:], out=loc_run_start[1:])
-        run_starts = np.nonzero(loc_run_start)[0]
-
-        # find run values
-        run_values = x[loc_run_start]
-
-        # find run lengths
-        run_lengths = np.diff(np.append(run_starts, n))
-
-        return run_values, run_starts, run_lengths
-
-
-def find_clear_times(measured_matrix, clear_matrix, th_relative_power=0.1,
-                     th_relative_smoothness=200,
-                     min_length=3):
-    n1, n2 = measured_matrix.shape
-    # calculate clearness index based on clear sky power estimates
-    ci = np.zeros_like(clear_matrix)
-    daytime = np.logical_and(
-        measured_matrix >= 0.05 * np.percentile(clear_matrix, 95),
-        clear_matrix >= 0.05 * np.percentile(clear_matrix, 95)
+    iph, io, rs, rsh, nNsVth = calcparams_desoto(
+        effective_irradiance,
+        temperature_cell,
+        alpha_sc=alpha_isc,
+        a_ref=diode_factor * cells_in_series * kB / q * (
+                273.15 + reference_temperature),
+        I_L_ref=photocurrent_ref,
+        I_o_ref=saturation_current_ref,
+        R_sh_ref=resistance_shunt_ref,
+        R_s=resistance_series_ref,
+        EgRef=Eg_ref,
+        dEgdT=dEgdT,
     )
-    ci[daytime] = np.clip(
-        np.divide(measured_matrix[daytime], clear_matrix[daytime]), 0, 2)
-    # compare relative 2nd order smoothness of measured data and clear sky estimate
-    diff_meas = np.r_[0, (np.diff(measured_matrix.ravel(order='F'), n=2)), 0]
-    diff_clear = np.r_[0, (np.diff(clear_matrix.ravel(order='F'), n=2)), 0]
-    diff_compare = (np.abs(diff_meas - diff_clear)).reshape(n1, n2, order='F')
-    # assign clear times as high clearness index and similar smoothness
-    clear_times = np.logical_and(
-        np.abs(ci - 1) <= th_relative_power,
-        diff_compare <= th_relative_smoothness
-    )
-    # remove clear times that are in small groups, below the minimum length threshold
-    run_values, run_starts, run_lengths = find_runs(
-        clear_times.ravel(order='F'))
-    for val, start, length in zip(run_values, run_starts, run_lengths):
-        if val is False:
-            continue
-        if length >= min_length:
-            continue
-        i = start % n1
-        j = start // n1
-        for count in range(length):
-            clear_times[i + count, j] = False
-    return clear_times
+    current = _lambertw_i_from_v(rsh, rs, nNsVth, voltage, io, iph)
+
+    return current
 
 
-def make_clear_series(data_handler_obj, bool_mat):
-    """Assumes that the data handler object was instantiated from a data frame with a time index"""
-    start = data_handler_obj.day_index[0]
-    freq = '{}min'.format(data_handler_obj.data_sampling)
-    periods = data_handler_obj.filled_data_matrix.size
-    tindex = pd.date_range(start=start, freq=freq, periods=periods)
-    series = pd.Series(data=bool_mat.ravel(order='F'), index=tindex)
-    series.name = 'clear_times'
-    return series
-
-
-def sapm_module_to_cell_temperature(T_module, irradiance, delta_T=3):
-    # Modify module temperature to get to cell temperature
-
-    T_cell = T_module + delta_T * irradiance / 1000
-
-    return T_cell
-
-
-def classify_operating_mode(voltage, current, method='fraction'):
+def classify_operating_mode(voltage, current,
+                            power_clip=np.inf,
+                            method='fraction'):
     """
 
     Parameters
@@ -650,6 +348,7 @@ def classify_operating_mode(voltage, current, method='fraction'):
         0: System at maximum power point.
         1: System at open circuit conditions.
         2: Low irradiance nighttime.
+        3: Clipped/curtailed operation. Not necessarily at mpp.
 
     """
 
@@ -669,6 +368,9 @@ def classify_operating_mode(voltage, current, method='fraction'):
     cls[np.logical_and(current < current.max() * 0.01,
                        voltage > voltage.max() * 0.01)] = 1
 
+    # Clipped data. Easy algorithm.
+    cls[current * voltage > power_clip] = 3
+
     return cls
 
 
@@ -680,11 +382,15 @@ def pv_system_single_diode_model(
         photocurrent_ref,
         saturation_current_ref,
         resistance_series_ref,
+        conductance_shunt_extra,
         resistance_shunt_ref,
         cells_in_series,
         alpha_isc,
+        voltage_operation=None,
+        current_operation=None,
         band_gap_ref=1.121,
         dEgdT=-0.0002677,
+        method='lambertw',
         **kwargs
 ):
     """
@@ -710,6 +416,10 @@ def pv_system_single_diode_model(
     -------
 
     """
+    if type(voltage_operation) == type(None):
+        voltage_operation = np.zeros_like(effective_irradiance)
+    if type(current_operation) == type(None):
+        current_operation = np.zeros_like(effective_irradiance)
 
     out = pvlib_single_diode(
         effective_irradiance,
@@ -721,6 +431,8 @@ def pv_system_single_diode_model(
         alpha_isc,  # note alpha_isc is fixed.
         photocurrent_ref,
         saturation_current_ref,
+        conductance_shunt_extra=conductance_shunt_extra,
+        method=method,
         Eg_ref=band_gap_ref,
         dEgdT=dEgdT)
 
@@ -732,6 +444,93 @@ def pv_system_single_diode_model(
     #         0: System at maximum power point.
     #         1: System at open circuit conditions.
     #         2: Low irradiance nighttime.
+
+    # If cls is 3, then system is clipped, need to find closest iv curve point.
+
+    if np.any(operating_cls == 3):
+        cax = operating_cls == 3
+        voltage_operation[cax][voltage_operation[cax] > out['v_oc'][cax]] = \
+            out['v_oc'][cax]
+        current_operation[cax][current_operation[cax] > out['i_sc'][cax]] = \
+            out['i_sc'][cax]
+
+        current_closest = singlediode_i_from_v(voltage=voltage_operation[cax],
+                                               effective_irradiance=
+                                               effective_irradiance[cax],
+                                               temperature_cell=
+                                               temperature_cell[cax],
+                                               resistance_shunt_ref=resistance_shunt_ref,
+                                               resistance_series_ref=resistance_series_ref,
+                                               diode_factor=diode_factor,
+                                               cells_in_series=cells_in_series,
+                                               alpha_isc=alpha_isc,
+                                               photocurrent_ref=photocurrent_ref,
+                                               saturation_current_ref=saturation_current_ref,
+                                               Eg_ref=band_gap_ref,
+                                               dEgdT=dEgdT,
+                                               )
+
+        voltage_closest = singlediode_v_from_i(
+            current=current_operation[cax],
+            effective_irradiance=effective_irradiance[cax],
+            temperature_cell=temperature_cell[cax],
+            resistance_shunt_ref=resistance_shunt_ref,
+            resistance_series_ref=resistance_series_ref,
+            diode_factor=diode_factor,
+            cells_in_series=cells_in_series,
+            alpha_isc=alpha_isc,
+            photocurrent_ref=photocurrent_ref,
+            saturation_current_ref=saturation_current_ref,
+            Eg_ref=band_gap_ref,
+            dEgdT=dEgdT,
+        )
+
+        voltage_closest[voltage_closest < 0] = 0
+
+        # TODO: Compare perpindicular distance to midpoint distance.
+
+        #
+        # delta_V = voltage_operation[cax] - voltage_closest
+        # delta_I = current_operation[cax] - current_closest
+        #
+        # voltage_fit[cax] = voltage_closest + delta_V/(1 + (delta_I/delta_V)**2)
+        # current_fit[cax] = current_closest + delta_I/(1 + (delta_I/delta_V)**2)
+
+        voltage_fit[cax] = 0.5 * (voltage_operation[cax] + voltage_closest)
+        current_fit[cax] = 0.5 * (current_operation[cax] + current_closest)
+
+
+
+
+        # print('Clipped points fit:')
+        # print(pd.DataFrame({'Current Fit': current_fit[cax],
+        #               'Current Op': current_operation[cax],
+        #               'Voltage Fit': voltage_fit[cax],
+        #               'Voltage Op': voltage_operation[cax]}))
+
+    # for k in range(len(effective_irradiance)):
+    #     if operating_cls[k]==3:
+    #
+    #         out_iv = singlediode_closest_point(
+    #                           voltage=voltage_operation[k],
+    #                           current=current_operation[k],
+    #                           effective_irradiance=effective_irradiance[k],
+    #                           temperature_cell=temperature_cell[k],
+    #                           resistance_shunt_ref=resistance_shunt_ref,
+    #                           resistance_series_ref=resistance_series_ref,
+    #                           diode_factor=diode_factor,
+    #                           cells_in_series=cells_in_series,
+    #                           alpha_isc=alpha_isc,
+    #                           photocurrent_ref=photocurrent_ref,
+    #                           saturation_current_ref=saturation_current_ref,
+    #                           Eg_ref=band_gap_ref,
+    #                           dEgdT=dEgdT,
+    #                           ivcurve_pnts=10000,
+    #                           method=method
+    #                           )
+    #         voltage_fit[k] = out_iv['v_closest']
+    #         current_fit[k] = out_iv['i_closest']
+    #
 
     # If cls is 1, then system is at open-circuit voltage.
     voltage_fit[operating_cls == 1] = out['v_oc'][operating_cls == 1]
@@ -814,18 +613,17 @@ def production_data_curve_fit(
         saturation_current_ref=None,
         resistance_series_ref=None,
         resistance_shunt_ref=None,
-        p0=dict(
-            diode_factor=1.0,
-            photocurrent_ref=8,
-            saturation_current_ref=10,
-            resistance_series_ref=10,
-            resistance_shunt_ref=10
-        ),
+        conductance_shunt_extra=None,
+        p0=None,
         cells_in_series=72,
         band_gap_ref=1.121,
         verbose=False,
-        solver='Nelder-Mead',
+        solver='nelder-mead',
+        singlediode_method='newton',
         method='minimize',
+        use_mpp_points=True,
+        use_voc_points=True,
+        use_clip_points=True,
         brute_number_grid_points=2,
 ):
     """
@@ -925,12 +723,76 @@ def production_data_curve_fit(
 
     """
 
+    if type(p0) == type(None):
+        p0 = dict(
+            diode_factor=1.0,
+            photocurrent_ref=8,
+            saturation_current_ref=10,
+            resistance_series_ref=10,
+            resistance_shunt_ref=10
+        )
+
+    #         0: System at maximum power point.
+    #         1: System at open circuit conditions.
+    #         2: Low irradiance nighttime.
+    #         3: Clipped/curtailed operation. Not necessarily at mpp.
+
+    if not use_mpp_points:
+        cax = operating_cls != 0
+        effective_irradiance = effective_irradiance[cax]
+        temperature_cell = temperature_cell[cax]
+        operating_cls = operating_cls[cax]
+        voltage = voltage[cax]
+        current = current[cax]
+
+    if not use_voc_points:
+        cax = operating_cls != 1
+        effective_irradiance = effective_irradiance[cax]
+        temperature_cell = temperature_cell[cax]
+        operating_cls = operating_cls[cax]
+        voltage = voltage[cax]
+        current = current[cax]
+
+    if not use_clip_points:
+        cax = operating_cls != 3
+        effective_irradiance = effective_irradiance[cax]
+        temperature_cell = temperature_cell[cax]
+        operating_cls = operating_cls[cax]
+        voltage = voltage[cax]
+        current = current[cax]
+
+    weights = np.zeros_like(operating_cls)
+    weights[operating_cls == 0] = 1
+    weights[operating_cls == 1] = 1
+    weights[operating_cls == 3] = 1
+
+    if verbose:
+        print('Total points: {}'.format(len(operating_cls)))
+        print('MPP points: {}'.format(np.sum(operating_cls == 0)))
+        print('Voc points: {}'.format(np.sum(operating_cls == 1)))
+        print('Clipped points: {}'.format(np.sum(operating_cls == 3)))
+
+    if len(effective_irradiance) == 0 or len(effective_irradiance) == 0 or len(
+            operating_cls) == 0 or len(voltage) == 0 or len(current) == 0:
+        p = dict(
+            diode_factor=np.nan,
+            photocurrent_ref=np.nan,
+            saturation_current_ref=np.nan,
+            resistance_series_ref=np.nan,
+            conductance_shunt_extra=np.nan
+        )
+        print('No valid values received.')
+        return p, np.nan, -1
+
     model_kwargs = dict(
         effective_irradiance=effective_irradiance,
         temperature_cell=temperature_cell,
         operating_cls=operating_cls,
         cells_in_series=cells_in_series,
-        band_gap_ref=band_gap_ref
+        band_gap_ref=band_gap_ref,
+        voltage_operation=voltage,
+        current_operation=current,
+        method=singlediode_method,
     )
 
     if not diode_factor == None:
@@ -945,6 +807,8 @@ def production_data_curve_fit(
         model_kwargs['resistance_shunt_ref'] = resistance_shunt_ref
     if not alpha_isc == None:
         model_kwargs['alpha_isc'] = alpha_isc
+    if not conductance_shunt_extra == None:
+        model_kwargs['conductance_shunt_extra'] = conductance_shunt_extra
 
     # Functions for translating from optimization quantity (x) to physical parameter (p)
     def x_to_p(x, key):
@@ -970,6 +834,8 @@ def production_data_curve_fit(
             return x
         elif key == 'resistance_shunt_ref':
             return np.exp(2 * (x - 1))
+        elif key == 'conductance_shunt_extra':
+            return x
 
     def p_to_x(p, key):
         if key == 'diode_factor':
@@ -982,6 +848,8 @@ def production_data_curve_fit(
             return p
         elif key == 'resistance_shunt_ref':
             return np.log(p) / 2 + 1
+        elif key == 'conductance_shunt_extra':
+            return p
 
     # note that this will be the order of parameters in the model function.
     fit_params = p0.keys()
@@ -992,12 +860,16 @@ def production_data_curve_fit(
         for param in fit_params:
             p[param] = x_to_p(x[n], param)
             n = n + 1
-        return pv_system_single_diode_model(**p)
+        voltage_fit, current_fit = pv_system_single_diode_model(**p)
+
+        # For clipped points, need to calculate
+
+        return voltage_fit, current_fit
 
     def residual(x):
         voltage_fit, current_fit = model(x)
-        return np.nanmean(np.abs(voltage_fit - voltage) ** 2 + \
-                          np.abs(current_fit - current) ** 2)
+        return np.nanmean((np.abs(voltage_fit - voltage) * weights) ** 2 + \
+                          (np.abs(current_fit - current) * weights) ** 2)
 
     # print(signature(model))
 
@@ -1013,17 +885,42 @@ def production_data_curve_fit(
 
         # print('p0: ', p0)
         # print('bounds:', bounds)
+
+        # print('Method: {}'.format(solver))
+
         res = scipy.optimize.minimize(residual,
                                       x0=x0,
                                       bounds=bounds,
+                                      method=solver,
                                       options=dict(
                                           # maxiter=100,
-                                          disp=verbose
+                                          disp=verbose,
+                                          # ftol=0.001,
                                       ),
-                                      method=solver
                                       )
 
         # print(res)
+        n = 0
+        p_fit = {}
+        for param in fit_params:
+            p_fit[param] = x_to_p(res.x[n], param)
+            n = n + 1
+
+        # print('Best fit parameters (with scale included):')
+        # for p in x_fit:
+        #     print('{}: {}'.format(p, x_fit[p]))
+        # print('Final Residual: {}'.format(res['fun']))
+        return p_fit, res['fun'], res
+    elif method == 'basinhopping':
+        # lower_bounds_x = [p_to_x(lower_bounds[k], k) for k in fit_params]
+        # upper_bounds_x = [p_to_x(upper_bounds[k], k) for k in fit_params]
+        x0 = [p_to_x(p0[k], k) for k in fit_params]
+
+        res = basinhopping(residual,
+                           x0=x0,
+                           niter=100,
+                           T=0.2,
+                           stepsize=0.1)
         n = 0
         p_fit = {}
         for param in fit_params:
@@ -1169,6 +1066,53 @@ def estimate_saturation_current_ref(imp_ref,
     return saturation_current_ref_estimate
 
 
+def estimate_sdm_params(irradiance_poa,
+                        temperature_cell,
+                        vmp,
+                        imp,
+                        resistance_series_ref=0.4,
+                        cells_in_series=None,
+                        figure=False):
+    """
+
+    Estimate the Desoto single diode model parameters.
+
+    Parameters
+    ----------
+    irradiance_poa
+    temperature_cell
+    vmp
+    imp
+    resistance_series_ref
+    cells_in_series
+    figure
+
+    Returns
+    -------
+
+    """
+    imp_ref = estimate_imp_ref(irradiance_poa, temperature_cell, imp,
+                               figure=figure)
+    vmp_ref = estimate_vmp_ref(irradiance_poa, temperature_cell, vmp,
+                               figure=figure)
+    photocurrent_ref = estimate_photocurrent_ref(imp_ref)
+
+    saturation_current_ref = estimate_saturation_current_ref(
+        imp_ref=imp_ref, photocurrent_ref=photocurrent_ref, vmp_ref=vmp_ref,
+        resistance_series_ref=resistance_series_ref,
+        cells_in_series=cells_in_series)
+
+    desoto_params = dict(
+        diode_factor=1.15,
+        photocurrent_ref=photocurrent_ref,
+        saturation_current_ref=saturation_current_ref,
+        resistance_series_ref=resistance_series_ref,
+        conductance_shunt_extra=0.001
+    )
+
+    return desoto_params
+
+
 def estimate_desoto(irradiance_poa,
                     temperature_cell,
                     vmp,
@@ -1239,11 +1183,13 @@ class PvProHandler:
                  temperature_cell_upper_lim=500,
                  cells_in_series=None,
                  alpha_isc=None,
+                 resistance_shunt_ref=400,
                  start_point_method='last',
-                 solver='Nelder-Mead',
+                 solver='L-BFGS-B',
                  lower_bounds=None,
                  upper_bounds=None,
                  p0=None,
+                 singlediode_method='newton',
                  ):
 
         # Initialize datahandler object.
@@ -1260,19 +1206,21 @@ class PvProHandler:
         self.temperature_cell_upper_lim = temperature_cell_upper_lim
         self.cells_in_series = cells_in_series
         self.alpha_isc = alpha_isc
+        self.resistance_shunt_ref = resistance_shunt_ref
         self.voltage_key = voltage_key
         self.current_key = current_key
         self.temperature_module_key = temperature_module_key
         self.irradiance_poa_key = irradiance_poa_key
         self.modules_per_string = modules_per_string
         self.parallel_strings = parallel_strings
+        self.singlediode_method = singlediode_method
 
         self.lower_bounds = lower_bounds or dict(
             diode_factor=0.5,
             photocurrent_ref=0,
             saturation_current_ref=1e-13,
             resistance_series_ref=0,
-            resistance_shunt_ref=0.01
+            conductance_shunt_extra=0
         )
 
         self.upper_bounds = upper_bounds or dict(
@@ -1280,7 +1228,7 @@ class PvProHandler:
             photocurrent_ref=20,
             saturation_current_ref=1e-5,
             resistance_series_ref=1,
-            resistance_shunt_ref=1e6
+            conductance_shunt_extra=10
         )
 
         self.p0 = p0 or dict(
@@ -1288,7 +1236,7 @@ class PvProHandler:
             photocurrent_ref=4,
             saturation_current_ref=1e-11,
             resistance_series_ref=0.4,
-            resistance_shunt_ref=1e6
+            conductance_shunt_extra=0
         )
 
         self.solver = solver
@@ -1325,43 +1273,55 @@ class PvProHandler:
     # def iteration_start_days_setter(self, value):
     #     print('Cannot set iteration start days directly.')
 
-    def simultation_setup(self):
+    def simulation_setup(self):
 
         # Remove nan from df.
         keys = [self.voltage_key,
                 self.current_key,
                 self.temperature_module_key,
                 self.irradiance_poa_key]
+
+        for k in keys:
+            if not k in self.df.keys():
+                raise Exception(
+                    'Key "{}" not in dataframe. Check specification of '
+                    'voltage_key, current_key, temperature_module_key and '
+                    'irradiance_poa_key'.format(
+                        k))
+
         self.df.dropna(axis=0, subset=keys, inplace=True)
 
         # Make power column.
         self.df['power_dc'] = self.df[self.voltage_key] * self.df[
-            self.current_key]
+            self.current_key] / self.modules_per_string / self.parallel_strings
 
         # Calculate iteration start days
         self.iteration_start_days = np.round(
             np.arange(0, self.dataset_length_days - self.days_per_run,
                       self.time_step_between_iterations_days))
 
-        # Calculate operating class.
-        self.df.loc[:, 'operating_cls'] = classify_operating_mode(
-            self.df[self.voltage_key],
-            self.df[self.current_key])
-
         self.calculate_cell_temperature()
 
     def calculate_cell_temperature(self):
+
+
         # Calculate cell temperature
-        self.df.loc[:, 'temperature_cell'] = sapm_module_to_cell_temperature(
+        self.df.loc[:, 'temperature_cell'] = sapm_cell_from_module(
             self.df[self.temperature_module_key],
             self.df[self.irradiance_poa_key],
             delta_T=self.delta_T)
 
-    def run_preprocess(self):
+    def run_preprocess(self, correct_tz=True):
+
+        if self.df[self.temperature_module_key].max() > 85:
+            warnings.warn(
+                'Maximum module temperature is larger than 85 C. Double check that input temperature is in Celsius, not Farenheight.')
+
+        self.simulation_setup()
 
         # Run solar-data-tools.
         self.dh.run_pipeline(power_col='power_dc',
-                             correct_tz=True,
+                             correct_tz=correct_tz,
                              extra_cols=[self.temperature_module_key,
                                          self.irradiance_poa_key,
                                          self.voltage_key,
@@ -1370,6 +1330,12 @@ class PvProHandler:
 
         # Print report.
         self.dh.report()
+
+        # Calculate operating class.
+        self.df.loc[:, 'operating_cls'] = classify_operating_mode(
+            voltage=self.df[self.voltage_key]/self.modules_per_string,
+            current=self.df[self.current_key]/self.parallel_strings,
+            power_clip=self.dh.capacity_estimate * 0.99)
 
         # TODO: this always overwrites p0 and should be changed so that if the user has set p0, it is not changed.
         self.estimate_p0()
@@ -1397,6 +1363,7 @@ class PvProHandler:
             info_display[k] = self.__dict__[k]
 
         print(pd.Series(info_display))
+        return info_display
 
     def get_df_for_iteration(self, k,
                              use_clear_times=False):
@@ -1435,10 +1402,17 @@ class PvProHandler:
         self.dh.augment_data_frame(self.dh.boolean_masks.clear_times,
                                    'clear_time')
 
-    def execute(self, iteration='all', verbose=True, method='minimize',
+    def execute(self, iteration='all',
+                use_mpp_points=True,
+                use_voc_points=True,
+                use_clip_points=True,
+                verbose=True,
+                method='minimize',
                 save_figs=True,
-                save_figs_directory='figures'):
+                save_figs_directory='figures',
+                figure_imp_max=None):
 
+        start_time = time.time()
         q = 1.602e-19
         kB = 1.381e-23
 
@@ -1455,8 +1429,10 @@ class PvProHandler:
         # Initialize pfit dataframe.
         pfit = pd.DataFrame(index=range(len(self.iteration_start_days)),
                             columns=[*self.fit_params,
-                                     *['residual', 'i_sc_ref', 'v_oc_ref', 'i_mp_ref',
-                                       'v_mp_ref', 'p_mp_ref', 'i_x_ref', 'i_xx_ref']])
+                                     *['residual', 'i_sc_ref', 'v_oc_ref',
+                                       'i_mp_ref',
+                                       'v_mp_ref', 'p_mp_ref', 'i_x_ref',
+                                       'i_xx_ref']])
 
         p0 = pd.DataFrame(index=range(len(self.iteration_start_days)),
                           columns=self.fit_params)
@@ -1500,6 +1476,7 @@ class PvProHandler:
                     raise ValueError(
                         'start_point_method must be "fixed" or "last"')
 
+                # Do pvpro fit on this iteration.
                 pfit_iter, residual, fit_result_iter = production_data_curve_fit(
                     temperature_cell=np.array(df['temperature_cell']),
                     effective_irradiance=np.array(df[self.irradiance_poa_key]),
@@ -1508,34 +1485,39 @@ class PvProHandler:
                     current=df[self.current_key] / self.parallel_strings,
                     cells_in_series=self.cells_in_series,
                     alpha_isc=self.alpha_isc,
+                    resistance_shunt_ref=self.resistance_shunt_ref,
                     lower_bounds=self.lower_bounds,
                     upper_bounds=self.upper_bounds,
                     p0=p0.loc[k],
                     verbose=verbose,
                     solver=self.solver,
-                    method=method
+                    method=method,
+                    singlediode_method=self.singlediode_method,
+                    use_mpp_points=use_mpp_points,
+                    use_voc_points=use_voc_points,
+                    use_clip_points=use_clip_points,
                 )
                 for p in pfit_iter:
-                    pfit.loc[k,p] = pfit_iter[p]
-                #
-                print('Best fit:')
-                print(pd.Series(pfit_iter))
+                    pfit.loc[k, p] = pfit_iter[p]
 
                 pfit.loc[k, 'residual'] = residual
-                print('Final residual: {:.4f}'.format(residual))
+
                 fit_result.append(fit_result_iter)
 
                 if verbose:
+                    print('Final residual: {:.4f}'.format(residual))
                     print('Startpoint:')
                     print(p0.loc[k])
                     print('Fit result:')
                     print(pfit.loc[k])
 
                 if save_figs:
+
                     self.plot_Vmp_Imp_scatter(p_plot=pfit_iter,
                                               figure_number=100,
                                               iteration=k,
-                                              use_clear_times=self.use_clear_times)
+                                              use_clear_times=self.use_clear_times,
+                                              figure_imp_max=figure_imp_max)
 
                     if not os.path.exists(save_figs_directory):
                         os.mkdir(save_figs_directory)
@@ -1543,16 +1525,20 @@ class PvProHandler:
                     export_folders = [
                         os.path.join(save_figs_directory, 'Vmp_Imp'),
                         os.path.join(save_figs_directory, 'suns_Voc'),
+                        os.path.join(save_figs_directory, 'clipped'),
+                        os.path.join(save_figs_directory, 'poa_Imp'),
                     ]
                     for folder in export_folders:
                         if not os.path.exists(folder):
                             os.mkdir(folder)
 
-                    plt.savefig(os.path.join(save_figs_directory,
-                                             'Vmp_Imp',
-                                             '{}_Vmp-Imp_{}.png'.format(
-                                                 self.system_name, k)),
-                                resolution=200,
+                    vmp_imp_fig_name = os.path.join(save_figs_directory,
+                                                    'Vmp_Imp',
+                                                    '{}_Vmp-Imp_{}.png'.format(
+                                                        self.system_name, k))
+                    print('Exporting: {}'.format(vmp_imp_fig_name))
+                    plt.savefig(vmp_imp_fig_name,
+                                resolution=350,
                                 bbox_inches='tight')
 
                     self.plot_suns_voc_scatter(p_plot=pfit_iter,
@@ -1563,32 +1549,62 @@ class PvProHandler:
                                              'suns_Voc',
                                              '{}_suns-Voc_{}.png'.format(
                                                  self.system_name, k)),
-                                resolution=200,
+                                resolution=350,
                                 bbox_inches='tight')
+
+                    self.plot_current_irradiance_clipped_scatter(
+                        p_plot=pfit_iter,
+                        figure_number=103,
+                        iteration=k,
+                        use_clear_times=self.use_clear_times)
+                    plt.savefig(os.path.join(save_figs_directory,
+                                             'clipped',
+                                             '{}_clipped_{}.png'.format(
+                                                 self.system_name, k)),
+                                resolution=350,
+                                bbox_inches='tight')
+
+                    self.plot_current_irradiance_mpp_scatter(p_plot=pfit_iter,
+                        figure_number=104,
+                        iteration=k,
+                        use_clear_times=self.use_clear_times)
+                    plt.savefig(os.path.join(save_figs_directory,
+                                             'poa_Imp',
+                                             '{}_poa-Imp_{}.png'.format(
+                                                 self.system_name, k)),
+                                resolution=350,
+                                bbox_inches='tight')
+
                 n = n + 1
                 # except:
                 #     print('** Error with this iteration.')
 
             # Calculate other parameters vs. time.
-            pfit.loc[k, 'nNsVth_ref'] = pfit.loc[k, 'diode_factor']*self.cells_in_series * kB / q * (
-                        25 + 273.15)
+            pfit.loc[k, 'nNsVth_ref'] = pfit.loc[
+                                            k, 'diode_factor'] * self.cells_in_series * kB / q * (
+                                                25 + 273.15)
 
             out = pvlib.pvsystem.singlediode(
                 photocurrent=pfit.loc[k, 'photocurrent_ref'],
                 saturation_current=pfit.loc[k, 'saturation_current_ref'],
                 resistance_series=pfit.loc[k, 'resistance_series_ref'],
-                resistance_shunt=pfit.loc[k, 'resistance_shunt_ref'],
+                resistance_shunt=1 / (1 / self.resistance_shunt_ref + pfit.loc[
+                    k, 'conductance_shunt_extra']),
                 nNsVth=pfit.loc[k, 'nNsVth_ref'])
 
             for p in out.keys():
                 pfit.loc[k, p + '_ref'] = out[p]
 
+            # pfit.index = self.time
+
         self.result = dict(
             p=pfit,
             p0=p0,
-            fit_result=fit_result
+            fit_result=fit_result,
+            execution_time_seconds=time.time()-start_time
         )
 
+        # print('Elapsed time to execute fit: {}'.format((time.time()-start_time)/60))
 
     def estimate_p0(self):
         """
@@ -1600,15 +1616,15 @@ class PvProHandler:
 
         """
 
-        self.simultation_setup()
+        self.simulation_setup()
 
         cax = self.df['operating_cls'] == 0
 
-        self.p0 = estimate_desoto(
+        self.p0 = estimate_sdm_params(
             irradiance_poa=self.df.loc[cax, self.irradiance_poa_key],
             temperature_cell=self.df.loc[cax, 'temperature_cell'],
-            vmp=self.df.loc[cax, self.voltage_key]/self.modules_per_string,
-            imp=self.df.loc[cax, self.current_key]/self.parallel_strings,
+            vmp=self.df.loc[cax, self.voltage_key] / self.modules_per_string,
+            imp=self.df.loc[cax, self.current_key] / self.parallel_strings,
             cells_in_series=self.cells_in_series
         )
 
@@ -1626,14 +1642,15 @@ class PvProHandler:
         #     resistance_shunt_ref=1e3
         # )
 
-
     def plot_Vmp_Imp_scatter(self,
                              p_plot,
                              figure_number=0,
                              iteration=1,
                              vmin=0,
                              vmax=70,
-                             use_clear_times=None):
+                             use_clear_times=None,
+                             verbose=False,
+                             figure_imp_max=None):
         """
         Make Vmp, Imp scatter plot.
 
@@ -1649,6 +1666,9 @@ class PvProHandler:
         -------
 
         """
+        if verbose:
+            print(p_plot)
+
         if use_clear_times == None:
             use_clear_times = self.use_clear_times
 
@@ -1669,9 +1689,17 @@ class PvProHandler:
         imp = np.array(
             df.loc[inv_on_points, self.current_key]) / self.parallel_strings
 
-        imp_max = 1.1 * np.nanmax(
-            self.df.loc[self.df['operating_cls'] == 0,
-                        self.current_key] / self.parallel_strings)
+        if figure_imp_max==None:
+            imp_max = 1.1 * estimate_imp_ref(
+                irradiance_poa=self.df.loc[
+                    self.df['operating_cls'] == 0, self.irradiance_poa_key],
+                temperature_cell=self.df.loc[
+                    self.df['operating_cls'] == 0, self.temperature_module_key],
+                imp=self.df.loc[self.df[
+                                    'operating_cls'] == 0, self.current_key] / self.parallel_strings,
+            )
+        else:
+            imp_max = figure_imp_max
 
         vmp_max = 1.1 * np.nanmax(
             self.df.loc[self.df['operating_cls'] == 0, self.voltage_key] /
@@ -1705,11 +1733,12 @@ class PvProHandler:
 
         for effective_irradiance in [100, 1000]:
             voltage_plot, current_plot = pv_system_single_diode_model(
-                effective_irradiance=effective_irradiance,
+                effective_irradiance=np.array([effective_irradiance]),
                 temperature_cell=temperature_smooth,
                 operating_cls=np.zeros_like(temperature_smooth),
                 cells_in_series=self.cells_in_series,
                 alpha_isc=self.alpha_isc,
+                resistance_shunt_ref=self.resistance_shunt_ref,
                 **p_plot,
             )
             plt.plot(voltage_plot, current_plot, 'k:')
@@ -1730,6 +1759,7 @@ class PvProHandler:
                 operating_cls=np.zeros_like(irrad_smooth),
                 cells_in_series=self.cells_in_series,
                 alpha_isc=self.alpha_isc,
+                resistance_shunt_ref=self.resistance_shunt_ref,
                 **p_plot,
             )
 
@@ -1772,8 +1802,8 @@ class PvProHandler:
                        p_plot['saturation_current_ref'] * 1e9) + \
                    'resistance_series: {:1.2f} Ohm\n'.format(
                        p_plot['resistance_series_ref']) + \
-                   'resistance_shunt: {:1.2f} Ohm\n\n'.format(
-                       p_plot['resistance_shunt_ref']) + \
+                   'Conductance shunt extra: {:1.2f} 1/Ohm\n\n'.format(
+                       p_plot['conductance_shunt_extra']) + \
                    'Clear time: {}\n'.format(use_clear_times) + \
                    'Lower Irrad limit: {}\n'.format(self.irradiance_lower_lim)
 
@@ -1796,7 +1826,6 @@ class PvProHandler:
         plt.show()
 
         return fig
-
 
     def plot_suns_voc_scatter(self,
                               p_plot,
@@ -1885,9 +1914,9 @@ class PvProHandler:
         #              fontsize=8)
 
         # Plot irradiance scan
+        irrad_smooth = np.linspace(1 ** 0.1, 1200 ** 0.1, 300) ** 10
         for j in np.flip(np.arange(len(temp_limits))):
             temp_curr = temp_limits[j]
-            irrad_smooth = np.linspace(1, 1200, 500)
 
             voltage_plot, current_plot = pv_system_single_diode_model(
                 effective_irradiance=irrad_smooth,
@@ -1895,6 +1924,7 @@ class PvProHandler:
                 operating_cls=np.zeros_like(irrad_smooth) + 1,
                 cells_in_series=self.cells_in_series,
                 alpha_isc=self.alpha_isc,
+                resistance_shunt_ref=self.resistance_shunt_ref,
                 **p_plot,
             )
 
@@ -1937,8 +1967,8 @@ class PvProHandler:
                        p_plot['saturation_current_ref'] * 1e9) + \
                    'resistance_series: {:1.2f} Ohm\n'.format(
                        p_plot['resistance_series_ref']) + \
-                   'resistance_shunt: {:1.2f} Ohm\n\n'.format(
-                       p_plot['resistance_shunt_ref']) + \
+                   'conductance shunt extra: {:1.2f} Ohm\n\n'.format(
+                       p_plot['conductance_shunt_extra']) + \
                    'Clear time: {}\n'.format(use_clear_times) + \
                    'Lower Irrad limit: {}\n'.format(
                        self.irradiance_lower_lim)
@@ -1960,6 +1990,285 @@ class PvProHandler:
 
         plt.xlabel('Voc (V)', fontsize=9)
         plt.ylabel('POA (W/m^2)', fontsize=9)
+
+        plt.show()
+
+        return fig
+
+        # mpp_fig_fname = 'figures/{}_fleets16_simultfit-MPP_clear-times-{}_irraad-lower-lim-{}_alpha-isc-{}_days-per-run_{}_temperature-upper-lim-{}_deltaT-{}_{:02d}.png'.format(
+        #         system, info['use_clear_times'], info['irradiance_lower_lim'], info['alpha_isc'], info['days_per_run'], info['temperature_cell_upper_lim'],info['delta_T'], d)
+        # plt.savefig(mpp_fig_fname,
+        #     dpi=200,
+        #     bbox_inches='tight')
+
+    def plot_current_irradiance_clipped_scatter(self,
+                                                p_plot,
+                                                figure_number=1,
+                                                iteration=1,
+                                                vmin=0,
+                                                vmax=70,
+                                                use_clear_times=None):
+        """
+        Make Vmp, Imp scatter plot.
+
+        Parameters
+        ----------
+        p_plot
+        figure_number
+        iteration
+        vmin
+        vmax
+
+        Returns
+        -------
+
+        """
+        if use_clear_times == None:
+            use_clear_times = self.use_clear_times
+
+        # Make figure for inverter on.
+        fig = plt.figure(figure_number, figsize=(6.5, 3.5))
+        plt.clf()
+        ax = plt.axes()
+
+        temp_limits = np.linspace(vmin, vmax, 8)
+
+        df = self.get_df_for_iteration(iteration,
+                                       use_clear_times=use_clear_times)
+
+        cax = np.array(df['operating_cls'] == 3)
+
+        current = np.array(
+            df.loc[cax, self.current_key]) / self.parallel_strings
+
+        irrad = np.array(df.loc[cax, self.irradiance_poa_key])
+
+        current_max = np.nanmax(self.df.loc[self.df[
+                                                'operating_cls'] == 3, self.current_key] / self.parallel_strings) * 1.1
+
+        h_sc = plt.scatter(irrad, current,
+                           c=df.loc[cax, 'temperature_cell'],
+                           s=0.2,
+                           cmap='jet',
+                           vmin=0,
+                           vmax=70)
+
+        #
+        # # Plot irradiance scan
+        # for j in np.flip(np.arange(len(temp_limits))):
+        #     temp_curr = temp_limits[j]
+        #     irrad_smooth = np.linspace(1, 1200, 500)
+        #
+        #     voltage_plot, current_plot = pv_system_single_diode_model(
+        #         effective_irradiance=irrad_smooth,
+        #         temperature_cell=temp_curr + np.zeros_like(irrad_smooth),
+        #         operating_cls=np.zeros_like(irrad_smooth) + 1,
+        #         cells_in_series=self.cells_in_series,
+        #         alpha_isc=self.alpha_isc,
+        #         **p_plot,
+        #     )
+        #
+        #     # out = pvlib_fit_fun( np.transpose(np.array(
+        #     #     [irrad_smooth,temp_curr + np.zeros_like(irrad_smooth), np.zeros_like(irrad_smooth) ])),
+        #     #                     *p_plot)
+        #
+        #     # Reshape to get V, I
+        #     # out = np.reshape(out,(2,int(len(out)/2)))
+        #
+        #     # find the right color to plot.
+        #     # norm_temp = (temp_curr-df[temperature].min())/(df[temperature].max()-df[temperature].min())
+        #     norm_temp = (temp_curr - vmin) / (vmax - vmin)
+        #     line_color = np.array(h_sc.cmap(norm_temp))
+        #     # line_color[0:3] =line_color[0:3]*0.9
+        #
+        #     line_color[3] = 0.3
+        #
+        #     plt.plot(voltage_plot, irrad_smooth,
+        #              label='Fit {:2.0f} C'.format(temp_curr),
+        #              color=line_color,
+        #              # color='C' + str(j)
+        #              )
+
+        text_str = 'System: {}\n'.format(self.system_name) + \
+                   'Analysis days: {:.0f}-{:.0f}\n'.format(
+                       self.iteration_start_days[iteration],
+                       self.iteration_start_days[
+                           iteration] + self.days_per_run) + \
+                   'Current: {}\n'.format(self.current_key) + \
+                   'Voltage: {}\n'.format(self.voltage_key) + \
+                   'Temperature: {}\n'.format(self.temperature_module_key) + \
+                   'Irradiance: {}\n'.format(self.irradiance_poa_key) + \
+                   'Temperature module->cell delta_T: {}\n'.format(
+                       self.delta_T) + \
+                   'n_diode: {:1.2f} \n'.format(p_plot['diode_factor']) + \
+                   'reference_photocurrent: {:1.2f} A\n'.format(
+                       p_plot['photocurrent_ref']) + \
+                   'saturation_current_ref: {:1.2f} nA\n'.format(
+                       p_plot['saturation_current_ref'] * 1e9) + \
+                   'resistance_series: {:1.2f} Ohm\n'.format(
+                       p_plot['resistance_series_ref']) + \
+                   'conductance shunt extra: {:1.2f} Ohm\n\n'.format(
+                       p_plot['conductance_shunt_extra']) + \
+                   'Clear time: {}\n'.format(use_clear_times) + \
+                   'Lower Irrad limit: {}\n'.format(
+                       self.irradiance_lower_lim)
+
+        plt.text(0.05, 0.95, text_str,
+                 horizontalalignment='left',
+                 verticalalignment='top',
+                 transform=ax.transAxes,
+                 fontsize=8)
+
+        plt.ylim([0, current_max])
+        plt.xlim([0, 1200])
+        plt.xticks(fontsize=9)
+        plt.yticks(fontsize=9)
+
+        pcbar = plt.colorbar(h_sc)
+        pcbar.set_label('Cell Temperature (C)')
+
+        plt.ylabel('Current (A)', fontsize=9)
+        plt.xlabel('POA (W/m^2)', fontsize=9)
+
+        plt.show()
+
+        return fig
+
+        # mpp_fig_fname = 'figures/{}_fleets16_simultfit-MPP_clear-times-{}_irraad-lower-lim-{}_alpha-isc-{}_days-per-run_{}_temperature-upper-lim-{}_deltaT-{}_{:02d}.png'.format(
+        #         system, info['use_clear_times'], info['irradiance_lower_lim'], info['alpha_isc'], info['days_per_run'], info['temperature_cell_upper_lim'],info['delta_T'], d)
+        # plt.savefig(mpp_fig_fname,
+        #     dpi=200,
+        #     bbox_inches='tight')
+
+
+    def plot_current_irradiance_mpp_scatter(self,
+                                                p_plot,
+                                                figure_number=1,
+                                                iteration=1,
+                                                vmin=0,
+                                                vmax=70,
+                                                use_clear_times=None):
+        """
+
+
+        Parameters
+        ----------
+        p_plot
+        figure_number
+        iteration
+        vmin
+        vmax
+
+        Returns
+        -------
+
+        """
+        if use_clear_times == None:
+            use_clear_times = self.use_clear_times
+
+        # Make figure for inverter on.
+        fig = plt.figure(figure_number, figsize=(6.5, 3.5))
+        plt.clf()
+        ax = plt.axes()
+
+        temp_limits = np.linspace(vmin, vmax, 8)
+
+        df = self.get_df_for_iteration(iteration,
+                                       use_clear_times=use_clear_times)
+
+        cax = np.array(df['operating_cls'] == 0)
+
+        current = np.array(
+            df.loc[cax, self.current_key]) / self.parallel_strings
+
+        irrad = np.array(df.loc[cax, self.irradiance_poa_key])
+
+        current_max = np.nanmax(self.df.loc[self.df['operating_cls'] == 0, self.current_key] / self.parallel_strings) * 1.1
+
+        h_sc = plt.scatter(irrad, current,
+                           c=df.loc[cax, 'temperature_cell'],
+                           s=0.2,
+                           cmap='jet',
+                           vmin=0,
+                           vmax=70)
+
+
+        # Plot irradiance scan
+        for j in np.flip(np.arange(len(temp_limits))):
+            temp_curr = temp_limits[j]
+            irrad_smooth = np.linspace(1, 1200, 500)
+
+            voltage_plot, current_plot = pv_system_single_diode_model(
+                effective_irradiance=irrad_smooth,
+                temperature_cell=temp_curr + np.zeros_like(irrad_smooth),
+                operating_cls=np.zeros_like(irrad_smooth) + 0,
+                cells_in_series=self.cells_in_series,
+                alpha_isc=self.alpha_isc,
+                resistance_shunt_ref=self.resistance_shunt_ref,
+                **p_plot,
+            )
+
+            # out = pvlib_fit_fun( np.transpose(np.array(
+            #     [irrad_smooth,temp_curr + np.zeros_like(irrad_smooth), np.zeros_like(irrad_smooth) ])),
+            #                     *p_plot)
+
+            # Reshape to get V, I
+            # out = np.reshape(out,(2,int(len(out)/2)))
+
+            # find the right color to plot.
+            # norm_temp = (temp_curr-df[temperature].min())/(df[temperature].max()-df[temperature].min())
+            norm_temp = (temp_curr - vmin) / (vmax - vmin)
+            line_color = np.array(h_sc.cmap(norm_temp))
+            # line_color[0:3] =line_color[0:3]*0.9
+
+            line_color[3] = 0.3
+
+            plt.plot(irrad_smooth, current_plot,
+                     label='Fit {:2.0f} C'.format(temp_curr),
+                     color=line_color,
+                     # color='C' + str(j)
+                     )
+
+        text_str = 'System: {}\n'.format(self.system_name) + \
+                   'Analysis days: {:.0f}-{:.0f}\n'.format(
+                       self.iteration_start_days[iteration],
+                       self.iteration_start_days[
+                           iteration] + self.days_per_run) + \
+                   'Current: {}\n'.format(self.current_key) + \
+                   'Voltage: {}\n'.format(self.voltage_key) + \
+                   'Temperature: {}\n'.format(self.temperature_module_key) + \
+                   'Irradiance: {}\n'.format(self.irradiance_poa_key) + \
+                   'Temperature module->cell delta_T: {}\n'.format(
+                       self.delta_T) + \
+                   'n_diode: {:1.2f} \n'.format(p_plot['diode_factor']) + \
+                   'reference_photocurrent: {:1.2f} A\n'.format(
+                       p_plot['photocurrent_ref']) + \
+                   'saturation_current_ref: {:1.2f} nA\n'.format(
+                       p_plot['saturation_current_ref'] * 1e9) + \
+                   'resistance_series: {:1.2f} Ohm\n'.format(
+                       p_plot['resistance_series_ref']) + \
+                   'conductance shunt extra: {:1.2f} Ohm\n\n'.format(
+                       p_plot['conductance_shunt_extra']) + \
+                   'Clear time: {}\n'.format(use_clear_times) + \
+                   'Lower Irrad limit: {}\n'.format(
+                       self.irradiance_lower_lim)
+
+        plt.text(0.05, 0.95, text_str,
+                 horizontalalignment='left',
+                 verticalalignment='top',
+                 transform=ax.transAxes,
+                 fontsize=8)
+
+        plt.ylim([0, current_max])
+        plt.xlim([0, 1200])
+        plt.xticks(fontsize=9)
+        plt.yticks(fontsize=9)
+
+        pcbar = plt.colorbar(h_sc)
+        pcbar.set_label('Cell Temperature (C)')
+
+        plt.ylabel('Current (A)', fontsize=9)
+        plt.xlabel('POA (W/m^2)', fontsize=9)
 
         plt.show()
 
