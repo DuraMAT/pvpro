@@ -22,6 +22,9 @@ from solardatatools import DataHandler
 from scipy.optimize import basinhopping
 from pvlib.temperature import sapm_cell_from_module
 
+from pvpro.estimation import estimate_imp_ref, estimate_singlediode_params
+
+
 def pvlib_single_diode(
         effective_irradiance,
         temperature_cell,
@@ -38,7 +41,6 @@ def pvlib_single_diode(
         reference_irradiance=1000,
         reference_temperature=25,
         method='newton',
-        verbose=False,
         ivcurve_pnts=None,
         output_all_params=False
 ):
@@ -114,29 +116,14 @@ def pvlib_single_diode(
 
     kB = 1.381e-23
     q = 1.602e-19
-
-    # photocurrent = effective_irradiance/reference_irradiance* \
-    #                (reference_photocurrent + alpha_isc*(temp_cell - reference_temperature))
-
-    # Eg = reference_Eg*(1 - 0.0002677*(temperature_cell - reference_temperature))
-
-    # saturation_current = reference_saturation_current*\
-    #                      (temperature_cell+217.15)**3/(reference_temperature+217.15)**3*\
-    #                      np.exp( q/kB*(reference_Eg/(reference_temperature+273.15)  - Eg/(temp_cell+273.15) ))
-    #
-
-    # nNsVth = diode_ideality_factor*cells_in_series*kB*(temp_cell+273.15)/q
-
-    # a_ref = diode_factor*cells_in_series*kB/q*(273.15 + temperature_cell)
-
-    p = {}
+    a_ref = diode_factor * cells_in_series * kB / q * (
+                273.15 + reference_temperature)
 
     iph, io, rs, rsh, nNsVth = calcparams_desoto(
         effective_irradiance,
         temperature_cell,
         alpha_sc=alpha_isc,
-        a_ref=diode_factor * cells_in_series * kB / q * (
-                273.15 + reference_temperature),
+        a_ref=a_ref,
         I_L_ref=photocurrent_ref,
         I_o_ref=saturation_current_ref,
         R_sh_ref=resistance_shunt_ref,
@@ -147,17 +134,8 @@ def pvlib_single_diode(
         temp_ref=reference_temperature
     )
 
+    # Increase shunt resistance by the extra shunt conductance.
     rsh = 1 / (1 / rsh + conductance_shunt_extra)
-
-    # if verbose:
-    #     print('Photocurrent')
-    #     print(photocurrent)
-    #     print('Eg')
-    #     print(Eg)
-    #     print('Saturation current')
-    #     print(saturation_current)
-    #     print('nNsVth')
-    #     print(nNsVth)
 
     out = pvlib.pvsystem.singlediode(iph,
                                      io,
@@ -178,12 +156,6 @@ def pvlib_single_diode(
 
         for p in params:
             out[p] = params[p]
-
-    # out = pvlib.singlediode(photocurrent, saturation_current,
-    #                   resistance_series,
-    #                   resistance_shunt, nNsVth,
-    #                   method=method,
-    #                   calculate_all=calculate_all)
 
     return out
 
@@ -499,9 +471,6 @@ def pv_system_single_diode_model(
         voltage_fit[cax] = 0.5 * (voltage_operation[cax] + voltage_closest)
         current_fit[cax] = 0.5 * (current_operation[cax] + current_closest)
 
-
-
-
         # print('Clipped points fit:')
         # print(pd.DataFrame({'Current Fit': current_fit[cax],
         #               'Current Op': current_operation[cax],
@@ -537,66 +506,6 @@ def pv_system_single_diode_model(
     current_fit[operating_cls == 1] = 0
 
     return voltage_fit, current_fit
-
-
-def pv_system_single_diode_model_old(
-        effective_irradiance,
-        temperature_cell,
-        operating_cls,
-        diode_factor,
-        photocurrent_ref,
-        saturation_current_ref,
-        resistance_series_ref,
-        resistance_shunt_ref,
-        cells_in_series,
-        alpha_isc,
-        band_gap_ref=1.121
-):
-    """
-
-    Fit function, reorganize Vmp, Imp outputs of size (1*N,) into a size (
-    N*2,) vector. This is important because this is how
-    scipy.optimize.curve_fit works.
-
-    Parameters
-    ----------
-    X :
-
-        irrad_poa, temp_cell, operating_cls
-
-    resistance_shunt
-    resistance_series
-    diode_ideality_factor
-
-    reference_photocurrent
-    reference_saturation_current
-
-    Returns
-    -------
-
-    """
-
-    out = pvlib_single_diode(
-        effective_irradiance,
-        temperature_cell,
-        resistance_shunt_ref,
-        resistance_series_ref,
-        diode_factor,
-        cells_in_series,
-        alpha_isc,  # note alpha_isc is fixed.
-        photocurrent_ref,
-        saturation_current_ref,
-        reference_Eg=band_gap_ref)
-
-    # First, set all points to
-    voltage_fit = out['v_mp']
-    current_fit = out['i_mp']
-
-    # If cls is 1, then system is at open-circuit voltage.
-    voltage_fit[operating_cls == 1] = out['v_oc'][operating_cls == 1]
-    current_fit[operating_cls == 1] = 0
-
-    return np.ravel((voltage_fit, current_fit))
 
 
 def production_data_curve_fit(
@@ -934,232 +843,6 @@ def production_data_curve_fit(
         return p_fit, res['fun'], res
 
 
-def estimate_imp_ref(irradiance_poa,
-                     temperature_cell,
-                     imp,
-                     figure=False,
-                     figure_number=11,
-                     ):
-    """
-    Estimate imp_ref using operation data. Note that typically imp for an
-    array would be divided by parallel_strings before calling this function.
-
-    Parameters
-    ----------
-    irradiance_poa
-    temperature_cell
-    imp
-    makefigure
-
-    Returns
-    -------
-
-    """
-
-    cax = np.logical_and.reduce((
-        irradiance_poa > np.nanpercentile(irradiance_poa, 90),
-        irradiance_poa < 1100,
-    ))
-
-    x = temperature_cell[cax]
-    y = imp[cax] / irradiance_poa[cax] * 1000
-
-    # # cax = np.logical_and(y > np.nanpercentile(y,80), y < np.nanmean(y) * 1.5)
-    # cax = y > np.nanpercentile(y,50)
-    # x = x[cax]
-    # y = y[cax]
-
-    imp_fit = np.polyfit(x, y, 1)
-    imp_ref_estimate = np.polyval(imp_fit, 25)
-
-    if figure:
-        plt.figure(figure_number)
-        plt.clf()
-
-        x_smooth = np.linspace(x.min(), x.max(), 5)
-        plt.hist2d(x, y, bins=(100, 100))
-        plt.plot(x_smooth, np.polyval(imp_fit, x_smooth), 'r')
-        plt.xlabel('Cell temperature (C)')
-        plt.ylabel('Imp (A)')
-        plt.show()
-
-    return imp_ref_estimate
-
-
-def estimate_vmp_ref(irradiance_poa,
-                     temperature_cell,
-                     vmp,
-                     figure=False,
-                     figure_number=12,
-                     ):
-    """
-    Estimate imp_ref using operation data. Note that typically imp for an
-    array would be divided by parallel_strings before calling this function.
-
-    Parameters
-    ----------
-    irradiance_poa
-    temperature_cell
-    imp
-    makefigure
-
-    Returns
-    -------
-
-    """
-
-    cax = np.logical_and.reduce((
-        irradiance_poa > np.nanpercentile(irradiance_poa, 90),
-        irradiance_poa < 1100,
-    ))
-
-    x = temperature_cell[cax]
-    y = vmp[cax]
-
-    # # cax = np.logical_and(y > np.nanpercentile(y,80), y < np.nanmean(y) * 1.5)
-    # cax = y > np.nanpercentile(y,50)
-    # x = x[cax]
-    # y = y[cax]
-
-    imp_fit = np.polyfit(x, y, 1)
-    imp_ref_estimate = np.polyval(imp_fit, 25)
-
-    if figure:
-        plt.figure(figure_number)
-        plt.clf()
-
-        x_smooth = np.linspace(x.min(), x.max(), 5)
-        plt.hist2d(x, y, bins=(100, 100))
-        plt.plot(x_smooth, np.polyval(imp_fit, x_smooth), 'r')
-        plt.xlabel('Cell temperature (C)')
-        plt.ylabel('Vmp (V)')
-        plt.show()
-
-    return imp_ref_estimate
-
-
-def estimate_photocurrent_ref(imp_ref_estimate):
-    return imp_ref_estimate / 0.934
-
-
-def estimate_saturation_current_ref(imp_ref,
-                                    photocurrent_ref,
-                                    vmp_ref=None,
-                                    resistance_series_ref=0.4,
-                                    cells_in_series=None):
-    kB = 1.381e-23
-    q = 1.602e-19
-    T = 25 + 273.15
-    Vth = kB * T / q
-    diode_factor = 1.1
-    # voc_cell = 0.6
-
-    # If cells in series is not provided, then use a standard value.
-    if cells_in_series == None or vmp_ref == None:
-        vmp_ref = 0.6
-        cells_in_series = 1
-
-    saturation_current_ref_estimate = (photocurrent_ref - imp_ref) / np.exp(
-        (vmp_ref + imp_ref * resistance_series_ref) / (
-                cells_in_series * diode_factor * Vth))
-
-    return saturation_current_ref_estimate
-
-
-def estimate_sdm_params(irradiance_poa,
-                        temperature_cell,
-                        vmp,
-                        imp,
-                        resistance_series_ref=0.4,
-                        cells_in_series=None,
-                        figure=False):
-    """
-
-    Estimate the Desoto single diode model parameters.
-
-    Parameters
-    ----------
-    irradiance_poa
-    temperature_cell
-    vmp
-    imp
-    resistance_series_ref
-    cells_in_series
-    figure
-
-    Returns
-    -------
-
-    """
-    imp_ref = estimate_imp_ref(irradiance_poa, temperature_cell, imp,
-                               figure=figure)
-    vmp_ref = estimate_vmp_ref(irradiance_poa, temperature_cell, vmp,
-                               figure=figure)
-    photocurrent_ref = estimate_photocurrent_ref(imp_ref)
-
-    saturation_current_ref = estimate_saturation_current_ref(
-        imp_ref=imp_ref, photocurrent_ref=photocurrent_ref, vmp_ref=vmp_ref,
-        resistance_series_ref=resistance_series_ref,
-        cells_in_series=cells_in_series)
-
-    desoto_params = dict(
-        diode_factor=1.15,
-        photocurrent_ref=photocurrent_ref,
-        saturation_current_ref=saturation_current_ref,
-        resistance_series_ref=resistance_series_ref,
-        conductance_shunt_extra=0.001
-    )
-
-    return desoto_params
-
-
-def estimate_desoto(irradiance_poa,
-                    temperature_cell,
-                    vmp,
-                    imp,
-                    resistance_series_ref=0.4,
-                    cells_in_series=None,
-                    figure=False):
-    """
-
-    Estimate the Desoto single diode model parameters.
-
-    Parameters
-    ----------
-    irradiance_poa
-    temperature_cell
-    vmp
-    imp
-    resistance_series_ref
-    cells_in_series
-    figure
-
-    Returns
-    -------
-
-    """
-    imp_ref = estimate_imp_ref(irradiance_poa, temperature_cell, imp,
-                               figure=figure)
-    vmp_ref = estimate_vmp_ref(irradiance_poa, temperature_cell, vmp,
-                               figure=figure)
-    photocurrent_ref = estimate_photocurrent_ref(imp_ref)
-
-    saturation_current_ref = estimate_saturation_current_ref(
-        imp_ref=imp_ref, photocurrent_ref=photocurrent_ref, vmp_ref=vmp_ref,
-        resistance_series_ref=resistance_series_ref,
-        cells_in_series=cells_in_series)
-
-    desoto_params = dict(
-        diode_factor=1.15,
-        photocurrent_ref=photocurrent_ref,
-        saturation_current_ref=saturation_current_ref,
-        resistance_series_ref=resistance_series_ref,
-        resistance_shunt_ref=100
-    )
-
-    return desoto_params
-
-
 class PvProHandler:
     """
     Class for running pvpro analysis.
@@ -1304,12 +987,11 @@ class PvProHandler:
 
     def calculate_cell_temperature(self):
 
-
         # Calculate cell temperature
         self.df.loc[:, 'temperature_cell'] = sapm_cell_from_module(
             self.df[self.temperature_module_key],
             self.df[self.irradiance_poa_key],
-            delta_T=self.delta_T)
+            deltaT=self.delta_T)
 
     def run_preprocess(self, correct_tz=True):
 
@@ -1333,8 +1015,8 @@ class PvProHandler:
 
         # Calculate operating class.
         self.df.loc[:, 'operating_cls'] = classify_operating_mode(
-            voltage=self.df[self.voltage_key]/self.modules_per_string,
-            current=self.df[self.current_key]/self.parallel_strings,
+            voltage=self.df[self.voltage_key] / self.modules_per_string,
+            current=self.df[self.current_key] / self.parallel_strings,
             power_clip=self.dh.capacity_estimate * 0.99)
 
         # TODO: this always overwrites p0 and should be changed so that if the user has set p0, it is not changed.
@@ -1565,9 +1247,9 @@ class PvProHandler:
                                 bbox_inches='tight')
 
                     self.plot_current_irradiance_mpp_scatter(p_plot=pfit_iter,
-                        figure_number=104,
-                        iteration=k,
-                        use_clear_times=self.use_clear_times)
+                                                             figure_number=104,
+                                                             iteration=k,
+                                                             use_clear_times=self.use_clear_times)
                     plt.savefig(os.path.join(save_figs_directory,
                                              'poa_Imp',
                                              '{}_poa-Imp_{}.png'.format(
@@ -1601,7 +1283,7 @@ class PvProHandler:
             p=pfit,
             p0=p0,
             fit_result=fit_result,
-            execution_time_seconds=time.time()-start_time
+            execution_time_seconds=time.time() - start_time
         )
 
         # print('Elapsed time to execute fit: {}'.format((time.time()-start_time)/60))
@@ -1620,12 +1302,13 @@ class PvProHandler:
 
         cax = self.df['operating_cls'] == 0
 
-        self.p0 = estimate_sdm_params(
+        self.p0 = estimate_singlediode_params(
             irradiance_poa=self.df.loc[cax, self.irradiance_poa_key],
-            temperature_cell=self.df.loc[cax, 'temperature_cell'],
+            temperature_module=self.df.loc[cax, self.temperature_module_key],
             vmp=self.df.loc[cax, self.voltage_key] / self.modules_per_string,
             imp=self.df.loc[cax, self.current_key] / self.parallel_strings,
-            cells_in_series=self.cells_in_series
+            cells_in_series=self.cells_in_series,
+            delta_T=self.delta_T
         )
 
         #
@@ -1689,7 +1372,7 @@ class PvProHandler:
         imp = np.array(
             df.loc[inv_on_points, self.current_key]) / self.parallel_strings
 
-        if figure_imp_max==None:
+        if figure_imp_max == None:
             imp_max = 1.1 * estimate_imp_ref(
                 irradiance_poa=self.df.loc[
                     self.df['operating_cls'] == 0, self.irradiance_poa_key],
@@ -2140,14 +1823,13 @@ class PvProHandler:
         #     dpi=200,
         #     bbox_inches='tight')
 
-
     def plot_current_irradiance_mpp_scatter(self,
-                                                p_plot,
-                                                figure_number=1,
-                                                iteration=1,
-                                                vmin=0,
-                                                vmax=70,
-                                                use_clear_times=None):
+                                            p_plot,
+                                            figure_number=1,
+                                            iteration=1,
+                                            vmin=0,
+                                            vmax=70,
+                                            use_clear_times=None):
         """
 
 
@@ -2183,7 +1865,8 @@ class PvProHandler:
 
         irrad = np.array(df.loc[cax, self.irradiance_poa_key])
 
-        current_max = np.nanmax(self.df.loc[self.df['operating_cls'] == 0, self.current_key] / self.parallel_strings) * 1.1
+        current_max = np.nanmax(self.df.loc[self.df[
+                                                'operating_cls'] == 0, self.current_key] / self.parallel_strings) * 1.1
 
         h_sc = plt.scatter(irrad, current,
                            c=df.loc[cax, 'temperature_cell'],
@@ -2191,7 +1874,6 @@ class PvProHandler:
                            cmap='jet',
                            vmin=0,
                            vmax=70)
-
 
         # Plot irradiance scan
         for j in np.flip(np.arange(len(temp_limits))):
