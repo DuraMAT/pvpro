@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 # Import shuntetic data
 df = pd.read_pickle('synth01_out.pkl')
 
-from pvpro.estimation import estimate_singlediode_params, estimate_imp_ref
+from pvpro.estimate import estimate_singlediode_params, estimate_imp_ref
 from pvlib.temperature import sapm_cell_from_module
 
 deltaT=3
