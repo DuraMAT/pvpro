@@ -3,44 +3,39 @@ Example estimation of single diode model parameters
 
 @author: toddkarin
 """
-
 import numpy as np
 import pandas as pd
-from pandas.plotting import register_matplotlib_converters
-register_matplotlib_converters()
+
 import matplotlib
+
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
-# Import shuntetic data
+# Import synthetic data
 df = pd.read_pickle('synth01_out.pkl')
 
-from pvpro.estimate import estimate_singlediode_params, estimate_imp_ref
+from pvpro.estimate import estimate_singlediode_params, estimate_imp_ref, \
+    estimate_resistance_series, estimate_saturation_current_ref
 from pvlib.temperature import sapm_cell_from_module
+from pvlib.ivtools import fit_sdm_desoto, fit_sdm_cec_sam
+from pvterms import rename
+from pvlib.pvsystem import calcparams_desoto
 
-deltaT=3
-temperature_cell = sapm_cell_from_module(df['temperature_module_meas'],
-                                         poa_global=df['poa_meas'],
-                                         deltaT=deltaT)
-
-estimate_imp_ref(irradiance_poa=df['poa_meas'],
-                 temperature_cell=temperature_cell,
-                 imp=df['i_operation'],
-                 figure=True)
-
+delta_T = 3
 
 est = estimate_singlediode_params(
     irradiance_poa=df['poa_meas'],
     temperature_module=df['temperature_module_meas'],
-    vmp=df['v_operation'],
-    imp=df['i_operation']
+    vmp=df['v_dc'],
+    imp=df['i_dc'],
+    delta_T=delta_T,
+    figure=True
 )
 
-print('Estimated photocurrent_ref: {:.2f} A'.format(est['photocurrent_ref']))
-print('True photocurrent_ref: {:.2f} A'.format(df['photocurrent_ref'].mean()))
+# Format output to compare
+compare = pd.DataFrame(est, index=['Estimate'])
 
-print('Estimated imp_ref: {:.2f} A'.format(est['imp_ref']))
-print('True imp_ref: {:.2f} A'.format(df['i_mp_ref'].mean()))
-
-print('Estimated vmp_ref: {:.2f} A'.format(est['vmp_ref']))
-print('True vmp_ref: {:.2f} A'.format(df['v_mp_ref'].mean()))
+for k in est.keys():
+    if k in df:
+        compare.loc['True', k] = df[k].mean()
+print(compare.transpose().to_string())
