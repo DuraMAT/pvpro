@@ -8,15 +8,18 @@ import matplotlib.pyplot as plt
 
 from pvlib.temperature import sapm_cell_from_module
 from pvlib.ivtools import fit_sdm_desoto
-from pvlib.pvsystem import calcparams_desoto
+from pvlib.pvsystem import calcparams_desoto, singlediode
+from scipy.special import lambertw
+from numpy.linalg import pinv
 
 
-def estimate_imp_ref(irradiance_poa,
+def estimate_imp_ref(poa,
                      temperature_cell,
                      imp,
                      figure=False,
                      figure_number=11,
                      temperature_ref=25,
+                     temperature_fit_range=20,
                      irradiance_ref=1000
                      ):
     """
@@ -26,7 +29,7 @@ def estimate_imp_ref(irradiance_poa,
 
     Parameters
     ----------
-    irradiance_poa
+    poa
     temperature_cell
     imp
     makefigure
@@ -36,20 +39,24 @@ def estimate_imp_ref(irradiance_poa,
 
     """
 
-
-    # print('irradiance poa',irradiance_poa)
+    # print('irradiance poa',poa)
 
     cax = np.logical_and.reduce((
-        irradiance_poa > np.nanpercentile(irradiance_poa, 50),
-        irradiance_poa < 1100,
-        imp < np.nanpercentile(imp, 95),
-        imp > np.nanpercentile(imp, 10)
+        # poa > np.nanpercentile(poa, 50),
+        # imp < np.nanpercentile(imp, 95),
+        poa > 500,
+        imp > np.nanpercentile(imp, 50),
+        temperature_cell > temperature_ref - np.abs(temperature_fit_range) / 2,
+        temperature_cell < temperature_ref + np.abs(temperature_fit_range) / 2,
     ))
 
-    cax = irradiance_poa > np.nanpercentile(irradiance_poa, 30)
+    if np.sum(cax) < 2:
+        return np.nan, np.nan
+
+    # cax = poa > np.nanpercentile(poa, 30)
 
     x = temperature_cell[cax]
-    y = imp[cax] / irradiance_poa[cax] * irradiance_ref
+    y = imp[cax] / poa[cax] * irradiance_ref
 
     # # cax = np.logical_and(y > np.nanpercentile(y,80), y < np.nanmean(y) * 1.5)
     # cax = y > np.nanpercentile(y,50)
@@ -63,10 +70,14 @@ def estimate_imp_ref(irradiance_poa,
     if figure:
         plt.figure(figure_number)
         plt.clf()
-
+        ax = plt.gca()
         x_smooth = np.linspace(x.min(), x.max(), 5)
-        plt.hist2d(x, y, bins=(100, 100))
+        # plt.hist2d(x, y, bins=(25, 25))
+        plt.scatter(x, y)
         plt.plot(x_smooth, np.polyval(imp_fit, x_smooth), 'r')
+        plt.plot(temperature_ref, np.polyval(imp_fit, temperature_ref), 'r.')
+        ax.axvline(temperature_ref - np.abs(temperature_fit_range) / 2)
+        ax.axvline(temperature_ref + np.abs(temperature_fit_range) / 2)
         plt.xlabel('Cell temperature (C)')
         plt.ylabel('Imp (A)')
         plt.show()
@@ -74,26 +85,228 @@ def estimate_imp_ref(irradiance_poa,
     return imp_ref_estimate, alpha_imp
 
 
-def estimate_pmp_ref(irradiance_poa,
+def estimate_mpp_ref_full(poa,
+                          temperature_cell,
+                          imp,
+                          vmp,
+                          photocurrent_ref,
+                          diode_factor,
+                          saturation_current_ref,
+                          cells_in_series=60,
+                          resistance_series=0.4,
+                          resistance_shunt_ref=400,
+                          EgRef=1.121,
+                          dEgdT=-0.0002677,
+                          alpha_isc=0.001,
+                          figure=False,
+                          figure_number=50,
+                          temperature_ref=25,
+                          temperature_fit_range=20,
+                          irradiance_ref=1000
+                          ):
+    # print('irradiance poa',poa)
+
+    cax = np.logical_and.reduce((
+        # poa > np.nanpercentile(poa, 50),
+        # imp < np.nanpercentile(imp, 95),
+        poa > 400,
+        # imp > np.nanpercentile(imp, 50),
+        temperature_cell > temperature_ref - np.abs(temperature_fit_range) / 2,
+        temperature_cell < temperature_ref + np.abs(temperature_fit_range) / 2,
+    ))
+
+    if np.sum(cax) < 2:
+        return np.nan, np.nan, np.nan
+
+    # cax = poa > np.nanpercentile(poa, 30)
+
+    kB = 1.381e-23
+    q = 1.602e-19
+    T = temperature_ref + 273.15
+    Vth = kB * T / q
+
+    # print('remove this!')
+    # saturation_current_ref=5e-9
+    nNsVth_ref = diode_factor * cells_in_series * Vth
+
+    IL, I0ref_to_I0, Rs, Rsh, a = calcparams_desoto(
+        I_L_ref=photocurrent_ref,
+        I_o_ref=saturation_current_ref,
+        R_sh_ref=resistance_shunt_ref,
+        R_s=resistance_series,
+        effective_irradiance=poa,
+        temp_cell=temperature_cell,
+        alpha_sc=alpha_isc,
+        a_ref=nNsVth_ref,
+        EgRef=EgRef,
+        dEgdT=dEgdT,
+        irrad_ref=irradiance_ref,
+        temp_ref=temperature_ref)
+    out = singlediode(IL, I0ref_to_I0, Rs, Rsh, a)
+
+    IL, I0ref_to_I0, Rs, Rsh, a = calcparams_desoto(
+        I_L_ref=photocurrent_ref,
+        I_o_ref=saturation_current_ref,
+        R_sh_ref=resistance_shunt_ref,
+        R_s=resistance_series,
+        effective_irradiance=irradiance_ref,
+        temp_cell=temperature_cell,
+        alpha_sc=alpha_isc,
+        a_ref=nNsVth_ref,
+        EgRef=EgRef,
+        dEgdT=dEgdT,
+        irrad_ref=irradiance_ref,
+        temp_ref=temperature_ref)
+    out_one_sun = singlediode(IL, I0ref_to_I0, Rs, Rsh, a)
+
+    IL, I0ref_to_I0, Rs, Rsh, a = calcparams_desoto(
+        I_L_ref=photocurrent_ref,
+        I_o_ref=saturation_current_ref,
+        R_sh_ref=resistance_shunt_ref,
+        R_s=resistance_series,
+        effective_irradiance=poa,
+        temp_cell=temperature_ref,
+        alpha_sc=alpha_isc,
+        a_ref=nNsVth_ref,
+        EgRef=EgRef,
+        dEgdT=dEgdT,
+        irrad_ref=irradiance_ref,
+        temp_ref=temperature_ref)
+    out_temperature_correct = singlediode(IL, I0ref_to_I0, Rs, Rsh, a)
+
+    # pmp = imp * vmp
+
+    imp_corrected = (imp * out_one_sun['i_mp'] / out['i_mp']) - out['i_mp'] + \
+                    out_temperature_correct['i_mp']
+    #
+    # print('vmp addition:')
+    # print((-out['v_mp'] + out_one_sun['v_mp']) + (
+    #             -out['v_mp'] + out_temperature_correct['v_mp']))
+    vmp_corrected = vmp + (-out['v_mp'] + out_one_sun['v_mp']) + (
+            -out['v_mp'] + out_temperature_correct['v_mp'])
+
+    imp_ref = np.mean(imp_corrected[cax])
+    vmp_ref = np.mean(vmp_corrected[cax])
+    pmp_ref = imp_ref * vmp_ref
+
+    if figure:
+        plt.figure(figure_number)
+        plt.clf()
+        plt.hist(imp_ref, bins=20)
+        plt.xlabel('Imp (A)')
+        plt.ylabel('Occurrences')
+        plt.show()
+
+        plt.figure(figure_number + 1)
+        plt.clf()
+        plt.hist(vmp_ref, bins=20)
+        plt.xlabel('Vmp (V)')
+        plt.ylabel('Occurrences')
+        plt.show()
+
+    return imp_ref, vmp_ref, pmp_ref
+
+    #
+    # imp_irradiance_corrected = imp * out_one_sun['i_mp'] / out['i_mp']
+    #
+    # # TODO: vmp is not proportional to irradiance.
+    # vmp_irradiance_corrected = vmp - out['v_mp'] + out_one_sun['v_mp']
+    # pmp_irradiance_corrected = pmp * out_one_sun['p_mp'] / out['p_mp']
+    #
+    # x = temperature_cell[cax]
+    # y = imp_irradiance_corrected[cax]
+    #
+    # imp_fit = np.polyfit(x, y, 1)
+    # imp_ref = np.polyval(imp_fit, temperature_ref)
+    # alpha_imp = imp_fit[0]
+    #
+    # if figure:
+    #     plt.figure(figure_number)
+    #     plt.clf()
+    #     ax = plt.gca()
+    #     x_smooth = np.linspace(x.min(), x.max(), 5)
+    #     # plt.hist2d(x, y, bins=(25, 25))
+    #     plt.scatter(x, y)
+    #     plt.plot(x_smooth, np.polyval(imp_fit, x_smooth), 'r')
+    #     plt.plot(temperature_ref, np.polyval(imp_fit, temperature_ref), 'r.')
+    #     ax.axvline(temperature_ref - np.abs(temperature_fit_range) / 2)
+    #     ax.axvline(temperature_ref + np.abs(temperature_fit_range) / 2)
+    #     plt.xlabel('Cell temperature (C)')
+    #     plt.ylabel('Imp (A)')
+    #     plt.show()
+    #
+    # # Vmp
+    # x = temperature_cell[cax]
+    # y = vmp_irradiance_corrected[cax]
+    #
+    # vmp_fit = np.polyfit(x, y, 1)
+    # vmp_ref = np.polyval(vmp_fit, temperature_ref)
+    # beta_vmp = vmp_fit[0]
+    #
+    # if figure:
+    #     plt.figure(figure_number + 1)
+    #     plt.clf()
+    #     ax = plt.gca()
+    #     x_smooth = np.linspace(x.min(), x.max(), 5)
+    #     # plt.hist2d(x, y, bins=(25, 25))
+    #     plt.scatter(x, y)
+    #     plt.plot(x_smooth, np.polyval(vmp_fit, x_smooth), 'r')
+    #     plt.plot(temperature_ref, np.polyval(vmp_fit, temperature_ref), 'r.')
+    #     ax.axvline(temperature_ref - np.abs(temperature_fit_range) / 2)
+    #     ax.axvline(temperature_ref + np.abs(temperature_fit_range) / 2)
+    #     plt.xlabel('Cell temperature (C)')
+    #     plt.ylabel('Vmp (A)')
+    #     plt.show()
+    #
+    # # PMP
+    # x = temperature_cell[cax]
+    # y = pmp_irradiance_corrected[cax]
+    #
+    # pmp_fit = np.polyfit(x, y, 1)
+    # pmp_ref = np.polyval(pmp_fit, temperature_ref)
+    # gamma_pmp = pmp_fit[0]
+    #
+    # if figure:
+    #     plt.figure(figure_number + 2)
+    #     plt.clf()
+    #     ax = plt.gca()
+    #     x_smooth = np.linspace(x.min(), x.max(), 5)
+    #     # plt.hist2d(x, y, bins=(25, 25))
+    #     plt.scatter(x, y)
+    #     plt.plot(x_smooth, np.polyval(pmp_fit, x_smooth), 'r')
+    #     plt.plot(temperature_ref, np.polyval(pmp_fit, temperature_ref), 'r.')
+    #     ax.axvline(temperature_ref - np.abs(temperature_fit_range) / 2)
+    #     ax.axvline(temperature_ref + np.abs(temperature_fit_range) / 2)
+    #     plt.xlabel('Cell temperature (C)')
+    #     plt.ylabel('Pmp (A)')
+    #     plt.show()
+    # return imp_ref, alpha_imp, vmp_ref, beta_vmp, pmp_ref, gamma_pmp
+    #
+
+
+def estimate_pmp_ref(poa,
                      temperature_cell,
                      pmp,
+                     temperature_ref=25,
                      figure=False,
                      figure_number=12,
                      ):
-    pmp_ref, gamma_pmp = estimate_imp_ref(irradiance_poa,
+    pmp_ref, gamma_pmp = estimate_imp_ref(poa,
                                           temperature_cell, pmp,
                                           figure=figure,
                                           figure_number=figure_number)
-
+    if figure:
+        plt.ylabel('pmp (W)')
     return pmp_ref, gamma_pmp
 
 
-def estimate_vmp_ref(irradiance_poa,
+def estimate_vmp_ref(poa,
                      temperature_cell,
-                     imp,
                      vmp,
+                     irradiance_ref=1000,
+                     temperature_ref=25,
                      figure=False,
-                     figure_number=12,
+                     figure_number=8,
                      ):
     """
     Estimate vmp_ref using operation data. Note that typically vmp for an
@@ -104,7 +317,7 @@ def estimate_vmp_ref(irradiance_poa,
 
     Parameters
     ----------
-    irradiance_poa
+    poa
     temperature_cell
     imp
     makefigure
@@ -115,38 +328,201 @@ def estimate_vmp_ref(irradiance_poa,
     """
 
     cax = np.logical_and.reduce((
-        irradiance_poa > np.nanpercentile(irradiance_poa, 70),
-        irradiance_poa < 1100,
-        imp > np.nanmax(imp) * 0.5
+        poa > 200,
+        poa < 1100,
+        # imp > np.nanmax(imp) * 0.5
     ))
 
-    x = temperature_cell[cax]
-    y = vmp[cax]
+    if np.sum(cax) < 2:
+        return np.nan, np.nan
+
+    temperature_cell = np.array(temperature_cell[cax])
+    vmp = np.array(vmp[cax])
+    poa = np.array(poa[cax])
+    #
+    # kB = 1.381e-23
+    # q = 1.602e-19
+    # Vth = kB * (temperature_cell + 273.15) / q
+
+    # avoid problem with integer input
+    Ee = np.array(poa, dtype='float64') / irradiance_ref
+
+    # set up masking for 0, positive, and nan inputs
+    Ee_gt_0 = np.full_like(Ee, False, dtype='bool')
+    Ee_eq_0 = np.full_like(Ee, False, dtype='bool')
+    notnan = ~np.isnan(Ee)
+    np.greater(Ee, 0, where=notnan, out=Ee_gt_0)
+    np.equal(Ee, 0, where=notnan, out=Ee_eq_0)
+
+    # avoid repeated computation
+    logEe = np.full_like(Ee, np.nan)
+    np.log(Ee, where=Ee_gt_0, out=logEe)
+    logEe = np.where(Ee_eq_0, -np.inf, logEe)
 
     # # cax = np.logical_and(y > np.nanpercentile(y,80), y < np.nanmean(y) * 1.5)
     # cax = y > np.nanpercentile(y,50)
     # x = x[cax]
     # y = y[cax]
+    #
+    # vmp_fit = np.polyfit(x, y, 1)
+    # vmp_ref_estimate = np.polyval(vmp_fit, 25)
+    # beta_vmp = vmp_fit[0]
+    #
+    # print(beta_vmp)
 
-    vmp_fit = np.polyfit(x, y, 1)
-    vmp_ref_estimate = np.polyval(vmp_fit, 25)
-    beta_vmp = vmp_fit[0]
+    X = np.zeros(shape=(len(temperature_cell), 4))
+    X[:, 0] = 1
+    X[:, 1] = temperature_cell - temperature_ref
+    X[:, 2] = logEe
+    X[:, 3] = logEe ** 2
+
+    coeff = np.dot(pinv(X), vmp)
+
+    vmp_ref = coeff[0]
+    beta_vmp = coeff[1]
+    coeff_irrad_1 = coeff[2]
+    coeff_irrad_2 = coeff[3]
+
+    def model(temperature, logEe):
+        return vmp_ref + beta_vmp * (temperature - temperature_ref) + \
+               coeff_irrad_1 * logEe + coeff_irrad_2 * logEe ** 2
+
+    print(coeff)
 
     if figure:
         plt.figure(figure_number)
         plt.clf()
+        #
+        # x_smooth = np.linspace(x.min(), x.max(), 5)
+        # plt.hist2d(x, y, bins=(100, 100))
+        # plt.plot(x_smooth, np.polyval(vmp_fit, x_smooth), 'r')
 
-        x_smooth = np.linspace(x.min(), x.max(), 5)
-        plt.hist2d(x, y, bins=(100, 100))
-        plt.plot(x_smooth, np.polyval(vmp_fit, x_smooth), 'r')
+        # plt.hist2d(x, y, bins=(25, 25))
+        vmin = 0
+        vmax = 1100
+        h_sc = plt.scatter(temperature_cell, vmp,
+                           c=poa,
+                           s=0.2,
+                           vmin=vmin,
+                           cmap='jet',
+                           vmax=vmax)
+
+        x_smooth = np.linspace(temperature_cell.min(), temperature_cell.max(),
+                               2)
+
+        for poa_plot in [250, 500, 750, 1000]:
+            norm_poa = (poa_plot - vmin) / (vmax - vmin)
+            line_color = np.array(h_sc.cmap(norm_poa))
+            # line_color[0:3] =line_color[0:3]*0.9
+
+            line_color[3] = 0.9
+            plt.plot(x_smooth,
+                     model(x_smooth, np.log(poa_plot / irradiance_ref)),
+                     color=line_color)
+            if poa_plot == 1000:
+                plt.plot(temperature_ref, vmp_ref, '.',
+                         color=line_color)
+                # plt.plot(temperature_ref*np.ones(2), [0,vmp_ref],'k--')
+                plt.text(temperature_ref, vmp_ref,
+                         '  vmp_ref: {:.2f} V'.format(vmp_ref),
+                         horizontalalignment='left')
+
         plt.xlabel('Cell temperature (C)')
         plt.ylabel('Vmp (V)')
+        # plt.xlim([0,70])
+        pcbar = plt.colorbar()
+        pcbar.set_label('POA (W/m2)')
+
         plt.show()
 
-    return vmp_ref_estimate, beta_vmp
+        # plt.figure(figure_number + 1)
+        # plt.clf()
+        # plt.scatter(poa[cax], y,
+        #             c=x,
+        #             s=1,
+        #             cmap='jet',
+        #             vmin=0,
+        #             vmax=70)
+        # poa_smooth = np.linspace(1,1000,100)
+        # plt.plot(poa_smooth, model(temperature=25,
+        #                            logEe= np.log(poa_smooth/irradiance_ref)))
+        # plt.xlabel('POA (W/m2)')
+        # plt.ylabel('Vmp (V)')
+        # plt.show()
+
+    return vmp_ref, beta_vmp, coeff_irrad_1, coeff_irrad_2
 
 
-def estimate_diode_factor(technology):
+#
+# def estimate_vmp_ref(poa,
+#                      temperature_cell,
+#                      imp,
+#                      vmp,
+#                      temperature_ref=25,
+#                      figure=False,
+#                      figure_number=8,
+#                      ):
+#     """
+#     Estimate vmp_ref using operation data. Note that typically vmp for an
+#     array would be divided by parallel_strings before calling this function.
+#
+#     vmp does not depend much on irradiance so long as the irradiance is not
+#     too low.
+#
+#     Parameters
+#     ----------
+#     poa
+#     temperature_cell
+#     imp
+#     makefigure
+#
+#     Returns
+#     -------
+#
+#     """
+#
+#     cax = np.logical_and.reduce((
+#         poa > 700,
+#         poa < 1100,
+#         # imp > np.nanmax(imp) * 0.5
+#     ))
+#
+#     if np.sum(cax) < 2:
+#         return np.nan, np.nan
+#
+#     x = temperature_cell[cax]
+#     y = vmp[cax]
+#
+#     # # cax = np.logical_and(y > np.nanpercentile(y,80), y < np.nanmean(y) * 1.5)
+#     # cax = y > np.nanpercentile(y,50)
+#     # x = x[cax]
+#     # y = y[cax]
+#
+#     vmp_fit = np.polyfit(x, y, 1)
+#     vmp_ref_estimate = np.polyval(vmp_fit, 25)
+#     beta_vmp = vmp_fit[0]
+#
+#     if figure:
+#         plt.figure(figure_number)
+#         plt.clf()
+#         #
+#         # x_smooth = np.linspace(x.min(), x.max(), 5)
+#         # plt.hist2d(x, y, bins=(100, 100))
+#         # plt.plot(x_smooth, np.polyval(vmp_fit, x_smooth), 'r')
+#         x_smooth = np.linspace(x.min(), x.max(), 5)
+#         # plt.hist2d(x, y, bins=(25, 25))
+#         plt.scatter(x, y)
+#         plt.plot(x_smooth, np.polyval(vmp_fit, x_smooth), 'r')
+#         plt.plot(temperature_ref, np.polyval(vmp_fit, temperature_ref), 'r.')
+#         plt.plot(x, y, '.')
+#         plt.xlabel('Cell temperature (C)')
+#         plt.ylabel('Vmp (V)')
+#         plt.show()
+#
+#     return vmp_ref_estimate, beta_vmp
+
+
+def get_average_diode_factor(technology):
     diode_factor_all = {'multi-Si': 1.0229594245606348,
                         'mono-Si': 1.029537190437867,
                         'thin-film': 1.0891515236168812,
@@ -156,7 +532,76 @@ def estimate_diode_factor(technology):
     return diode_factor_all[technology]
 
 
-def estimate_photocurrent_ref(imp_ref, technology='mono-Si'):
+def estimate_diode_factor(i_mp, v_mp, photocurrent_ref,
+                          saturation_current_ref,
+                          temperature_cell, poa,
+                          cells_in_series=60,
+                          resistance_series=0.4,
+                          resistance_shunt_ref=400,
+                          EgRef=1.121,
+                          dEgdT=-0.0002677,
+                          alpha_isc=0.001,
+                          temperature_ref=25,
+                          irradiance_ref=1000,
+                          figure=False,
+                          figure_number=15):
+    cax = np.logical_and.reduce((
+        i_mp * v_mp > np.nanpercentile(i_mp * v_mp, 1),
+    ))
+
+    i_mp = i_mp[cax]
+    v_mp = v_mp[cax]
+    temperature_cell = temperature_cell[cax]
+    poa = poa[cax]
+
+    kB = 1.381e-23
+    q = 1.602e-19
+    Tcell_K = temperature_cell + 273.15
+    Tref_K = temperature_ref + 273.15
+
+    IL, I0ref_to_I0, Rs, Rsh, aref_to_a = calcparams_desoto(
+        I_L_ref=photocurrent_ref,
+        I_o_ref=1,
+        R_sh_ref=resistance_shunt_ref,
+        R_s=resistance_series,
+        effective_irradiance=poa,
+        temp_cell=temperature_cell,
+        alpha_sc=alpha_isc,
+        a_ref=1,
+        EgRef=EgRef,
+        dEgdT=dEgdT,
+        irrad_ref=irradiance_ref,
+        temp_ref=temperature_ref)
+
+    I0 = saturation_current_ref * I0ref_to_I0
+    nNsVth = (v_mp + i_mp * Rs) / np.log1p(
+        -1 / I0 * (i_mp - IL + (v_mp + i_mp * Rs) / Rsh))
+
+    # nNsVth_ref = a_to_aref * nNsVth
+    nNsVth_ref = 1 / aref_to_a * nNsVth
+
+    Vth = kB * (Tref_K) / q
+    diode_factor = nNsVth_ref / cells_in_series / Vth
+
+    diode_factor_mean = np.mean(diode_factor)
+
+    if figure:
+        plt.figure(figure_number)
+        plt.clf()
+        ax = plt.gca()
+        bin_min = 0.5
+        bin_max = 2
+
+        bins = np.linspace(bin_min, bin_max, 100)
+        plt.hist(diode_factor, bins=bins)
+        ax.axvline(diode_factor_mean, color='r', ymax=0.5)
+        plt.ylabel('Occurrences')
+        plt.xlabel('diode_factor')
+
+    return diode_factor_mean
+
+
+def estimate_photocurrent_ref_simple(imp_ref, technology='mono-Si'):
     photocurrent_imp_ratio = {'multi-Si': 1.0746167586063207,
                               'mono-Si': 1.0723051517913444,
                               'thin-film': 1.1813401654607967,
@@ -168,16 +613,15 @@ def estimate_photocurrent_ref(imp_ref, technology='mono-Si'):
     return photocurrent_ref
 
 
-
 def estimate_saturation_current_full(imp_ref,
-                                    photocurrent_ref,
-                                    vmp_ref,
-                                    cells_in_series,
-                                    resistance_series_ref=0.4,
-                                    resistance_shunt_ref=100,
-                                    diode_factor=1.1,
-                                    temperature_ref=25,
-                                    ):
+                                     photocurrent_ref,
+                                     vmp_ref,
+                                     cells_in_series,
+                                     resistance_series_ref=0.4,
+                                     resistance_shunt_ref=100,
+                                     diode_factor=1.2,
+                                     temperature_ref=25,
+                                     ):
     """
     If vmp or cells_in_series is unknown, use vmp_ref=0.6 and cells_in_series=1
 
@@ -210,6 +654,7 @@ def estimate_saturation_current_full(imp_ref,
         (vmp_ref + imp_ref * Rs) / nNsVth)
 
     return saturation_current_ref_estimate
+
 
 # def estimate_saturation_current_ref(isc,voc,cells_in_series,temperature_ref=25):
 #     """
@@ -261,7 +706,7 @@ def estimate_saturation_current(isc, voc, nNsVth):
 
 def estimate_saturation_current_ref(i_mp, v_mp, photocurrent_ref,
                                     temperature_cell, poa,
-                                    diode_factor=1.15,
+                                    diode_factor=1.10,
                                     cells_in_series=60,
                                     temperature_ref=25,
                                     irradiance_ref=1000,
@@ -269,9 +714,9 @@ def estimate_saturation_current_ref(i_mp, v_mp, photocurrent_ref,
                                     resistance_shunt_ref=400,
                                     EgRef=1.121,
                                     dEgdT=-0.0002677,
-                                    alpha_sc=0.001,
+                                    alpha_isc=0.001,
                                     figure=False,
-                                    figure_number=15):
+                                    figure_number=14):
     cax = np.logical_and.reduce((
         i_mp * v_mp > np.nanpercentile(i_mp * v_mp, 1),
     ))
@@ -288,7 +733,6 @@ def estimate_saturation_current_ref(i_mp, v_mp, photocurrent_ref,
 
     nNsVth_ref = diode_factor * cells_in_series * kB * Tref_K / q
 
-
     IL, I0ref_to_I0, Rs, Rsh, nNsVth = calcparams_desoto(
         I_L_ref=photocurrent_ref,
         I_o_ref=1,
@@ -296,13 +740,12 @@ def estimate_saturation_current_ref(i_mp, v_mp, photocurrent_ref,
         R_s=resistance_series,
         effective_irradiance=poa,
         temp_cell=temperature_cell,
-        alpha_sc=alpha_sc,
+        alpha_sc=alpha_isc,
         a_ref=nNsVth_ref,
         EgRef=EgRef,
         dEgdT=dEgdT,
         irrad_ref=irradiance_ref,
         temp_ref=temperature_ref)
-
 
     I0 = (IL - i_mp - (v_mp + i_mp * Rs) / Rsh) / np.expm1(
         (v_mp + i_mp * Rs) / nNsVth)
@@ -319,7 +762,7 @@ def estimate_saturation_current_ref(i_mp, v_mp, photocurrent_ref,
 
         bins = np.linspace(bin_min ** 0.1, bin_max ** 0.1, 150) ** 10
         plt.hist(I0_ref, bins=bins)
-        ax.axvline(I0_ref_mean,color='r',ymax=0.5)
+        ax.axvline(I0_ref_mean, color='r', ymax=0.5)
         plt.xscale('log')
         plt.ylabel('Occurrences')
         plt.xlabel('I0_ref (A)')
@@ -331,6 +774,7 @@ def estimate_saturation_current_ref(i_mp, v_mp, photocurrent_ref,
     # plt.xlabel('Temperature Cell (C)')
 
     return I0_ref.mean()
+
 
 def estimate_cells_in_series(voc_ref, technology='mono-Si'):
     """
@@ -401,28 +845,121 @@ def estimate_isc_ref(imp_ref, technology):
     return isc_ref
 
 
-def estimate_resistance_series(vmp, imp, saturation_current, photocurrent,
-                               nNsVth):
+def estimate_resistance_series_simple(vmp, imp,
+                                      saturation_current,
+                                      photocurrent,
+                                      nNsVth):
     Rs = (nNsVth * np.log1p(
         (photocurrent - imp) / saturation_current) - vmp) / imp
     return Rs
 
 
+def estimate_resistance_series(poa,
+                               temperature_cell,
+                               voltage,
+                               current,
+                               photocurrent_ref,
+                               saturation_current_ref,
+                               diode_factor,
+                               cells_in_series=60,
+                               temperature_ref=25,
+                               irradiance_ref=1000,
+                               resistance_shunt_ref=400,
+                               EgRef=1.121,
+                               dEgdT=-0.0002677,
+                               alpha_isc=0.001,
+                               figure=False,
+                               figure_number=16
+                               ):
+    cax = np.logical_and.reduce((
+        current * voltage > np.nanpercentile(current * voltage, 70),
+    ))
+
+    current = current[cax]
+    voltage = voltage[cax]
+    temperature_cell = temperature_cell[cax]
+    poa = poa[cax]
+
+    kB = 1.381e-23
+    q = 1.602e-19
+    Tcell_K = temperature_cell + 273.15
+    Tref_K = temperature_ref + 273.15
+
+    nNsVth_ref = diode_factor * cells_in_series * kB * (
+            temperature_ref + 273.15) / q
+    IL, I0, _, Rsh, nNsVth = calcparams_desoto(
+        I_L_ref=photocurrent_ref,
+        I_o_ref=saturation_current_ref,
+        R_sh_ref=resistance_shunt_ref,
+        R_s=1,
+        effective_irradiance=poa,
+        temp_cell=temperature_cell,
+        alpha_sc=alpha_isc,
+        a_ref=nNsVth_ref,
+        EgRef=EgRef,
+        dEgdT=dEgdT,
+        irrad_ref=irradiance_ref,
+        temp_ref=temperature_ref)
+
+    Wz = lambertw(
+        I0 * Rsh / nNsVth * np.exp(Rsh / nNsVth * (IL + I0 - current)))
+    Rs = 1 / current * (Rsh * (IL + I0 - current) - voltage - nNsVth * Wz)
+    #
+
+    # imp = current
+    # vmp = voltage
+    # a = nNsVth
+    # Isat = I0
+    #
+    # Rs = (a / 2 + (IL * Rsh) / 2 - (imp * Rsh) / 2 + (Isat * Rsh) / 2 - (
+    #             a * np.sqrt((4 * (IL * Rsh + Isat * Rsh - 2 * vmp)) / a + (
+    #                 1 - (IL * Rsh) / a + (imp * Rsh) / a - (Isat * Rsh) / a + (
+    #                     2 * vmp) / a) ** 2)) / 2) / imp
+
+    Rs_mean = np.mean(Rs).real
+    if figure:
+        plt.figure(figure_number)
+        plt.clf()
+        ax = plt.gca()
+        bin_min = 0
+        bin_max = np.max(Rs) * 1.5
+
+        bins = np.linspace(bin_min, bin_max, 100)
+        plt.hist(Rs, bins=bins)
+        ax.axvline(Rs_mean, color='r', ymax=0.5)
+        plt.ylabel('Occurrences')
+        plt.xlabel('Series Resistance (Ohm)')
+        #
+        # plt.figure(20)
+        # plt.clf()
+        # plt.hist2d(poa,Rs,bins=100)
+        #
+        # plt.figure(21)
+        # plt.clf()
+        # plt.hist2d(temperature_cell, Rs, bins=100)
+
+    return Rs_mean
+
+
 # def estimate_shunt_resistance_ref():
 
 
-def estimate_singlediode_params(irradiance_poa,
+def estimate_singlediode_params(poa,
                                 temperature_module,
                                 vmp,
                                 imp,
                                 delta_T=3,
+                                band_gap_ref=1.121,
+                                dEgdT=-0.0002677,
                                 alpha_isc=None,
                                 cells_in_series=None,
                                 technology='mono-Si',
+                                temperature_fit_range=30,
                                 temperature_ref=25,
                                 irradiance_ref=1000,
                                 resistance_shunt_ref=400,
-                                figure=False):
+                                figure=False,
+                                ):
     """
 
     Estimate the Desoto single diode model parameters for a PV module.
@@ -442,7 +979,7 @@ def estimate_singlediode_params(irradiance_poa,
 
     Parameters
     ----------
-    irradiance_poa
+    poa
     temperature_cell
     vmp
     imp
@@ -455,7 +992,7 @@ def estimate_singlediode_params(irradiance_poa,
 
     """
 
-    if irradiance_poa.size == 0:
+    if poa.size == 0:
         return dict(
             diode_factor=np.nan,
             photocurrent_ref=np.nan,
@@ -476,31 +1013,35 @@ def estimate_singlediode_params(irradiance_poa,
             nNsVth_ref=np.nan,
         )
 
-    irradiance_poa = np.array(irradiance_poa)
+    poa = np.array(poa)
     temperature_module = np.array(temperature_module)
     vmp = np.array(vmp)
     imp = np.array(imp)
 
     temperature_cell = sapm_cell_from_module(
         module_temperature=temperature_module,
-        poa_global=irradiance_poa,
+        poa_global=poa,
         deltaT=delta_T,
         irrad_ref=irradiance_ref)
 
-    imp_ref, alpha_imp = estimate_imp_ref(irradiance_poa, temperature_cell, imp,
+    imp_ref, alpha_imp = estimate_imp_ref(poa, temperature_cell, imp,
                                           figure=figure,
                                           temperature_ref=temperature_ref,
                                           irradiance_ref=irradiance_ref)
 
-    vmp_ref, beta_vmp = estimate_vmp_ref(irradiance_poa, temperature_cell, imp,
-                                         vmp,
-                                         figure=figure)
+    vmp_ref, beta_vmp, irrad_coeff_1, irrad_coeff_2 = estimate_vmp_ref(
+        poa=poa,
+        temperature_cell=temperature_cell,
+        vmp=vmp,
+        temperature_ref=temperature_ref,
+        irradiance_ref=irradiance_ref,
+        figure=figure)
 
-    pmp_ref, gamma_pmp = estimate_pmp_ref(irradiance_poa, temperature_cell,
+    pmp_ref, gamma_pmp = estimate_pmp_ref(poa, temperature_cell,
                                           imp * vmp,
                                           figure=figure)
 
-    diode_factor = estimate_diode_factor(technology)
+    diode_factor = get_average_diode_factor(technology)
     voc_ref = estimate_voc_ref(vmp_ref, technology=technology)
 
     if cells_in_series == None:
@@ -510,11 +1051,12 @@ def estimate_singlediode_params(irradiance_poa,
     q = 1.602e-19
 
     nNsVth_ref = diode_factor * cells_in_series * kB * (
-                temperature_ref + 273.15) / q
+            temperature_ref + 273.15) / q
 
     beta_voc = estimate_beta_voc(beta_vmp, technology=technology)
 
-    photocurrent_ref = estimate_photocurrent_ref(imp_ref, technology=technology)
+    photocurrent_ref = estimate_photocurrent_ref_simple(imp_ref,
+                                                        technology=technology)
 
     # saturation_current_ref = estimate_saturation_current_full(
     #     imp_ref=imp_ref, photocurrent_ref=photocurrent_ref, vmp_ref=vmp_ref,
@@ -523,11 +1065,9 @@ def estimate_singlediode_params(irradiance_poa,
 
     isc_ref = estimate_isc_ref(imp_ref, technology=technology)
 
-    saturation_current_ref_rough_est = estimate_saturation_current(isc=isc_ref,
+    saturation_current_ref = estimate_saturation_current(isc=isc_ref,
                                                          voc=voc_ref,
                                                          nNsVth=nNsVth_ref)
-
-
 
     if alpha_isc == None:
         alpha_isc = estimate_alpha_isc(isc_ref, technology=technology)
@@ -538,35 +1078,96 @@ def estimate_singlediode_params(irradiance_poa,
 
     nNsVth_ref = diode_factor * cells_in_series * kB * Tref / q
 
-    resistance_series_ref = estimate_resistance_series(vmp_ref,
-                                                       imp_ref,
-                                                       saturation_current_ref_rough_est,
-                                                       photocurrent_ref,
-                                                       nNsVth=nNsVth_ref)
+    resistance_series_ref = estimate_resistance_series_simple(vmp_ref,
+                                                              imp_ref,
+                                                              saturation_current_ref,
+                                                              photocurrent_ref,
+                                                              nNsVth=nNsVth_ref)
 
-    saturation_current_ref = estimate_saturation_current_ref(
-        i_mp=imp,
-        v_mp=vmp,
-        photocurrent_ref=photocurrent_ref,
-        temperature_cell=temperature_cell,
-        poa=irradiance_poa,
-        cells_in_series=cells_in_series,
-        resistance_series=resistance_series_ref,
-        resistance_shunt_ref=resistance_shunt_ref,
-        figure=False)
+    for k in range(5):
+        # Update saturation current with better estimate.
+        saturation_current_ref = estimate_saturation_current_ref(
+            i_mp=imp,
+            v_mp=vmp,
+            photocurrent_ref=photocurrent_ref,
+            temperature_cell=temperature_cell,
+            diode_factor=diode_factor,
+            poa=poa,
+            cells_in_series=cells_in_series,
+            resistance_series=resistance_series_ref,
+            resistance_shunt_ref=resistance_shunt_ref,
+            EgRef=band_gap_ref,
+            dEgdT=dEgdT,
+            alpha_isc=alpha_isc,
+            figure=figure)
 
-    # desoto = fit_sdm_desoto(vmp_ref, imp_ref, voc_ref, isc_ref,
-    #                         alpha_isc, beta_voc, cells_in_series,
-    #                         EgRef=1.121, dEgdT=-0.0002677,
-    #                         temp_ref=temperature_ref, irrad_ref=irradiance_ref,
-    #                         root_kwargs={})
-    # print(desoto)
+        # Update diode factor
+        diode_factor = estimate_diode_factor(
+            i_mp=imp, v_mp=vmp,
+            photocurrent_ref=photocurrent_ref,
+            saturation_current_ref=saturation_current_ref,
+            temperature_cell=temperature_cell,
+            poa=poa,
+            cells_in_series=cells_in_series,
+            resistance_series=resistance_series_ref,
+            resistance_shunt_ref=resistance_shunt_ref,
+            EgRef=band_gap_ref,
+            dEgdT=dEgdT,
+            alpha_isc=alpha_isc,
+            temperature_ref=temperature_ref,
+            irradiance_ref=irradiance_ref,
+            figure=figure)
 
+        # Important to have a good estimate of saturation current first.
+        resistance_series_ref = estimate_resistance_series(
+            poa=poa,
+            temperature_cell=temperature_cell,
+            voltage=vmp,
+            current=imp,
+            photocurrent_ref=photocurrent_ref,
+            saturation_current_ref=saturation_current_ref,
+            diode_factor=diode_factor,
+            cells_in_series=cells_in_series,
+            temperature_ref=temperature_ref,
+            irradiance_ref=irradiance_ref,
+            resistance_shunt_ref=resistance_shunt_ref,
+            EgRef=band_gap_ref,
+            dEgdT=dEgdT,
+            alpha_isc=alpha_isc,
+            figure=figure,
+        )
+
+    #     TODO: update photocurrent.
+    #
+    # print('pmp_ref before update: {:.2f}'.format(pmp_ref))
+    # imp_ref, vmp_ref, pmp_ref = estimate_mpp_ref_full(
+    #     poa,
+    #     temperature_cell,
+    #     imp,
+    #     vmp,
+    #     photocurrent_ref,
+    #     diode_factor,
+    #     saturation_current_ref,
+    #     cells_in_series=cells_in_series,
+    #     resistance_series=resistance_series_ref,
+    #     resistance_shunt_ref=resistance_shunt_ref,
+    #     EgRef=band_gap_ref,
+    #     dEgdT=dEgdT,
+    #     alpha_isc=alpha_isc,
+    #     figure=figure,
+    #     temperature_ref=temperature_ref,
+    #     temperature_fit_range=temperature_fit_range,
+    #     irradiance_ref=irradiance_ref
+    # )
+    # print('pmp_ref after update: {:.2f}'.format(pmp_ref))
+
+    # Output parameters
     params = dict(
         diode_factor=diode_factor,
         photocurrent_ref=photocurrent_ref,
         saturation_current_ref=saturation_current_ref,
         resistance_series_ref=resistance_series_ref,
+        resistance_shunt_ref=resistance_shunt_ref,
         conductance_shunt_extra=0.000,
         v_oc_ref=voc_ref,
         i_mp_ref=imp_ref,
