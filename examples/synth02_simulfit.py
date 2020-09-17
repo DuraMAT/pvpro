@@ -9,27 +9,24 @@ import pandas as pd
 from pandas.plotting import register_matplotlib_converters
 
 register_matplotlib_converters()
-import datetime
+
 import matplotlib
 
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
-import seaborn as sns
+
+# import seaborn as sns
 from pvpro import PvProHandler
-import pvpro
-from pvlib.pvsystem import singlediode
 
 # Import synthetic data
 df = pd.read_pickle('synth01_out.pkl')
 
-save_figs_directory = 'figures/synth02TNC'
+save_figs_directory = 'figures/synth02'
 
 # Make PvProHandler object to store data.
 pvp = PvProHandler(df,
                    system_name='synthetic',
                    delta_T=3,
-                   days_per_run=90,
-                   time_step_between_iterations_days=45,
                    use_clear_times=False,
                    irradiance_lower_lim=0.1,
                    temperature_cell_upper_lim=500,
@@ -42,93 +39,69 @@ pvp = PvProHandler(df,
                    irradiance_poa_key='poa_meas',
                    modules_per_string=1,
                    parallel_strings=1,
-                   # solver='Powell',
-                   # solver='TNC',
-                   start_point_method='fixed',
                    )
 
 # Preprocess
 pvp.run_preprocess()
 
+# Find clear times (not necessary for synthetic data)
+"""
+pvp.find_clear_times(smoothness_hyperparam=1000)
+pvp.dh.plot_daily_signals(boolean_mask=pvp.dh.boolean_masks.clear_times,
+                          start_day=400)
+plt.show()
+"""
 
-# Find clear times
-# pvp.find_clear_times(smoothness_hyperparam=1000)
-
-# # Inspect clear time detection.
-# pvp.dh.plot_daily_signals(boolean_mask=pvp.dh.boolean_masks.clear_times,
-#                           start_day=400)
-# plt.show()
-
-pvp.p0 = {'diode_factor': 1.15, 'photocurrent_ref': 5.679104195553221,
+# Can set a custom startpoint if auto-chosen startpoint isn't great.
+"""
+pvp.p0 = {'diode_factor': 1.15,
+          'photocurrent_ref': 5.7,
           'saturation_current_ref': 10e-10,
-          'resistance_series_ref': 0.4, 'conductance_shunt_extra': 0.001}
+          'resistance_series_ref': 0.4,
+          'conductance_shunt_extra': 0.001}
+"""
 
 # Plot startpoint on top of data.
-iteration = 0
-pvp.plot_Vmp_Imp_scatter(p_plot=pvp.p0,
-                         figure_number=4,
-                         iteration=0)
+pvp.plot_Vmp_Imp_scatter(df=pvp.df,
+                         p_plot=pvp.p0,
+                         figure_number=4)
 plt.title('Startpoint')
-#
-# # Check execution on first iteration
-# ret = pvp.execute(iteration=[0],
-#                   verbose=False,
-#                   method='minimize',
-#                   save_figs_directory=save_figs_directory)
-#
-# print('Best fit:')
-# print(pvp.result['p'].loc[iteration, :])
-#
-# iteration = 0
-# pvp.plot_Vmp_Imp_scatter(p_plot=pvp.result['p'].loc[iteration, :],
-#                          figure_number=5,
-#                          iteration=iteration)
-# plt.title('Best fit')
-#
-# plt.savefig('figures/synth02_MPP-scatter_{}'.format(pvp.system_name,
-#                                                                 iteration),
-#             bbox_inches='tight')
 
+# Set hyperparameters for running model.
+hyperparams = {
+    'use_voc_points': True,
+    'use_mpp_points': True,
+    'use_clip_points': False,
+    'method': 'minimize',
+    'solver': 'L-BFGS-B',
+    'days_per_run': 90,
+    'time_step_between_iterations_days': 45,
+    'start_point_method': 'fixed',
+    'save_figs_directory': save_figs_directory
+}
 
-use_voc_points = True
-use_mpp_points = True
-use_clip_points = False
-method = 'minimize'
-solver = 'L-BFGS-B'
-# Run on all iterations.
-ret = pvp.execute(iteration='all',
-                  verbose=False,
-                  method=method,
-                  solver=solver,
+# Run on first iteration
+ret = pvp.execute(iteration=[0],
                   save_figs=True,
-                  save_figs_directory=save_figs_directory,
-                  use_voc_points=use_voc_points,
-                  use_mpp_points=use_mpp_points,
-                  use_clip_points=use_clip_points)
+                  verbose=False,
+                  **hyperparams)
 
+run_all = True
+if run_all:
+    # Run on all iterations.
+    ret = pvp.execute(iteration='all',
+                  save_figs=True,
+                  verbose=False,
+                  **hyperparams)
+
+# Get results
 pfit = pvp.result['p']
-pfit.index = pvp.time
+print(pfit)
 
-info = dict(
-    system_name=pvp.system_name,
-    use_clear_times=pvp.use_clear_times,
-    use_mpp_points=use_mpp_points,
-    use_voc_points=use_voc_points,
-    use_clip_points=use_clip_points,
-    temperature_module_key=pvp.temperature_module_key,
-    irradiance_poa_key=pvp.irradiance_poa_key,
-    days_per_run=pvp.days_per_run,
-    start_point_method=pvp.start_point_method,
-    method=method
-)
-save_number = 2
-pd.DataFrame(info,index=[save_number]).to_csv(save_figs_directory + '/synth02_info_{}.csv'.format(save_number))
-pfit.to_pickle(save_figs_directory + '/synth02_out_{}_.pkl'.format(save_number))
-# pfit.loc[:,'conductance_shunt_ref'] = 1/pfit['resistance_shunt_ref']
-# df.loc[:,'conductance_shunt_ref'] = 1/df['resistance_shunt_ref']
 
+# ------------------------------------------------------------------------------
 # Make degradation plots.
-sns.set(style="ticks")
+# ------------------------------------------------------------------------------
 
 n = 2
 figure = plt.figure(21, figsize=(7.5, 5.5))
@@ -154,22 +127,21 @@ ylabel = {'diode_factor': 'Diode factor',
           'residual': 'Residual (AU)',
           }
 
-
-plt.subplot(4,3,1)
+plt.subplot(4, 3, 1)
 ax = plt.gca()
 plt.axis('off')
-plt.text(-0.2,0,
+plt.text(-0.2, 0,
          'System: {}\n'.format(pvp.system_name) + \
          'Use clear times: {}\n'.format(pvp.use_clear_times) + \
-         'Use mpp points: {}\n'.format(use_mpp_points) + \
-         'Use voc points: {}\n'.format(use_voc_points) + \
-         'Use clip points: {}\n'.format(use_clip_points) + \
+         'Use mpp points: {}\n'.format(hyperparams['use_mpp_points']) + \
+         'Use voc points: {}\n'.format(hyperparams['use_voc_points']) + \
+         'Use clip points: {}\n'.format(hyperparams['use_clip_points']) + \
          'Temp: {}\n'.format(pvp.temperature_module_key) + \
          'Irrad: {}\n'.format(pvp.irradiance_poa_key) + \
-         'Days per run: {}\n'.format(pvp.days_per_run) + \
-         'start point method: {}\n'.format(pvp.start_point_method) + \
-         'Minimize method: {}\n'.format(solver)
-         ,fontsize=8
+         'Days per run: {}\n'.format(hyperparams['days_per_run']) + \
+         'start point method: {}\n'.format(hyperparams['start_point_method']) + \
+         'Minimize method: {}\n'.format(hyperparams['solver'])
+         , fontsize=8
          )
 
 for k in ['diode_factor', 'photocurrent_ref', 'saturation_current_ref',
@@ -186,9 +158,14 @@ for k in ['diode_factor', 'photocurrent_ref', 'saturation_current_ref',
     else:
         scale = 1
 
-    plt.plot(pd.Series(pvp.time), pfit[k] * scale, '.',
+    plt.plot(pfit['t_start'], pfit[k] * scale, '.',
              color=[0, 0, 0.8],
              label='pvpro')
+    if k in ['i_mp_ref','v_mp_ref','p_mp_ref']:
+        plt.plot(pfit['t_start'], pfit[k + '_est'],'.',
+                 color=[0, 0.8, 0.8],
+                 label='pvpro-fast')
+
     ylims = scale * np.array([pfit[k].min(), pfit[k].max()])
 
     if k in df.keys():
@@ -201,7 +178,7 @@ for k in ['diode_factor', 'photocurrent_ref', 'saturation_current_ref',
     plt.ylabel(ylabel[k], fontsize=9)
     # plt.gca().fmt_xdata = matplotlib.dates.DateFormatter('%Y-%m-%d')
 
-    if np.nanmax(pfit[k]) > np.nanmin(pfit[k])*1.2:
+    if np.nanmax(pfit[k]) > np.nanmin(pfit[k]) * 1.2:
         plt.ylim(pfit[k].mean() * np.array([0.9, 1.1]))
     date_form = matplotlib.dates.DateFormatter("%Y")
     plt.gca().xaxis.set_major_formatter(date_form)
@@ -225,7 +202,7 @@ for k in ['diode_factor', 'photocurrent_ref', 'saturation_current_ref',
 # figure.tight_layout(pad=5)
 plt.show()
 
-
 plt.savefig(
-    '{}/synth02_degradation_{}.pdf'.format(save_figs_directory,pvp.system_name),
+    '{}/synth02_degradation_{}.pdf'.format(save_figs_directory,
+                                           pvp.system_name),
     bbox_inches='tight')
