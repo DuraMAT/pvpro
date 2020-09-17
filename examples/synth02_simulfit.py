@@ -187,8 +187,9 @@ for k in ['diode_factor', 'photocurrent_ref', 'saturation_current_ref',
 
     ylims = ylims + 0.1 * np.array([-1, 1]) * (ylims.max() - ylims.min())
     plt.ylim(ylims)
-    if n == 3:
-        plt.legend(loc=[0, 1.2])
+    if k=='p_mp_ref':
+        plt.legend(loc=[0, 3.2],
+                   fontsize=8)
 
     # for y in [df.index.]:
     #     # plt.plot([y,y], [pfit[k].min()*scale, pfit[k].max()*scale] ,'--')
