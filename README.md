@@ -9,3 +9,20 @@ This package, pvpro, automates the analysis of PV production data to extract the
 **The package is still under active development so don't expect it to work perfectly yet!**
 
 To try it out, you need to clone the most recent development branch of solar-data-tools and statistical-clear-sky.
+
+# Installation
+
+One way to make a valid virtual environment is with the following commands. This section will be updated in the future to make a more minimal environment.
+
+```
+conda create --name pvpro python=3 numpy scipy pandas matplotlib cvxpy tqdm pyqt
+conda activate pvpro
+conda install -c mosek mosek
+pip install requests
+pip install sklearn
+pip install seaborn
+pip install xlrd
+pip install solar-data-tools statistical-clear-sky
+pip install NREL-PySAM
+pip install matplotlib==3.3.2
+```
