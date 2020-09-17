@@ -19,10 +19,12 @@ def classify_operating_mode(voltage, current,
         -1: Unclassified
         0: System at maximum power point.
         1: System at open circuit conditions.
-        2: Low irradiance nighttime.
-        3: Clipped/curtailed operation. Not necessarily at mpp.
+        2: Nighttime, inverter off. (REMOVE)
+        3: Clipped or curtailed. DC operating point is not necessarily at MPP.
 
     """
+    # TODO: delete class 2.
+
 
     cls = np.zeros(np.shape(voltage)) - 1
 
@@ -32,11 +34,10 @@ def classify_operating_mode(voltage, current,
         current > current.max() * 0.01,
     )] = 0
 
-    # Nighttime, low voltage and irradiance.
-    cls[np.logical_and(current < current.max() * 0.01,
-                       voltage < voltage.max() * 0.01)] = 2
+    # Nighttime, low voltage and irradiance (inverter off)
+    cls[voltage < voltage.max() * 0.01] = 2
 
-    # Inverter off
+    # Open circuit condition
     cls[np.logical_and(current < current.max() * 0.01,
                        voltage > voltage.max() * 0.01)] = 1
 
