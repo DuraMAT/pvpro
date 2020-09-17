@@ -4,7 +4,7 @@ import numpy as np
 from pvlib.singlediode import _lambertw_i_from_v, _lambertw_v_from_i
 from pvlib.pvsystem import calcparams_desoto, singlediode
 
-from pvterms import rename
+# from pvterms import rename
 
 def calcparams_pvpro(effective_irradiance, temperature_cell,
                      alpha_isc, nNsVth_ref, photocurrent_ref,
