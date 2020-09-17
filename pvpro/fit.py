@@ -47,6 +47,7 @@ def production_data_curve_fit(
         use_mpp_points=True,
         use_voc_points=True,
         use_clip_points=True,
+        fit_params=None,
         brute_number_grid_points=2,
 ):
     """
@@ -152,8 +153,12 @@ def production_data_curve_fit(
             photocurrent_ref=8,
             saturation_current_ref=10,
             resistance_series_ref=10,
-            resistance_shunt_ref=10
+            conductance_shunt_extra=0
         )
+
+    if type(fit_params) == type(None):
+        fit_params = ['diode_factor', 'photocurrent_ref', 'saturation_current_ref',
+                      'resistance_series_ref', 'conductance_shunt_extra']
 
     #         0: System at maximum power point.
     #         1: System at open circuit conditions.
@@ -304,6 +309,10 @@ def production_data_curve_fit(
             [p_to_x(lower_bounds[k], k) for k in fit_params],
             [p_to_x(upper_bounds[k], k) for k in fit_params])
 
+        if verbose:
+            print('p0')
+            for k in fit_params:
+                print(k, p0[k])
         x0 = [p_to_x(p0[k], k) for k in fit_params]
 
         # print('p0: ', p0)
