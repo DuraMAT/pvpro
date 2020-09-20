@@ -52,8 +52,6 @@ class PvProHandler:
                  resistance_shunt_ref=400,
                  delta_T=3,
                  use_clear_times=True,
-                 irradiance_lower_lim=100,
-                 temperature_cell_upper_lim=500,
                  cells_in_series=None,
                  singlediode_method='newton',
                  technology='mono-Si',
@@ -67,8 +65,6 @@ class PvProHandler:
         self.system_name = system_name
         self.delta_T = delta_T
         self.use_clear_times = use_clear_times
-        self.irradiance_lower_lim = irradiance_lower_lim
-        self.temperature_cell_upper_lim = temperature_cell_upper_lim
         self.cells_in_series = cells_in_series
         self.alpha_isc = alpha_isc
         self.resistance_shunt_ref = resistance_shunt_ref
@@ -90,7 +86,6 @@ class PvProHandler:
         )
 
         # self.solver = solver
-
 
     @property
     def df(self):
@@ -153,7 +148,8 @@ class PvProHandler:
             self.df[self.irradiance_poa_key],
             deltaT=self.delta_T)
 
-    def run_preprocess(self, correct_tz=True):
+    def run_preprocess(self, correct_tz=True, data_sampling=None,
+                       run_solar_data_tools=True):
 
         if self.df[self.temperature_module_key].max() > 85:
             warnings.warn(
@@ -161,23 +157,30 @@ class PvProHandler:
 
         self.simulation_setup()
 
-        # Run solar-data-tools.
-        self.dh.run_pipeline(power_col='power_dc',
-                             correct_tz=correct_tz,
-                             extra_cols=[self.temperature_module_key,
-                                         self.irradiance_poa_key,
-                                         self.voltage_key,
-                                         self.current_key]
-                             )
+        if run_solar_data_tools:
+            if type(data_sampling) != type(None):
+                self.dh.data_sampling = data_sampling
 
-        # Print report.
-        self.dh.report()
+            # Run solar-data-tools.
+            self.dh.run_pipeline(power_col='power_dc',
+                                 correct_tz=correct_tz,
+                                 extra_cols=[self.temperature_module_key,
+                                             self.irradiance_poa_key,
+                                             self.voltage_key,
+                                             self.current_key]
+                                 )
+
+            # Print report.
+            self.dh.report()
+            power_clip = self.dh.capacity_estimate * 0.99
+        else:
+            power_clip = np.nanmax(self.df['power_dc'])
 
         # Calculate operating class.
         self.df.loc[:, 'operating_cls'] = classify_operating_mode(
             voltage=self.df[self.voltage_key] / self.modules_per_string,
             current=self.df[self.current_key] / self.parallel_strings,
-            power_clip=self.dh.capacity_estimate * 0.99)
+            power_clip=power_clip)
 
         # TODO: this always overwrites p0 and should be changed so that if the user has set p0, it is not changed.
         self.estimate_p0()
@@ -191,7 +194,6 @@ class PvProHandler:
 
         """
         keys = ['system_name', 'delta_T',
-                'irradiance_lower_lim', 'temperature_cell_upper_lim',
                 'cells_in_series',
                 'alpha_isc', 'voltage_key', 'current_key',
                 'temperature_module_key',
@@ -205,6 +207,7 @@ class PvProHandler:
 
         print(pd.Series(info_display))
         return info_display
+
     #
     # def get_df_for_iteration(self, k,
     #                          use_clear_times=False):
@@ -389,24 +392,34 @@ class PvProHandler:
             iteration = np.arange(len(iteration_start_days))
 
         n = 0
+        k_last_iteration = 0
         for k in iteration:
 
             print('\n--\nPercent complete: {:1.1%}, Iteration: {}'.format(
                 k / len(iteration_start_days), k))
 
             # Get df for current iteration.
-            if type(boolean_mask)==type(None):
-                boolean_mask = np.ones(len(self.df),dtype=np.bool)
+            if boolean_mask is None:
+                boolean_mask = np.ones(len(self.df), dtype=np.bool)
+            else:
+                boolean_mask = np.array(boolean_mask)
+
+            if not len(self.df) == len(boolean_mask):
+                raise ValueError(
+                    'Boolean mask has length {}, it must have same length as self.df: {}'.format(
+                        len(boolean_mask), len(self.df)))
+
             idx = np.logical_and.reduce(
                 (
-                self.df.index >= self.df.index[0] + datetime.timedelta(
-                    int(iteration_start_days[k])),
-                self.df.index < self.df.index[0] + datetime.timedelta(
-                    int(iteration_start_days[k] + days_per_run)),
-                boolean_mask
-            ))
-            df = self.df[idx]
+                    self.df.index >= self.df.index[0] + datetime.timedelta(
+                        int(iteration_start_days[k])),
+                    self.df.index < self.df.index[0] + datetime.timedelta(
+                        int(iteration_start_days[k] + days_per_run)),
+                    boolean_mask
+                ))
 
+
+            df = self.df[idx]
 
             if len(df) > 10:
 
@@ -414,30 +427,21 @@ class PvProHandler:
 
                 # Can update p0 each iteration in future.
                 if start_point_method == 'fixed':
-                    p0.loc[k] = self.p0
+                    for key in fit_params:
+                        p0.loc[k, key] = self.p0[key]
                 elif start_point_method == 'last':
                     if n == 0:
                         for key in fit_params:
                             p0.loc[k, key] = self.p0[key]
                     else:
-                        # TODO: fix this line.
-                        p0.loc[k] = pfit_iter
+                        for key in fit_params:
+                            p0.loc[k_last_iteration, key] = self.p0[key]
+
                 else:
                     raise ValueError(
                         'start_point_method must be "fixed" or "last"')
 
                 # Do quick parameters estimation on this iteration.from
-
-                cax = self.df['operating_cls'] == 0
-
-                ret = estimate_singlediode_params(
-                    poa=df.loc[cax, self.irradiance_poa_key],
-                    temperature_module=df.loc[cax, self.temperature_module_key],
-                    vmp=df.loc[cax, self.voltage_key] / self.modules_per_string,
-                    imp=df.loc[cax, self.current_key] / self.parallel_strings,
-                    cells_in_series=self.cells_in_series,
-                    delta_T=self.delta_T
-                )
 
                 # Do pvpro fit on this iteration.
                 if verbose:
@@ -471,24 +475,31 @@ class PvProHandler:
 
                 # Estimate parameters quickly.
                 # TODO: change to only pass MPP data points.
-                vmp_out = estimate_vmp_ref(poa=df[self.irradiance_poa_key],
-                                           temperature_cell=df[
-                                               'temperature_cell'],
-                                           vmp=df[
-                                                   self.voltage_key] / self.modules_per_string,
-                                           figure=False,
-                                           figure_number=21,
-                                           model='sandia'
-                                           )
-                imp_out = estimate_imp_ref(poa=df[self.irradiance_poa_key],
-                                           temperature_cell=df[
-                                               'temperature_cell'],
-                                           imp=df[
-                                                   self.current_key] / self.parallel_strings,
-                                           figure=False,
-                                           figure_number=22,
-                                           model='sandia'
-                                           )
+                cax = df['operating_cls'] == 0
+                if np.sum(cax) > 10:
+                    vmp_out = estimate_vmp_ref(
+                        poa=df.loc[cax, self.irradiance_poa_key],
+                        temperature_cell=df.loc[cax, 'temperature_cell'],
+                        vmp=df.loc[
+                                cax, self.voltage_key] / self.modules_per_string,
+                        figure=False,
+                        figure_number=21,
+                        model='sandia'
+                    )
+                    imp_out = estimate_imp_ref(
+                        poa=df.loc[cax, self.irradiance_poa_key],
+                        temperature_cell=df.loc[cax,
+                                                'temperature_cell'],
+                        imp=df.loc[
+                                cax, self.current_key] / self.parallel_strings,
+                        figure=False,
+                        figure_number=22,
+                        model='sandia'
+                    )
+                    pfit.loc[k, 'v_mp_ref_est'] = vmp_out['v_mp_ref']
+                    pfit.loc[k, 'i_mp_ref_est'] = imp_out['i_mp_ref']
+                    pfit.loc[k, 'p_mp_ref_est'] = imp_out['i_mp_ref'] * vmp_out[
+                        'v_mp_ref']
 
                 # est, est_result = estimate_singlediode_params(
                 #     vmp=df[self.voltage_key] / self.modules_per_string,
@@ -508,10 +519,6 @@ class PvProHandler:
 
                 for p in pfit_iter:
                     pfit.loc[k, p] = pfit_iter[p]
-                pfit.loc[k, 'v_mp_ref_est'] = vmp_out['v_mp_ref']
-                pfit.loc[k, 'i_mp_ref_est'] = imp_out['i_mp_ref']
-                pfit.loc[k, 'p_mp_ref_est'] = imp_out['i_mp_ref'] * vmp_out[
-                    'v_mp_ref']
 
                 pfit.loc[k, 'residual'] = residual
                 pfit.loc[k, 't_start'] = df.index[0]
@@ -561,7 +568,8 @@ class PvProHandler:
                     self.plot_suns_voc_scatter(df=df,
                                                p_plot=pfit_iter,
                                                figure_number=101,
-                                               use_clear_times=self.use_clear_times)
+                                               use_clear_times=self.use_clear_times,
+                                               plot_voc_max=plot_vmp_max * 1.1)
                     plt.savefig(os.path.join(save_figs_directory,
                                              'suns_Voc',
                                              '{}_suns-Voc_{}.png'.format(
@@ -572,7 +580,8 @@ class PvProHandler:
                         df=df,
                         p_plot=pfit_iter,
                         figure_number=103,
-                        use_clear_times=self.use_clear_times)
+                        use_clear_times=self.use_clear_times,
+                        plot_imp_max=plot_imp_max)
                     plt.savefig(os.path.join(save_figs_directory,
                                              'clipped',
                                              '{}_clipped_{}.png'.format(
@@ -590,6 +599,7 @@ class PvProHandler:
                                 dpi=350, )
 
                 n = n + 1
+                k_last_iteration = k
                 # except:
                 #     print('** Error with this iteration.')
 
@@ -655,9 +665,6 @@ class PvProHandler:
             verbose=verbose
         )
 
-
-
-
         #
         # imp_ref = estimate_imp_ref()
         # photocurrent_ref = self.estimate_photocurrent_ref(imp_ref)
@@ -695,7 +702,6 @@ class PvProHandler:
         -------
 
         """
-
 
         # Make figure for inverter on.
         fig = plt.figure(figure_number, figsize=(6.5, 3.5))
@@ -825,8 +831,10 @@ class PvProHandler:
                      )
 
         text_str = 'System: {}\n'.format(self.system_name) + \
-                   'Start day: {:.0f}\n'.format(df.index[0]) + \
-                   'End day: {:.0f}\n'.format(df.index[-1]) + \
+                   'Start: {}\n'.format(
+                       df.index[0].strftime("%m/%d/%Y, %H:%M:%S")) + \
+                   'End: {}\n'.format(
+                       df.index[-1].strftime("%m/%d/%Y, %H:%M:%S")) + \
                    'Current: {}\n'.format(self.current_key) + \
                    'Voltage: {}\n'.format(self.voltage_key) + \
                    'Temperature: {}\n'.format(self.temperature_module_key) + \
@@ -841,8 +849,7 @@ class PvProHandler:
                    'resistance_series: {:1.2f} Ohm\n'.format(
                        p_plot['resistance_series_ref']) + \
                    'Conductance shunt extra: {:1.2f} 1/Ohm\n\n'.format(
-                       p_plot['conductance_shunt_extra']) + \
-                   'Lower Irrad limit: {}\n'.format(self.irradiance_lower_lim)
+                       p_plot['conductance_shunt_extra'])
 
         plt.text(0.05, 0.95, text_str,
                  horizontalalignment='left',
@@ -870,7 +877,8 @@ class PvProHandler:
                               figure_number=1,
                               vmin=0,
                               vmax=70,
-                              use_clear_times=None):
+                              use_clear_times=None,
+                              plot_voc_max=45.):
         """
         Make Vmp, Imp scatter plot.
 
@@ -896,15 +904,11 @@ class PvProHandler:
 
         temp_limits = np.linspace(vmin, vmax, 8)
 
-
         inv_off_points = np.array(df['operating_cls'] == 1)
 
         voc = np.array(
             df.loc[inv_off_points, self.voltage_key]) / self.modules_per_string
         irrad = np.array(df.loc[inv_off_points, self.irradiance_poa_key])
-
-        voc_max = np.nanmax(self.df.loc[self.df[
-                                            'operating_cls'] == 1, self.voltage_key] / self.modules_per_string) * 1.1
 
         h_sc = plt.scatter(voc, irrad,
                            c=df.loc[inv_off_points, 'temperature_cell'],
@@ -1006,9 +1010,7 @@ class PvProHandler:
                        p_plot['resistance_series_ref']) + \
                    'conductance shunt extra: {:1.2f} Ohm\n\n'.format(
                        p_plot['conductance_shunt_extra']) + \
-                   'Clear time: {}\n'.format(use_clear_times) + \
-                   'Lower Irrad limit: {}\n'.format(
-                       self.irradiance_lower_lim)
+                   'Clear time: {}\n'.format(use_clear_times)
 
         plt.text(0.05, 0.95, text_str,
                  horizontalalignment='left',
@@ -1016,7 +1018,7 @@ class PvProHandler:
                  transform=ax.transAxes,
                  fontsize=8)
 
-        plt.xlim([0, voc_max])
+        plt.xlim([0, plot_voc_max])
         plt.yscale('log')
         plt.ylim([1e0, 1200])
         plt.xticks(fontsize=9)
@@ -1044,7 +1046,8 @@ class PvProHandler:
                                                 figure_number=1,
                                                 vmin=0,
                                                 vmax=70,
-                                                use_clear_times=None):
+                                                use_clear_times=None,
+                                                plot_imp_max=8):
         """
         Make Vmp, Imp scatter plot.
 
@@ -1076,9 +1079,6 @@ class PvProHandler:
             df.loc[cax, self.current_key]) / self.parallel_strings
 
         irrad = np.array(df.loc[cax, self.irradiance_poa_key])
-
-        current_max = np.nanmax(self.df.loc[self.df[
-                                                'operating_cls'] == 3, self.current_key] / self.parallel_strings) * 1.1
 
         h_sc = plt.scatter(irrad, current,
                            c=df.loc[cax, 'temperature_cell'],
@@ -1141,9 +1141,7 @@ class PvProHandler:
                        p_plot['resistance_series_ref']) + \
                    'conductance shunt extra: {:1.2f} Ohm\n\n'.format(
                        p_plot['conductance_shunt_extra']) + \
-                   'Clear time: {}\n'.format(use_clear_times) + \
-                   'Lower Irrad limit: {}\n'.format(
-                       self.irradiance_lower_lim)
+                   'Clear time: {}\n'.format(use_clear_times)
 
         plt.text(0.05, 0.95, text_str,
                  horizontalalignment='left',
@@ -1151,7 +1149,7 @@ class PvProHandler:
                  transform=ax.transAxes,
                  fontsize=8)
 
-        plt.ylim([0, current_max])
+        plt.ylim([0, plot_imp_max])
         plt.xlim([0, 1200])
         plt.xticks(fontsize=9)
         plt.yticks(fontsize=9)
@@ -1178,7 +1176,8 @@ class PvProHandler:
                                             figure_number=1,
                                             vmin=0,
                                             vmax=70,
-                                            use_clear_times=None):
+                                            use_clear_times=None,
+                                            plot_imp_max=8):
         """
 
 
@@ -1210,9 +1209,6 @@ class PvProHandler:
             df.loc[cax, self.current_key]) / self.parallel_strings
 
         irrad = np.array(df.loc[cax, self.irradiance_poa_key])
-
-        current_max = np.nanmax(self.df.loc[self.df[
-                                                'operating_cls'] == 0, self.current_key] / self.parallel_strings) * 1.1
 
         h_sc = plt.scatter(irrad, current,
                            c=df.loc[cax, 'temperature_cell'],
@@ -1279,9 +1275,7 @@ class PvProHandler:
                        p_plot['resistance_series_ref']) + \
                    'conductance shunt extra: {:1.2f} Ohm\n\n'.format(
                        p_plot['conductance_shunt_extra']) + \
-                   'Clear time: {}\n'.format(use_clear_times) + \
-                   'Lower Irrad limit: {}\n'.format(
-                       self.irradiance_lower_lim)
+                   'Clear time: {}\n'.format(use_clear_times)
 
         plt.text(0.05, 0.95, text_str,
                  horizontalalignment='left',
@@ -1289,7 +1283,7 @@ class PvProHandler:
                  transform=ax.transAxes,
                  fontsize=8)
 
-        plt.ylim([0, current_max])
+        plt.ylim([0, plot_imp_max])
         plt.xlim([0, 1200])
         plt.xticks(fontsize=9)
         plt.yticks(fontsize=9)
