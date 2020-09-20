@@ -23,13 +23,15 @@ df = pd.read_pickle('synth01_out.pkl')
 
 save_figs_directory = 'figures/synth02'
 
+
+# Create a boolean mask to not use values with extra low irradiance
+
+
 # Make PvProHandler object to store data.
 pvp = PvProHandler(df,
                    system_name='synthetic',
                    delta_T=3,
                    use_clear_times=False,
-                   irradiance_lower_lim=0.1,
-                   temperature_cell_upper_lim=500,
                    cells_in_series=60,
                    resistance_shunt_ref=df['resistance_shunt_ref'].mean(),
                    alpha_isc=0.001,
@@ -64,8 +66,13 @@ pvp.p0 = {'diode_factor': 1.15,
 # Plot startpoint on top of data.
 pvp.plot_Vmp_Imp_scatter(df=pvp.df,
                          p_plot=pvp.p0,
-                         figure_number=4)
+                         figure_number=4,
+                         plot_vmp_max=4,
+                         plot_imp_max=25)
 plt.title('Startpoint')
+
+# Set boolean mask for which points to include.
+boolean_mask = pvp.df['poa_meas'] > 10
 
 # Set hyperparameters for running model.
 hyperparams = {
@@ -77,7 +84,10 @@ hyperparams = {
     'days_per_run': 90,
     'time_step_between_iterations_days': 45,
     'start_point_method': 'fixed',
-    'save_figs_directory': save_figs_directory
+    'save_figs_directory': save_figs_directory,
+    'plot_imp_max': 7,
+    'plot_vmp_max': 35,
+    'boolean_mask': boolean_mask
 }
 
 # Run on first iteration
@@ -98,6 +108,8 @@ if run_all:
 pfit = pvp.result['p']
 print(pfit)
 
+from datetime import timedelta
+pfit['t_mean'] = pfit['t_start'] + timedelta(days=hyperparams['days_per_run']/2)
 
 # ------------------------------------------------------------------------------
 # Make degradation plots.
@@ -158,11 +170,11 @@ for k in ['diode_factor', 'photocurrent_ref', 'saturation_current_ref',
     else:
         scale = 1
 
-    plt.plot(pfit['t_start'], pfit[k] * scale, '.',
+    plt.plot(pfit['t_mean'], pfit[k] * scale, '.',
              color=[0, 0, 0.8],
              label='pvpro')
     if k in ['i_mp_ref','v_mp_ref','p_mp_ref']:
-        plt.plot(pfit['t_start'], pfit[k + '_est'],'.',
+        plt.plot(pfit['t_mean'], pfit[k + '_est'],'.',
                  color=[0, 0.8, 0.8],
                  label='pvpro-fast')
 
