@@ -35,4 +35,3 @@ dependencies:
     - scs
     - xlrd
     - NREL-pysam
-    - pvpro
