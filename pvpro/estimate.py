@@ -1495,7 +1495,8 @@ def estimate_singlediode_params(poa,
 
                 #     Draw figures then break loop
                 last_iteration=True
-
+        else:
+            results = {}
 
         # print('Time to point b: {}'.format(time() - start_time))
 
@@ -1653,6 +1654,6 @@ def estimate_singlediode_params(poa,
     if verbose:
         print('Elapsed time: {:.2f}'.format(time() - start_time))
 
-    results = {}
+
 
     return params, results
