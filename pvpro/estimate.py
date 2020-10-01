@@ -7,7 +7,7 @@ matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 from pvlib.temperature import sapm_cell_from_module
-from pvlib.ivtools import fit_sdm_desoto
+from pvlib.ivtools.sdm import fit_desoto as fit_sdm_desoto
 from pvlib.pvsystem import calcparams_desoto, singlediode
 from scipy.special import lambertw
 from numpy.linalg import pinv
