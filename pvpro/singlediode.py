@@ -398,23 +398,35 @@ def pv_system_single_diode_model(
         **kwargs
 ):
     """
+    Function for returning the dc operating (current and voltage) point given
+    single diode model parameters and the operating_cls.
 
-    Fit function, reorganize Vmp, Imp outputs of size (1*N,) into a size (
-    N*2,) vector. This is important because this is how
-    scipy.optimize.curve_fit works.
+    If the operating class is open-circuit, or maximum-power-point then this
+    function is a simple call to pvlib_single_diode.
+
+    If the operating class is "clipped", then a more complicated algorithm is
+    used to find the closest point on the I,V curve to the current_operation,
+    voltage_operation input point.
 
     Parameters
     ----------
-    X :
-
-        irrad_poa, temp_cell, operating_cls
-
-    resistance_shunt
-    resistance_series
-    diode_ideality_factor
-
-    reference_photocurrent
-    reference_saturation_current
+    effective_irradiance
+    temperature_cell
+    operating_cls
+    diode_factor
+    photocurrent_ref
+    saturation_current_ref
+    resistance_series_ref
+    conductance_shunt_extra
+    resistance_shunt_ref
+    cells_in_series
+    alpha_isc
+    voltage_operation
+    current_operation
+    band_gap_ref
+    dEgdT
+    method
+    kwargs
 
     Returns
     -------

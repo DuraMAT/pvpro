@@ -10,6 +10,14 @@ This package, pvpro, automates the analysis of PV production data to extract the
 
 To try it out, you need to clone the most recent development branch of solar-data-tools and statistical-clear-sky.
 
+# Methods
+
+Here's a high level overview of the most important parts of the package.
+
+- fit.production_data_curve_fit - Fits a single diode model to production data.
+- main.PvProHandler - class method for running the pvpro data analysis. Convenient way to keep track of all the variables required for the analysis and run production_data_curve_fit iteratively over time-series data.
+- main.PvProHandler.execute - Runs the pvpro simulfit.
+
 
 # Installation
 
