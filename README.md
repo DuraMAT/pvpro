@@ -10,9 +10,20 @@ This package, pvpro, automates the analysis of PV production data to extract the
 
 To try it out, you need to clone the most recent development branch of solar-data-tools and statistical-clear-sky.
 
+
 # Installation
 
-One way to make a valid virtual environment is with the following commands. This section will be updated in the future to make a more minimal environment.
+## Install with conda
+
+Install can be performed with the included `pvpro-user.yml` file by running:
+
+```
+conda env create -f pvpro-user.yml
+```
+
+## Make a virtual environment
+
+Another way to make a valid virtual environment is with the following commands. This section will be updated in the future to make a more minimal environment.
 
 ```
 conda create --name pvpro python=3 numpy scipy pandas matplotlib cvxpy tqdm pyqt
