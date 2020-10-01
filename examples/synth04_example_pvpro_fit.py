@@ -1,5 +1,5 @@
 """
-Example pvpro fit for a synthetic dataset.
+"Minimal" example of pvpro fit for a synthetic dataset.
 
 @author: toddkarin
 """
@@ -23,15 +23,18 @@ df = pd.read_pickle('synth01_out.pkl')
 
 from pvlib.temperature import sapm_cell_from_module
 
+# Estimate cell temperature.
 df['temperature_cell_meas'] = sapm_cell_from_module(
     module_temperature=df['temperature_module_meas'],
     poa_global=df['poa_meas'],
     deltaT=3)
 
-
+# Classify operating modes.
 df['operating_cls'] = classify_operating_mode(voltage=df['v_dc'],
                                               current=df['i_dc'],
                                               power_clip=np.inf)
+
+# Clip dataframe shorter.
 df = df[:5000]
 
 # Run the fit
