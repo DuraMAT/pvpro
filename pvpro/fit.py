@@ -105,6 +105,7 @@ def p_to_x(p, key):
     else:
         raise Exception("Key '{}' not understood".format(key))
 
+
 def production_data_curve_fit(
         temperature_cell,
         effective_irradiance,
@@ -230,7 +231,7 @@ def production_data_curve_fit(
 
     """
 
-    if type(p0) == type(None):
+    if p0 is None:
         p0 = dict(
             diode_factor=1.0,
             photocurrent_ref=6,
@@ -239,12 +240,15 @@ def production_data_curve_fit(
             conductance_shunt_extra=0.001
         )
 
-    if type(fit_params) == type(None):
-        fit_params = ['diode_factor', 'photocurrent_ref',
+    if fit_params is None:
+        # Parameters that are optimized in fit.
+        fit_params = ['diode_factor',
+                      'photocurrent_ref',
                       'saturation_current_ref',
-                      'resistance_series_ref', 'conductance_shunt_extra']
+                      'resistance_series_ref',
+                      'conductance_shunt_extra']
 
-    if type(lower_bounds) == type(None):
+    if lower_bounds is None:
         lower_bounds = dict(
             diode_factor=0.5,
             photocurrent_ref=0,
@@ -253,7 +257,7 @@ def production_data_curve_fit(
             conductance_shunt_extra=0
         )
 
-    if type(upper_bounds) == type(None):
+    if upper_bounds is None:
         upper_bounds = dict(
             diode_factor=2,
             photocurrent_ref=20,
@@ -291,6 +295,7 @@ def production_data_curve_fit(
         voltage = voltage[cax]
         current = current[cax]
 
+    # Weights (equally weighted currently)
     weights = np.zeros_like(operating_cls)
     weights[operating_cls == 0] = 1
     weights[operating_cls == 1] = 1
@@ -302,7 +307,8 @@ def production_data_curve_fit(
         print('Voc points: {}'.format(np.sum(operating_cls == 1)))
         print('Clipped points: {}'.format(np.sum(operating_cls == 3)))
 
-    if len(effective_irradiance) == 0 or len(effective_irradiance) == 0 or len(
+    # If no points left after removing unused classes, function returns.
+    if len(effective_irradiance) == 0 or len(
             operating_cls) == 0 or len(voltage) == 0 or len(current) == 0:
         p = dict(
             diode_factor=np.nan,
@@ -325,6 +331,7 @@ def production_data_curve_fit(
         method=singlediode_method,
     )
 
+    # Set kwargs
     if not diode_factor == None:
         model_kwargs['diode_factor'] = diode_factor
     if not photocurrent_ref == None:
@@ -346,14 +353,27 @@ def production_data_curve_fit(
     fit_params = p0.keys()
 
     def model(x):
+        """
+        Return vdc, idc operating point given the fixed parameters.
+
+        Parameters
+        ----------
+        x
+
+        Returns
+        -------
+        voltage_fit
+
+        current_fit
+
+        """
+        # TODO: Maybe there is a better way to pass in the extra args.
         p = model_kwargs.copy()
         n = 0
         for param in fit_params:
             p[param] = x_to_p(x[n], param)
             n = n + 1
         voltage_fit, current_fit = pv_system_single_diode_model(**p)
-
-        # For clipped points, need to calculate
 
         return voltage_fit, current_fit
 
