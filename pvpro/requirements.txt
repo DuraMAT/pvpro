@@ -29,3 +29,4 @@ threadpoolctl==2.1.0
 tornado==6.0.4
 tqdm
 urllib3==1.25.10
+pvlib==0.7.2
