@@ -21,8 +21,7 @@ from pvpro import PvProHandler
 # Import synthetic data
 df = pd.read_pickle('synth01_out.pkl')
 
-save_figs_directory = 'figures/synth02'
-
+save_figs_directory = 'figures'
 
 # Create a boolean mask to not use values with extra low irradiance
 
