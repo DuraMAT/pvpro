@@ -1156,7 +1156,7 @@ class PvProHandler:
 
         temp_limits = np.linspace(vmin, vmax, 8)
 
-        cax = np.array(df['operating_cls'] == 3)
+        cax = np.array(df['operating_cls'] == 2)
 
         current = np.array(
             df.loc[cax, self.current_key]) / self.parallel_strings

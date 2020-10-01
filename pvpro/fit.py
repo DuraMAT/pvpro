@@ -266,10 +266,6 @@ def production_data_curve_fit(
             conductance_shunt_extra=10
         )
 
-    #         0: System at maximum power point.
-    #         1: System at open circuit conditions.
-    #         2: Low irradiance nighttime.
-    #         3: Clipped/curtailed operation. Not necessarily at mpp.
 
     if not use_mpp_points:
         cax = operating_cls != 0
@@ -288,7 +284,7 @@ def production_data_curve_fit(
         current = current[cax]
 
     if not use_clip_points:
-        cax = operating_cls != 3
+        cax = operating_cls != 2
         effective_irradiance = effective_irradiance[cax]
         temperature_cell = temperature_cell[cax]
         operating_cls = operating_cls[cax]
@@ -299,13 +295,13 @@ def production_data_curve_fit(
     weights = np.zeros_like(operating_cls)
     weights[operating_cls == 0] = 1
     weights[operating_cls == 1] = 1
-    weights[operating_cls == 3] = 1
+    weights[operating_cls == 2] = 1
 
     if verbose:
-        print('Total points: {}'.format(len(operating_cls)))
-        print('MPP points: {}'.format(np.sum(operating_cls == 0)))
-        print('Voc points: {}'.format(np.sum(operating_cls == 1)))
-        print('Clipped points: {}'.format(np.sum(operating_cls == 3)))
+        print('Total number points: {}'.format(len(operating_cls)))
+        print('Number MPP points: {}'.format(np.sum(operating_cls == 0)))
+        print('Number Voc points: {}'.format(np.sum(operating_cls == 1)))
+        print('Number Clipped points: {}'.format(np.sum(operating_cls == 2)))
 
     # If no points left after removing unused classes, function returns.
     if len(effective_irradiance) == 0 or len(

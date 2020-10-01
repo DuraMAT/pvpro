@@ -592,12 +592,11 @@ def pv_system_single_diode_model(
     #         Array of classifications of each time stamp.
     #         0: System at maximum power point.
     #         1: System at open circuit conditions.
-    #         2: Low irradiance nighttime.
+    #         2: Clip
 
-    # If cls is 3, then system is clipped, need to find closest iv curve point.
-
-    if np.any(operating_cls == 3):
-        cax = operating_cls == 3
+    # If cls is 2, then system is clipped, need to find closest iv curve point.
+    if np.any(operating_cls == 2):
+        cax = operating_cls == 2
         voltage_operation[cax][voltage_operation[cax] > out['v_oc'][cax]] = \
             out['v_oc'][cax]
         current_operation[cax][current_operation[cax] > out['i_sc'][cax]] = \

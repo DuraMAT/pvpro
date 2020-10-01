@@ -16,12 +16,11 @@ def classify_operating_mode(voltage, current,
     operating_cls : array
 
         Array of classifications of each time stamp.
-        -1: Unclassified
+
         0: System at maximum power point.
         1: System at open circuit conditions.
-        2: Nighttime, inverter off. (REMOVE)
-        3: Clipped or curtailed. DC operating point is not necessarily at MPP.
-
+        2: Clipped or curtailed. DC operating point is not necessarily at MPP.
+        -1: Other
     """
     # TODO: delete class 2.
 
@@ -35,14 +34,14 @@ def classify_operating_mode(voltage, current,
     )] = 0
 
     # Nighttime, low voltage and irradiance (inverter off)
-    cls[voltage < voltage.max() * 0.01] = 2
+    cls[voltage < voltage.max() * 0.01] = -1
 
     # Open circuit condition
     cls[np.logical_and(current < current.max() * 0.01,
                        voltage > voltage.max() * 0.01)] = 1
 
     # Clipped data. Easy algorithm.
-    cls[current * voltage > power_clip] = 3
+    cls[current * voltage > power_clip] = 2
 
     return cls
 
