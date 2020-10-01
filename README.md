@@ -20,13 +20,18 @@ Install can be performed with the included `pvpro-user.yml` file by running:
 ```
 conda env create -f pvpro-user.yml
 ```
+Next activate the environment, cd into the pvpro repository and run:
+
+```
+pip install -e .
+```
 
 ## Install with pip
 ```
 pip install pvpro
 ```
 
-## Make a virtual environment
+## Make environment by installing things seperately
 
 Another way to make a valid virtual environment is with the following commands. This section will be updated in the future to make a more minimal environment.
 
