@@ -7,7 +7,6 @@ Created on Sun Apr 19 09:27:50 2020
 @author: cliff, toddkarin
 """
 
-
 import numpy as np
 import pandas as pd
 from pvpro.singlediode import calculate_temperature_coeffs, pvlib_single_diode
@@ -36,14 +35,14 @@ df = df[:'2002-01-01']
 # 15 minute interpolation
 df = df.resample('15T').interpolate('linear')
 
-# drop times when GHI is <= 10
+# drop times when GHI is <= 1
 df.drop(df.index[df['ghi'] <= 1.], inplace=True)
 
 # assume poa = ghi, e.g., horizontal module
 df['poa_actual'] = df['ghi']
 
 # Simulate some noise on the measured poa irradiance.
-poa_noise_level = 0.05
+poa_noise_level = 0.02
 df['poa_meas'] = df['poa_actual'] * (
             1 + poa_noise_level * (np.random.random(df['ghi'].shape) - 0.5))
 
@@ -65,7 +64,7 @@ df['temperature_cell_actual'] = sapm_cell(
     deltaT=3)
 
 # "measured" module temperature has noise.
-temperature_noise_level = 3
+temperature_noise_level = 2
 df['temperature_module_meas'] = df['temperature_module_actual'] + (
         np.random.random(df['ghi'].shape) - 0.5) * temperature_noise_level
 
@@ -90,15 +89,14 @@ df['diode_factor'] = 1.1 - 0.01 * t_years
 df['nNsVth_ref'] = df['diode_factor'] * df['cells_in_series'] * kb / q * (
         273.15 + 25)
 df['photocurrent_ref'] = 6.0 - (0.1 * t_years - 0.1 * np.sin(2 * np.pi * t_years))
-# df['photocurrent_ref'] = 6
 df['saturation_current_ref'] = 1e-9 + 1e-9 * t_years
 # df['resistance_shunt_ref'] = step_change(1000, 100, t_years, 2)
 df['resistance_shunt_ref'] = 400
-df['conductance_shunt_extra'] = 0.000 + 0 *0.0004 * t_years
+df['conductance_shunt_extra'] = 0.000 + 0.0003 * t_years
 # df['resistance_shunt_ref'] = 1000 - 950/4*t_years
 # df.loc[t_years>2,'resistance_shunt_ref'] = 13
 # df['resistance_series_ref'] = 0.2 +  0.4 * t_years
-df['resistance_series_ref'] = 0.3 + 0 * 0.05 * t_years
+df['resistance_series_ref'] = 0.3 +  0.05 * t_years
 df['EgRef'] = 1.121
 df['dEgdT'] = -0.0002677
 
