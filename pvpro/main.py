@@ -91,9 +91,11 @@ class PvProHandler:
     def df(self):
         """
         Store dataframe inside the DataHandler.
+
         Returns
         -------
-
+        df : dataframe
+            Time-series data
         """
         return self.dh.data_frame
 
@@ -104,7 +106,8 @@ class PvProHandler:
 
         Parameters
         ----------
-        value
+        value : dataframe
+            Time-series data
 
         Returns
         -------
@@ -116,7 +119,32 @@ class PvProHandler:
     # def iteration_start_days_setter(self, value):
     #     print('Cannot set iteration start days directly.')
 
+    def calculate_cell_temperature(self):
+        """
+        Set cell temeperature in dataframe.
+
+        Todo: move this functionality to preprocessing.
+
+        Returns
+        -------
+
+        """
+        # Calculate cell temperature
+        self.df.loc[:, 'temperature_cell'] = sapm_cell_from_module(
+            self.df[self.temperature_module_key],
+            self.df[self.irradiance_poa_key],
+            deltaT=self.delta_T)
+
     def simulation_setup(self):
+        """
+        Perform "quick" preprocessing steps.
+
+        TODO: remove this functionality to preprocessing library.
+
+        Returns
+        -------
+
+        """
 
         # Remove nan from df.
         keys = [self.voltage_key,
@@ -140,17 +168,24 @@ class PvProHandler:
 
         self.calculate_cell_temperature()
 
-    def calculate_cell_temperature(self):
-
-        # Calculate cell temperature
-        self.df.loc[:, 'temperature_cell'] = sapm_cell_from_module(
-            self.df[self.temperature_module_key],
-            self.df[self.irradiance_poa_key],
-            deltaT=self.delta_T)
-
     def run_preprocess(self, correct_tz=True, data_sampling=None,
                        run_solar_data_tools=True):
+        """
+        Perform "time-consuming" preprocessing steps
 
+        TODO: remove this functionality to preprocessing library.
+
+
+        Parameters
+        ----------
+        correct_tz
+        data_sampling
+        run_solar_data_tools
+
+        Returns
+        -------
+
+        """
         if self.df[self.temperature_module_key].max() > 85:
             warnings.warn(
                 'Maximum module temperature is larger than 85 C. Double check that input temperature is in Celsius, not Farenheight.')
@@ -208,39 +243,23 @@ class PvProHandler:
         print(pd.Series(info_display))
         return info_display
 
-    #
-    # def get_df_for_iteration(self, k,
-    #                          use_clear_times=False):
-    #
-    #     if use_clear_times:
-    #
-    #         if not 'clear_time' in self.df.keys():
-    #             raise Exception(
-    #                 'Need to find clear times using find_clear_times() first.')
-    #
-    #         idx = np.logical_and.reduce((
-    #             self.df.index >= self.df.index[0] + datetime.timedelta(
-    #                 int(self.iteration_start_days[k])),
-    #             self.df.index < self.df.index[0] + datetime.timedelta(
-    #                 int(self.iteration_start_days[k] + self.days_per_run)),
-    #             self.df['clear_time']
-    #         ))
-    #     else:
-    #
-    #         idx = np.logical_and.reduce((
-    #             self.df.index >= self.df.index[0] + datetime.timedelta(
-    #                 int(self.iteration_start_days[k])),
-    #             self.df.index < self.df.index[0] + datetime.timedelta(
-    #                 int(self.iteration_start_days[k] + self.days_per_run))
-    #         ))
-    #
-    #     # print('Current index for df', idx)
-    #     return self.df[idx]
-
     def find_clear_times(self,
                          min_length=2,
                          smoothness_hyperparam=5000):
+        """
+        Find clear times.
 
+        TODO: remove this functionality to preprocessing library.
+
+        Parameters
+        ----------
+        min_length
+        smoothness_hyperparam
+
+        Returns
+        -------
+
+        """
         self.dh.find_clear_times(min_length=min_length,
                                  smoothness_hyperparam=smoothness_hyperparam)
         self.dh.augment_data_frame(self.dh.boolean_masks.clear_times,
@@ -252,7 +271,40 @@ class PvProHandler:
                                    verbose=False,
                                    figure=True,
                                    optimize_Rs_Io=True):
+        """
+        Run quick parameter estimation over data.
 
+        Parameters
+        ----------
+        freq : str
+
+            pandas frequency for sectioning data.
+
+        max_iter : numeric
+
+            Maximum number of iterations to run the algorithm.
+
+        verbose : bool
+
+            Whether to print verbose output.
+
+        figure : bool
+
+            Whether to draw and export figures on last iteration.
+
+        optimize_Rs_Io
+
+            Whether to run series resistance and saturation current
+            optimization.
+
+        Returns
+        -------
+
+        out : dataframe
+
+            Dataframe of best-fit parameters
+
+        """
         start_time = time.time()
         out = {}
 
@@ -319,6 +371,35 @@ class PvProHandler:
                 fit_params=None,
                 lower_bounds=None,
                 upper_bounds=None):
+        """
+        Main PVPRO Method.
+
+
+        Parameters
+        ----------
+        iteration
+        boolean_mask
+        days_per_run
+        time_step_between_iterations_days
+        start_point_method
+        use_mpp_points
+        use_voc_points
+        use_clip_points
+        verbose
+        method
+        solver
+        save_figs
+        save_figs_directory
+        plot_imp_max
+        plot_vmp_max
+        fit_params
+        lower_bounds
+        upper_bounds
+
+        Returns
+        -------
+
+        """
 
         start_time = time.time()
         q = 1.602e-19
@@ -426,17 +507,16 @@ class PvProHandler:
                 # try:
 
                 # Can update p0 each iteration in future.
-                if start_point_method == 'fixed':
+                if start_point_method.lower() == 'fixed':
                     for key in fit_params:
                         p0.loc[k, key] = self.p0[key]
-                elif start_point_method == 'last':
+                elif start_point_method.lower() == 'last':
                     if n == 0:
                         for key in fit_params:
                             p0.loc[k, key] = self.p0[key]
                     else:
                         for key in fit_params:
-                            p0.loc[k_last_iteration, key] = self.p0[key]
-
+                            p0.loc[k, key] = p0.loc[k_last_iteration, key]
                 else:
                     raise ValueError(
                         'start_point_method must be "fixed" or "last"')
@@ -561,7 +641,9 @@ class PvProHandler:
                                                     'Vmp_Imp',
                                                     '{}_Vmp-Imp_{}.png'.format(
                                                         self.system_name, k))
-                    print('Exporting: {}'.format(vmp_imp_fig_name))
+
+                    if verbose:
+                        print('Exporting: {}'.format(vmp_imp_fig_name))
                     plt.savefig(vmp_imp_fig_name,
                                 dpi=350, )
 
@@ -620,7 +702,8 @@ class PvProHandler:
                 pfit.loc[k, p + '_ref'] = out[p]
 
             # pfit.index = self.time
-
+        pfit['t_mean'] = pfit['t_start'] + datetime.timedelta(
+            days=days_per_run / 2)
         self.result = dict(
             p=pfit,
             p0=p0,
