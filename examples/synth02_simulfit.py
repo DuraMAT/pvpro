@@ -44,7 +44,7 @@ pvp = PvProHandler(df,
                    )
 
 # Preprocess
-pvp.run_preprocess()
+pvp.run_preprocess(run_solar_data_tools=False)
 
 # Find clear times (not necessary for synthetic data)
 """
@@ -81,20 +81,15 @@ hyperparams = {
     'use_clip_points': False,
     'method': 'minimize',
     'solver': 'L-BFGS-B',
-    'days_per_run': 90,
-    'time_step_between_iterations_days': 45,
-    'start_point_method': 'fixed',
+    'days_per_run': 30,
+    'time_step_between_iterations_days': 30,
+    'start_point_method': 'last',
     'save_figs_directory': save_figs_directory,
     'plot_imp_max': 7,
     'plot_vmp_max': 35,
     'boolean_mask': boolean_mask
 }
 
-# Run on first iteration
-ret = pvp.execute(iteration=[0],
-                  save_figs=True,
-                  verbose=False,
-                  **hyperparams)
 
 run_all = True
 if run_all:
@@ -103,13 +98,16 @@ if run_all:
                   save_figs=True,
                   verbose=False,
                   **hyperparams)
-
+else:
+    # Run on first iteration
+    ret = pvp.execute(iteration=[0,1],
+                      save_figs=True,
+                      verbose=False,
+                      **hyperparams)
 # Get results
 pfit = pvp.result['p']
 print(pfit)
 
-from datetime import timedelta
-pfit['t_mean'] = pfit['t_start'] + timedelta(days=hyperparams['days_per_run']/2)
 
 # ------------------------------------------------------------------------------
 # Make degradation plots.
