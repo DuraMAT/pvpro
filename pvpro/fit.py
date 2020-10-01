@@ -25,6 +25,86 @@ from pvpro.singlediode import pvlib_single_diode, pv_system_single_diode_model, 
     singlediode_closest_point
 
 
+def x_to_p(x, key):
+    """
+    Change from numerical fit value (x) to physical parameter (p). This
+    transformation improves the numerical performance of the fitting algorithm.
+
+    Parameters
+    ----------
+    x : ndarray
+
+        Value of parameter for numerical fitting.
+
+    key : str
+
+        parameter to change, can be 'diode_factor', 'photocurrent_ref',
+        'saturation_current_ref', 'resistance_series_ref',
+        'resistance_shunt_ref', 'conductance_shunt_extra'
+
+
+    Returns
+    -------
+    p : ndarray
+
+        Value of physical parameter.
+
+
+    """
+    if key == 'diode_factor':
+        return x
+    elif key == 'photocurrent_ref':
+        return x
+    elif key == 'saturation_current_ref':
+        return np.exp(x - 21)
+    elif key == 'resistance_series_ref':
+        return x
+    elif key == 'resistance_shunt_ref':
+        return np.exp(2 * (x - 1))
+    elif key == 'conductance_shunt_extra':
+        return x
+    else:
+        raise Exception("Key '{}' not understood".format(key))
+
+
+def p_to_x(p, key):
+    """
+    Change from physical parameter (p) to numerical fit value (x). This
+    transformation improves the numerical performance of the fitting algorithm.
+
+    Parameters
+    ----------
+    p : ndarray
+
+        Value of physical parameter.
+
+    key : str
+
+        parameter to change, can be 'diode_factor', 'photocurrent_ref',
+        'saturation_current_ref', 'resistance_series_ref',
+        'resistance_shunt_ref', 'conductance_shunt_extra'
+
+    Returns
+    -------
+    x : ndarray
+
+        Value of parameter for numerical fitting.
+    """
+    if key == 'diode_factor':
+        return p
+    elif key == 'photocurrent_ref':
+        return p
+    elif key == 'saturation_current_ref':
+        return np.log(p) + 21
+    elif key == 'resistance_series_ref':
+        return p
+    elif key == 'resistance_shunt_ref':
+        return np.log(p) / 2 + 1
+    elif key == 'conductance_shunt_extra':
+        return p
+    else:
+        raise Exception("Key '{}' not understood".format(key))
+
 def production_data_curve_fit(
         temperature_cell,
         effective_irradiance,
@@ -164,21 +244,24 @@ def production_data_curve_fit(
                       'saturation_current_ref',
                       'resistance_series_ref', 'conductance_shunt_extra']
 
-    lower_bounds = lower_bounds or dict(
-        diode_factor=0.5,
-        photocurrent_ref=0,
-        saturation_current_ref=1e-13,
-        resistance_series_ref=0,
-        conductance_shunt_extra=0
-    )
+    if type(lower_bounds) == type(None):
+        lower_bounds = dict(
+            diode_factor=0.5,
+            photocurrent_ref=0,
+            saturation_current_ref=1e-13,
+            resistance_series_ref=0,
+            conductance_shunt_extra=0
+        )
 
-    upper_bounds = upper_bounds or dict(
-        diode_factor=2,
-        photocurrent_ref=20,
-        saturation_current_ref=1e-5,
-        resistance_series_ref=1,
-        conductance_shunt_extra=10
-    )
+    if type(upper_bounds) == type(None):
+        upper_bounds = dict(
+            diode_factor=2,
+            photocurrent_ref=20,
+            saturation_current_ref=1e-5,
+            resistance_series_ref=1,
+            conductance_shunt_extra=10
+        )
+
     #         0: System at maximum power point.
     #         1: System at open circuit conditions.
     #         2: Low irradiance nighttime.
@@ -258,45 +341,6 @@ def production_data_curve_fit(
         model_kwargs['conductance_shunt_extra'] = conductance_shunt_extra
 
     # Functions for translating from optimization quantity (x) to physical parameter (p)
-    def x_to_p(x, key):
-        """
-        Change from numerical fit value (x) to physical parameter (p).
-
-        Parameters
-        ----------
-        x
-        key
-
-        Returns
-        -------
-
-        """
-        if key == 'diode_factor':
-            return x
-        elif key == 'photocurrent_ref':
-            return x
-        elif key == 'saturation_current_ref':
-            return np.exp(x - 21)
-        elif key == 'resistance_series_ref':
-            return x
-        elif key == 'resistance_shunt_ref':
-            return np.exp(2 * (x - 1))
-        elif key == 'conductance_shunt_extra':
-            return x
-
-    def p_to_x(p, key):
-        if key == 'diode_factor':
-            return p
-        elif key == 'photocurrent_ref':
-            return p
-        elif key == 'saturation_current_ref':
-            return np.log(p) + 21
-        elif key == 'resistance_series_ref':
-            return p
-        elif key == 'resistance_shunt_ref':
-            return np.log(p) / 2 + 1
-        elif key == 'conductance_shunt_extra':
-            return p
 
     # note that this will be the order of parameters in the model function.
     fit_params = p0.keys()
@@ -334,9 +378,13 @@ def production_data_curve_fit(
             raise Exception('solver must be "Nelder-Mead" or "L-BFGS-B"')
 
         if verbose:
-            print('p0')
+            print('--')
+            print('p0:')
             for k in fit_params:
                 print(k, p0[k])
+            print('--')
+
+        # Get numerical fit start point.
         x0 = [p_to_x(p0[k], k) for k in fit_params]
 
         # print('p0: ', p0)
