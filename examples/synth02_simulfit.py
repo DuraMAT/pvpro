@@ -11,9 +11,9 @@ from pandas.plotting import register_matplotlib_converters
 register_matplotlib_converters()
 
 import matplotlib
-
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
+plt.ion()
 
 # import seaborn as sns
 from pvpro import PvProHandler
@@ -24,7 +24,6 @@ df = pd.read_pickle('synth01_out.pkl')
 save_figs_directory = 'figures'
 
 # Create a boolean mask to not use values with extra low irradiance
-
 
 # Make PvProHandler object to store data.
 pvp = PvProHandler(df,
@@ -90,7 +89,7 @@ hyperparams = {
 }
 
 
-run_all = True
+run_all = False
 if run_all:
     # Run on all iterations.
     ret = pvp.execute(iteration='all',
