@@ -22,7 +22,6 @@ def classify_operating_mode(voltage, current,
         2: Clipped or curtailed. DC operating point is not necessarily at MPP.
         -1: Other
     """
-    # TODO: delete class 2.
 
 
     cls = np.zeros(np.shape(voltage)) - 1
