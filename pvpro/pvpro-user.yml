@@ -25,6 +25,7 @@ dependencies:
   - mosek
   - tqdm
   - pyqt
+  - pvlib-python
   - pip:
     - cvxpy
     - dill
