@@ -3,18 +3,15 @@ import numpy as np
 import pandas as pd
 # import pytz
 
-
-
 import datetime
 import os
 import warnings
 import time
 from tqdm import tqdm
 
-
 import matplotlib
-
 matplotlib.use('TkAgg')
+
 import matplotlib.pyplot as plt
 
 from solardatatools import DataHandler
