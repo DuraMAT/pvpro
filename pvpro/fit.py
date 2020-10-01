@@ -2,7 +2,7 @@ import pvlib
 import numpy as np
 import pandas as pd
 # import pytz
-from collections import OrderedDict
+# from collections import OrderedDict
 # from functools import partial
 import scipy
 import datetime
@@ -12,15 +12,18 @@ import time
 
 from pvlib.singlediode import _lambertw_i_from_v, _lambertw_v_from_i
 from pvlib.pvsystem import calcparams_desoto
-
+from scipy.optimize import minimize
 import matplotlib
+
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 from scipy.optimize import basinhopping
 
 from pvpro.estimate import estimate_imp_ref, estimate_singlediode_params
-from pvpro.singlediode import pvlib_single_diode, pv_system_single_diode_model, singlediode_closest_point
+from pvpro.singlediode import pvlib_single_diode, pv_system_single_diode_model, \
+    singlediode_closest_point
+
 
 def production_data_curve_fit(
         temperature_cell,
@@ -28,8 +31,8 @@ def production_data_curve_fit(
         operating_cls,
         voltage,
         current,
-        lower_bounds,
-        upper_bounds,
+        lower_bounds=None,
+        upper_bounds=None,
         alpha_isc=None,
         diode_factor=None,
         photocurrent_ref=None,
@@ -150,16 +153,32 @@ def production_data_curve_fit(
     if type(p0) == type(None):
         p0 = dict(
             diode_factor=1.0,
-            photocurrent_ref=8,
-            saturation_current_ref=10,
-            resistance_series_ref=10,
-            conductance_shunt_extra=0
+            photocurrent_ref=6,
+            saturation_current_ref=1e-9,
+            resistance_series_ref=0.2,
+            conductance_shunt_extra=0.001
         )
 
     if type(fit_params) == type(None):
-        fit_params = ['diode_factor', 'photocurrent_ref', 'saturation_current_ref',
+        fit_params = ['diode_factor', 'photocurrent_ref',
+                      'saturation_current_ref',
                       'resistance_series_ref', 'conductance_shunt_extra']
 
+    lower_bounds = lower_bounds or dict(
+        diode_factor=0.5,
+        photocurrent_ref=0,
+        saturation_current_ref=1e-13,
+        resistance_series_ref=0,
+        conductance_shunt_extra=0
+    )
+
+    upper_bounds = upper_bounds or dict(
+        diode_factor=2,
+        photocurrent_ref=20,
+        saturation_current_ref=1e-5,
+        resistance_series_ref=1,
+        conductance_shunt_extra=10
+    )
     #         0: System at maximum power point.
     #         1: System at open circuit conditions.
     #         2: Low irradiance nighttime.
@@ -305,9 +324,9 @@ def production_data_curve_fit(
     #       residual([p_to_x(p0[k], k) for k in fit_params]))
 
     if method == 'minimize':
-        if solver.lower()=='nelder-mead':
-            bounds=None
-        elif solver.upper()=='L-BFGS-B':
+        if solver.lower() == 'nelder-mead':
+            bounds = None
+        elif solver.upper() == 'L-BFGS-B':
             bounds = scipy.optimize.Bounds(
                 [p_to_x(lower_bounds[k], k) for k in fit_params],
                 [p_to_x(upper_bounds[k], k) for k in fit_params])
@@ -324,17 +343,18 @@ def production_data_curve_fit(
         # print('bounds:', bounds)
 
         # print('Method: {}'.format(solver))
-
-        res = scipy.optimize.minimize(residual,
-                                      x0=x0,
-                                      bounds=bounds,
-                                      method=solver,
-                                      options=dict(
-                                          # maxiter=100,
-                                          disp=verbose,
-                                          # ftol=0.001,
-                                      ),
-                                      )
+        if verbose:
+            print('Starting minimization: ')
+        res = minimize(residual,
+                       x0=x0,
+                       bounds=bounds,
+                       method=solver,
+                       options=dict(
+                           # maxiter=100,
+                           disp=verbose,
+                           # ftol=0.001,
+                       ),
+                       )
 
         # print(res)
         n = 0
