@@ -305,9 +305,14 @@ def production_data_curve_fit(
     #       residual([p_to_x(p0[k], k) for k in fit_params]))
 
     if method == 'minimize':
-        bounds = scipy.optimize.Bounds(
-            [p_to_x(lower_bounds[k], k) for k in fit_params],
-            [p_to_x(upper_bounds[k], k) for k in fit_params])
+        if solver.lower()=='nelder-mead':
+            bounds=None
+        elif solver.upper()=='L-BFGS-B':
+            bounds = scipy.optimize.Bounds(
+                [p_to_x(lower_bounds[k], k) for k in fit_params],
+                [p_to_x(upper_bounds[k], k) for k in fit_params])
+        else:
+            raise Exception('solver must be "Nelder-Mead" or "L-BFGS-B"')
 
         if verbose:
             print('p0')
