@@ -13,6 +13,30 @@ def calcparams_pvpro(effective_irradiance, temperature_cell,
                      conductance_shunt_extra,
                      Eg_ref=1.121, dEgdT=-0.0002677,
                      irradiance_ref=1000, temperature_ref=25):
+    """
+    Similar to pvlib calcparams_desoto, except an extra shunt conductance is
+    added.
+
+    Parameters
+    ----------
+    effective_irradiance
+    temperature_cell
+    alpha_isc
+    nNsVth_ref
+    photocurrent_ref
+    saturation_current_ref
+    resistance_shunt_ref
+    resistance_series_ref
+    conductance_shunt_extra
+    Eg_ref
+    dEgdT
+    irradiance_ref
+    temperature_ref
+
+    Returns
+    -------
+
+    """
     iph, io, rs, rsh, nNsVth = calcparams_desoto(
         effective_irradiance,
         temperature_cell,
@@ -182,6 +206,31 @@ def calculate_temperature_coeffs(
         irradiance_ref=1000,
         temperature_ref=25
 ):
+    """
+    Calculate temperature coefficients given single diode model parameters.
+
+    Parameters
+    ----------
+    diode_factor
+    photocurrent_ref
+    saturation_current_ref
+    resistance_series_ref
+    resistance_shunt_ref
+    cells_in_series
+    alpha_isc
+    conductance_shunt_extra
+    effective_irradiance
+    temperature_cell
+    band_gap_ref
+    dEgdT
+    method
+    irradiance_ref
+    temperature_ref
+
+    Returns
+    -------
+
+    """
     out = []
     for temperature_offset in [0, 1]:
         out_iter = pvlib_single_diode(
@@ -257,6 +306,35 @@ def singlediode_closest_point(
         method='newton',
         verbose=False,
         ivcurve_pnts=1000):
+
+    """
+    Find the closest point on the IV curve, using brute force calculation.
+
+    Parameters
+    ----------
+    voltage
+    current
+    effective_irradiance
+    temperature_cell
+    resistance_shunt_ref
+    resistance_series_ref
+    diode_factor
+    cells_in_series
+    alpha_isc
+    photocurrent_ref
+    saturation_current_ref
+    Eg_ref
+    dEgdT
+    reference_irradiance
+    reference_temperature
+    method
+    verbose
+    ivcurve_pnts
+
+    Returns
+    -------
+
+    """
     out = pvlib_single_diode(
         effective_irradiance=effective_irradiance,
         temperature_cell=temperature_cell,
@@ -318,6 +396,32 @@ def singlediode_v_from_i(
         method='newton',
         verbose=False,
 ):
+    """
+    Calculate voltage at a particular point on the IV curve.
+
+    Parameters
+    ----------
+    current
+    effective_irradiance
+    temperature_cell
+    resistance_shunt_ref
+    resistance_series_ref
+    diode_factor
+    cells_in_series
+    alpha_isc
+    photocurrent_ref
+    saturation_current_ref
+    Eg_ref
+    dEgdT
+    reference_irradiance
+    reference_temperature
+    method
+    verbose
+
+    Returns
+    -------
+
+    """
     kB = 1.381e-23
     q = 1.602e-19
 
@@ -356,7 +460,33 @@ def singlediode_i_from_v(
         reference_temperature=25,
         method='newton',
         verbose=False,
-):
+    ):
+    """
+    Calculate current at a particular voltage on the IV curve.
+
+    Parameters
+    ----------
+    voltage
+    effective_irradiance
+    temperature_cell
+    resistance_shunt_ref
+    resistance_series_ref
+    diode_factor
+    cells_in_series
+    alpha_isc
+    photocurrent_ref
+    saturation_current_ref
+    Eg_ref
+    dEgdT
+    reference_irradiance
+    reference_temperature
+    method
+    verbose
+
+    Returns
+    -------
+
+    """
     kB = 1.381e-23
     q = 1.602e-19
 
@@ -404,9 +534,12 @@ def pv_system_single_diode_model(
     If the operating class is open-circuit, or maximum-power-point then this
     function is a simple call to pvlib_single_diode.
 
-    If the operating class is "clipped", then a more complicated algorithm is
-    used to find the closest point on the I,V curve to the current_operation,
-    voltage_operation input point.
+    If the operating class is 'clipped', then a more complicated algorithm is
+    used to find the "closest" point on the I,V curve to the
+    current_operation, voltage_operation input point. For numerical
+    efficiency, the point chosen is actually not closest, but triangulated
+    based on the current_operation, voltage_operation input and
+    horizontally/vertically extrapolated poitns on the IV curve.
 
     Parameters
     ----------

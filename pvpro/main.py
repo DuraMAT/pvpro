@@ -374,7 +374,12 @@ class PvProHandler:
         ----------
         iteration
         boolean_mask
-        days_per_run
+
+
+        days_per_run : float
+
+            Number of days passed to fit in each iteration.
+
         time_step_between_iterations_days
         start_point_method
         use_mpp_points
@@ -494,7 +499,7 @@ class PvProHandler:
                     boolean_mask
                 ))
 
-
+            # Get a section of df for this iteration.
             df = self.df[idx]
 
             if len(df) > 10:
