@@ -92,7 +92,7 @@ class PvProHandler:
         df : dataframe
             Time-series data
         """
-        return self.dh.data_frame
+        return self.dh.data_frame_raw
 
     @df.setter
     def df(self, value):
@@ -108,7 +108,7 @@ class PvProHandler:
         -------
 
         """
-        self.dh.data_frame = value
+        self.dh.data_frame_raw = value
 
     # @iteration_start_days.setter
     # def iteration_start_days_setter(self, value):
