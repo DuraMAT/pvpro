@@ -133,6 +133,7 @@ dmypy.json
 
 # figures folder for examples
 examples/figures
+examples/*.pkl
 
 ### macOS ###
 # General
