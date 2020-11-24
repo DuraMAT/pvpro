@@ -9,8 +9,8 @@ import warnings
 import time
 from tqdm import tqdm
 
-import matplotlib
-matplotlib.use('TkAgg')
+# import matplotlib
+# matplotlib.use('TkAgg')
 
 import matplotlib.pyplot as plt
 
