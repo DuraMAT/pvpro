@@ -131,6 +131,9 @@ dmypy.json
 
 # ADDED by Bennet Meyers on 11/24/20
 
+# figures folder for examples
+examples/figures
+
 ### macOS ###
 # General
 .DS_Store
