@@ -164,8 +164,7 @@ class PvProHandler:
         # Make cell temp column
         self.calculate_cell_temperature()
 
-    def run_preprocess(self, correct_tz=True, data_sampling=None,
-                       run_solar_data_tools=True):
+    def run_preprocess(self, correct_tz=True, data_sampling=None):
         """
         Perform "time-consuming" preprocessing steps
 
@@ -188,30 +187,50 @@ class PvProHandler:
 
         self.simulation_setup()
 
-        if run_solar_data_tools:
-            if type(data_sampling) != type(None):
-                self.dh.data_sampling = data_sampling
+        if type(data_sampling) != type(None):
+            self.dh.data_sampling = data_sampling
 
-            # Run solar-data-tools.
-            self.dh.run_pipeline(power_col='power_dc',
-                                 correct_tz=correct_tz,
-                                 extra_cols=[self.temperature_module_key,
-                                             self.irradiance_poa_key,
-                                             self.voltage_key,
-                                             self.current_key]
-                                 )
-
-            # Print report.
-            self.dh.report()
-            power_clip = self.dh.capacity_estimate * 0.99
-        else:
-            power_clip = np.nanmax(self.df['power_dc'])
-
-        # Calculate operating class.
-        self.df.loc[:, 'operating_cls'] = classify_operating_mode(
-            voltage=self.df[self.voltage_key] / self.modules_per_string,
-            current=self.df[self.current_key] / self.parallel_strings,
-            power_clip=power_clip)
+        # Run solar-data-tools.
+        self.dh.run_pipeline(power_col='power_dc',
+                             correct_tz=correct_tz,
+                             extra_cols=[self.temperature_module_key,
+                                         self.irradiance_poa_key,
+                                         self.voltage_key,
+                                         self.current_key],
+                             verbose=False)
+        self.dh.find_clipped_times()
+        # Calculate boolean masks
+        dh = self.dh
+        dh.augment_data_frame(dh.boolean_masks.daytime, 'daytime')
+        dh.augment_data_frame(dh.boolean_masks.clipped_times, 'clipped_times')
+        dh.augment_data_frame(np.nan_to_num(
+            dh.extra_matrices['dc_voltage_inv_2046'], nan=-9999) >
+                              0.05 * np.nanquantile(
+            dh.extra_matrices[self.voltage_key], 0.98), 'high_v')
+        dh.augment_data_frame(dh.daily_flags.no_errors, 'no_errors')
+        dh.augment_data_frame(
+            np.any([np.isnan(dh.extra_matrices[self.voltage_key]),
+                    np.isnan(dh.extra_matrices[self.current_key]),
+                    np.isnan(dh.extra_matrices[self.irradiance_poa_key]),
+                    np.isnan(dh.extra_matrices[self.temperature_module_key])],
+                   axis=0),
+            'missing_data')
+        # Apply operating class labels
+        self.df.loc[:, 'operating_cls'] = 0
+        self.df.loc[np.logical_or(
+            dh.data_frame_raw['missing_data'],
+            ~dh.data_frame_raw['no_errors']
+        ), 'operating_cls'] = -2
+        self.df.loc[np.logical_and(
+            ~dh.data_frame_raw['high_v'],
+            ~dh.data_frame_raw['daytime']
+        ), 'operating_cls'] = -1
+        self.df.loc[np.logical_and(
+            dh.data_frame_raw['high_v'],
+            ~dh.data_frame_raw['daytime']
+        ), 'operating_cls'] = 1
+        self.df.loc[
+            dh.data_frame_raw['clipped_times'], 'operating_cls'] = 2
 
         # TODO: this always overwrites p0 and should be changed so that if the user has set p0, it is not changed.
         self.estimate_p0()
