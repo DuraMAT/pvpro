@@ -161,6 +161,7 @@ class PvProHandler:
         self.df['power_dc'] = self.df[self.voltage_key] * self.df[
             self.current_key] / self.modules_per_string / self.parallel_strings
 
+        # Make cell temp column
         self.calculate_cell_temperature()
 
     def run_preprocess(self, correct_tz=True, data_sampling=None,
