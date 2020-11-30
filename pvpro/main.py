@@ -203,9 +203,9 @@ class PvProHandler:
         dh = self.dh
         dh.augment_data_frame(dh.boolean_masks.daytime, 'daytime')
         dh.augment_data_frame(dh.boolean_masks.clipped_times, 'clipped_times')
-        dh.augment_data_frame(np.nan_to_num(
-            dh.extra_matrices['dc_voltage_inv_2046'], nan=-9999) >
-                              0.05 * np.nanquantile(
+        voltage_fill_nan = np.nan_to_num(
+            dh.extra_matrices[self.voltage_key], nan=-9999)
+        dh.augment_data_frame(voltage_fill_nan > 0.05 * np.nanquantile(
             dh.extra_matrices[self.voltage_key], 0.98), 'high_v')
         dh.augment_data_frame(dh.daily_flags.no_errors, 'no_errors')
         dh.augment_data_frame(
