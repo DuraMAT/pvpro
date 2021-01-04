@@ -751,19 +751,6 @@ class PvProHandler:
 
         """
 
-        # self.simulation_setup()
-
-        # cax = self.df['operating_cls'] == 0
-
-        # self.p0, result = estimate_singlediode_params(
-        #     poa=self.df.loc[cax, self.irradiance_poa_key],
-        #     temperature_module=self.df.loc[cax, self.temperature_module_key],
-        #     vmp=self.df.loc[cax, self.voltage_key] / self.modules_per_string,
-        #     imp=self.df.loc[cax, self.current_key] / self.parallel_strings,
-        #     cells_in_series=self.cells_in_series,
-        #     delta_T=self.delta_T
-        # )
-
         self.p0, result = estimate_singlediode_params(
             poa=self.df[self.irradiance_poa_key],
             temperature_module=self.df[self.temperature_module_key],
