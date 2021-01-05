@@ -164,7 +164,8 @@ class PvProHandler:
         # Make cell temp column
         self.calculate_cell_temperature()
 
-    def run_preprocess(self, correct_tz=True, data_sampling=None):
+    def run_preprocess(self, correct_tz=True, data_sampling=None,
+                       correct_dst=False, fix_shifts=True):
         """
         Perform "time-consuming" preprocessing steps
 
@@ -191,13 +192,16 @@ class PvProHandler:
             self.dh.data_sampling = data_sampling
 
         # Run solar-data-tools.
+        if correct_dst:
+            self.dh.fix_dst()
         self.dh.run_pipeline(power_col='power_dc',
                              correct_tz=correct_tz,
                              extra_cols=[self.temperature_module_key,
                                          self.irradiance_poa_key,
                                          self.voltage_key,
                                          self.current_key],
-                             verbose=False)
+                             verbose=False,
+                             fix_shifts=fix_shifts)
         self.dh.find_clipped_times()
         # Calculate boolean masks
         dh = self.dh
@@ -205,8 +209,10 @@ class PvProHandler:
         dh.augment_data_frame(dh.boolean_masks.clipped_times, 'clipped_times')
         voltage_fill_nan = np.nan_to_num(
             dh.extra_matrices[self.voltage_key], nan=-9999)
-        dh.augment_data_frame(voltage_fill_nan > 0.05 * np.nanquantile(
+        dh.augment_data_frame(voltage_fill_nan > 0.01 * np.nanquantile(
             dh.extra_matrices[self.voltage_key], 0.98), 'high_v')
+        dh.augment_data_frame(dh.filled_data_matrix < 0.01 * dh.capacity_estimate,
+                              'low_p')
         dh.augment_data_frame(dh.daily_flags.no_errors, 'no_errors')
         dh.augment_data_frame(
             np.any([np.isnan(dh.extra_matrices[self.voltage_key]),
@@ -227,7 +233,7 @@ class PvProHandler:
         ), 'operating_cls'] = -1
         self.df.loc[np.logical_and(
             dh.data_frame_raw['high_v'],
-            ~dh.data_frame_raw['daytime']
+            np.logical_or(~dh.data_frame_raw['daytime'], dh.data_frame_raw['low_p'])
         ), 'operating_cls'] = 1
         self.df.loc[
             dh.data_frame_raw['clipped_times'], 'operating_cls'] = 2
