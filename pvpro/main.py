@@ -249,24 +249,35 @@ class PvProHandler:
                    axis=0),
             'missing_data')
         # Apply operating class labels
-        self.df.loc[:, 'operating_cls'] = 0
-        self.df.loc[np.logical_or(
-            dh.data_frame_raw['missing_data'],
-            ~dh.data_frame_raw['no_errors']
-        ), 'operating_cls'] = -2
-        self.df.loc[np.logical_and(
-            ~dh.data_frame_raw['high_v'],
-            ~dh.data_frame_raw['daytime']
-        ), 'operating_cls'] = -1
-        self.df.loc[np.logical_and(
-            dh.data_frame_raw['high_v'],
-            np.logical_or(~dh.data_frame_raw['daytime'], dh.data_frame_raw['low_p'])
-        ), 'operating_cls'] = 1
-        self.df.loc[
-            dh.data_frame_raw['clipped_times'], 'operating_cls'] = 2
+        for df in [dh.data_frame_raw, dh.data_frame]:
+            df.loc[:, 'operating_cls'] = 0
+            df.loc[np.logical_or(
+                df['missing_data'],
+                ~df['no_errors']
+            ), 'operating_cls'] = -2
+            df.loc[np.logical_and(
+                ~df['high_v'],
+                ~df['daytime']
+            ), 'operating_cls'] = -1
+            df.loc[np.logical_and(
+                df['high_v'],
+                np.logical_or(~df['daytime'], df['low_p'])
+            ), 'operating_cls'] = 1
+            df.loc[df['clipped_times'], 'operating_cls'] = 2
+        # Create matrix view of operating class labels for plotting
+        dh.generate_extra_matrix('operating_cls', new_index=dh.data_frame.index)
 
         # TODO: this always overwrites p0 and should be changed so that if the user has set p0, it is not changed.
         self.estimate_p0()
+
+    def visualize_operating_cls(self):
+        fig = plt.figure()
+        plt.imshow(self.dh.extra_matrices['operating_cls'], aspect='auto',
+                   interpolation='none',
+                   cmap='Paired')
+        plt.colorbar()
+        return fig
+
 
     def info(self):
         """
