@@ -52,8 +52,10 @@ def calcparams_pvpro(effective_irradiance, temperature_cell,
         temp_ref=temperature_ref
     )
 
-    # Increase shunt resistance by the extra shunt conductance.
-    rsh = 1 / (1 / rsh + conductance_shunt_extra)
+
+    # Increase shunt resistance by the extra shunt conductance, avoid divide by zero error.
+    rsh = 1 / (np.abs(1 / rsh) + np.abs(conductance_shunt_extra) + 1e-100)
+
 
     return iph, io, rs, rsh, nNsVth
 

@@ -15,12 +15,9 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from solardatatools import DataHandler
-from scipy.optimize import basinhopping
 from pvlib.temperature import sapm_cell_from_module
 
-
-from pvpro.singlediode import pvlib_single_diode, pv_system_single_diode_model, \
-    singlediode_closest_point
+from pvpro.singlediode import pv_system_single_diode_model
 from pvpro.fit import production_data_curve_fit
 from pvpro.classify import classify_operating_mode
 
@@ -39,6 +36,7 @@ class PvProHandler:
                  system_name='Unknown',
                  voltage_key=None,
                  current_key=None,
+                 # power_key=None,
                  temperature_module_key=None,
                  irradiance_poa_key=None,
                  modules_per_string=None,
@@ -65,6 +63,7 @@ class PvProHandler:
         self.resistance_shunt_ref = resistance_shunt_ref
         self.voltage_key = voltage_key
         self.current_key = current_key
+        # self.power_key = power_key
         self.temperature_module_key = temperature_module_key
         self.irradiance_poa_key = irradiance_poa_key
         self.modules_per_string = modules_per_string
@@ -110,9 +109,6 @@ class PvProHandler:
         """
         self.dh.data_frame_raw = value
 
-    # @iteration_start_days.setter
-    # def iteration_start_days_setter(self, value):
-    #     print('Cannot set iteration start days directly.')
 
     def calculate_cell_temperature(self):
         """
@@ -164,6 +160,32 @@ class PvProHandler:
         # Make cell temp column
         self.calculate_cell_temperature()
 
+
+    # def check_keys(self):
+    #
+    #     if not self.temperature_module_key in self.df:
+    #         raise Exception('Module temperature key ("{}") not in dataframe'.format(
+    #             self.temperature_module_key
+    #         ))
+    #
+    #     if not self.irradiance_poa_key in self.df:
+    #         raise Exception('Irradiance key ("{}") not in dataframe'.format(
+    #             self.irradiance_poa_key
+    #         ))
+    #
+    #
+    #     if not self.voltage_key in self.df:
+    #         raise Exception('DC voltage key ("{}") not in dataframe'.format(
+    #             self.voltage_key
+    #         ))
+    #
+    #     if not self.current_key in self.df:
+    #         raise Exception('DC Current key ("{}") not in dataframe'.format(
+    #             self.current_key
+    #         ))
+    #
+
+
     def run_preprocess(self, correct_tz=True, data_sampling=None,
                        correct_dst=False, fix_shifts=True):
         """
@@ -182,11 +204,16 @@ class PvProHandler:
         -------
 
         """
+
+
+
+        self.simulation_setup()
+
         if self.df[self.temperature_module_key].max() > 85:
             warnings.warn(
                 'Maximum module temperature is larger than 85 C. Double check that input temperature is in Celsius, not Farenheight.')
 
-        self.simulation_setup()
+
 
         if type(data_sampling) != type(None):
             self.dh.data_sampling = data_sampling
@@ -254,7 +281,6 @@ class PvProHandler:
                 'alpha_isc', 'voltage_key', 'current_key',
                 'temperature_module_key',
                 'irradiance_poa_key', 'modules_per_string', 'parallel_strings',
-                'solver',
                 'dataset_length_days']
 
         info_display = {}
@@ -750,19 +776,6 @@ class PvProHandler:
         -------
 
         """
-
-        # self.simulation_setup()
-
-        # cax = self.df['operating_cls'] == 0
-
-        # self.p0, result = estimate_singlediode_params(
-        #     poa=self.df.loc[cax, self.irradiance_poa_key],
-        #     temperature_module=self.df.loc[cax, self.temperature_module_key],
-        #     vmp=self.df.loc[cax, self.voltage_key] / self.modules_per_string,
-        #     imp=self.df.loc[cax, self.current_key] / self.parallel_strings,
-        #     cells_in_series=self.cells_in_series,
-        #     delta_T=self.delta_T
-        # )
 
         self.p0, result = estimate_singlediode_params(
             poa=self.df[self.irradiance_poa_key],
