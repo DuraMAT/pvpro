@@ -20,7 +20,8 @@ def classify_operating_mode(voltage, current,
         0: System at maximum power point.
         1: System at open circuit conditions.
         2: Clipped or curtailed. DC operating point is not necessarily at MPP.
-        -1: Other
+        -1: No power/inverter off
+        -2: Other
     """
 
 

@@ -15,7 +15,7 @@ from pvlib.pvsystem import calcparams_desoto
 from scipy.optimize import minimize
 import matplotlib
 
-matplotlib.use('TkAgg')
+# matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 from scipy.optimize import basinhopping
