@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
 
-import matplotlib
-
-matplotlib.use('TkAgg')
+# import matplotlib
+#
+# matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 from pvlib.temperature import sapm_cell_from_module

@@ -1,5 +1,6 @@
 name: pvpro-user
 channels:
+  - anaconda
   - mosek
   - slacgismo
   - conda-forge

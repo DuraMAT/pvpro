@@ -157,6 +157,7 @@ class PvProHandler:
         self.df['power_dc'] = self.df[self.voltage_key] * self.df[
             self.current_key] / self.modules_per_string / self.parallel_strings
 
+        # Make cell temp column
         self.calculate_cell_temperature()
 
 
@@ -186,7 +187,7 @@ class PvProHandler:
 
 
     def run_preprocess(self, correct_tz=True, data_sampling=None,
-                       run_solar_data_tools=True):
+                       correct_dst=False, fix_shifts=True):
         """
         Perform "time-consuming" preprocessing steps
 
@@ -214,33 +215,69 @@ class PvProHandler:
 
 
 
-        if run_solar_data_tools:
-            if type(data_sampling) != type(None):
-                self.dh.data_sampling = data_sampling
+        if type(data_sampling) != type(None):
+            self.dh.data_sampling = data_sampling
 
-            # Run solar-data-tools.
-            self.dh.run_pipeline(power_col='power_dc',
-                                 correct_tz=correct_tz,
-                                 extra_cols=[self.temperature_module_key,
-                                             self.irradiance_poa_key,
-                                             self.voltage_key,
-                                             self.current_key]
-                                 )
-
-            # Print report.
-            self.dh.report()
-            power_clip = self.dh.capacity_estimate * 0.99
-        else:
-            power_clip = np.nanmax(self.df['power_dc'])
-
-        # Calculate operating class.
-        self.df.loc[:, 'operating_cls'] = classify_operating_mode(
-            voltage=self.df[self.voltage_key] / self.modules_per_string,
-            current=self.df[self.current_key] / self.parallel_strings,
-            power_clip=power_clip)
+        # Run solar-data-tools.
+        if correct_dst:
+            self.dh.fix_dst()
+        self.dh.run_pipeline(power_col='power_dc',
+                             correct_tz=correct_tz,
+                             extra_cols=[self.temperature_module_key,
+                                         self.irradiance_poa_key,
+                                         self.voltage_key,
+                                         self.current_key],
+                             verbose=False,
+                             fix_shifts=fix_shifts)
+        self.dh.find_clipped_times()
+        # Calculate boolean masks
+        dh = self.dh
+        dh.augment_data_frame(dh.boolean_masks.daytime, 'daytime')
+        dh.augment_data_frame(dh.boolean_masks.clipped_times, 'clipped_times')
+        voltage_fill_nan = np.nan_to_num(
+            dh.extra_matrices[self.voltage_key], nan=-9999)
+        dh.augment_data_frame(voltage_fill_nan > 0.01 * np.nanquantile(
+            dh.extra_matrices[self.voltage_key], 0.98), 'high_v')
+        dh.augment_data_frame(dh.filled_data_matrix < 0.01 * dh.capacity_estimate,
+                              'low_p')
+        dh.augment_data_frame(dh.daily_flags.no_errors, 'no_errors')
+        dh.augment_data_frame(
+            np.any([np.isnan(dh.extra_matrices[self.voltage_key]),
+                    np.isnan(dh.extra_matrices[self.current_key]),
+                    np.isnan(dh.extra_matrices[self.irradiance_poa_key]),
+                    np.isnan(dh.extra_matrices[self.temperature_module_key])],
+                   axis=0),
+            'missing_data')
+        # Apply operating class labels
+        for df in [dh.data_frame_raw, dh.data_frame]:
+            df.loc[:, 'operating_cls'] = 0
+            df.loc[np.logical_or(
+                df['missing_data'],
+                ~df['no_errors']
+            ), 'operating_cls'] = -2
+            df.loc[np.logical_and(
+                ~df['high_v'],
+                ~df['daytime']
+            ), 'operating_cls'] = -1
+            df.loc[np.logical_and(
+                df['high_v'],
+                np.logical_or(~df['daytime'], df['low_p'])
+            ), 'operating_cls'] = 1
+            df.loc[df['clipped_times'], 'operating_cls'] = 2
+        # Create matrix view of operating class labels for plotting
+        dh.generate_extra_matrix('operating_cls', new_index=dh.data_frame.index)
 
         # TODO: this always overwrites p0 and should be changed so that if the user has set p0, it is not changed.
         self.estimate_p0()
+
+    def visualize_operating_cls(self):
+        fig = plt.figure()
+        plt.imshow(self.dh.extra_matrices['operating_cls'], aspect='auto',
+                   interpolation='none',
+                   cmap='Paired')
+        plt.colorbar()
+        return fig
+
 
     def info(self):
         """
