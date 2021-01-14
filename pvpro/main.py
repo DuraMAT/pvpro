@@ -44,7 +44,7 @@ class PvProHandler:
                  alpha_isc=None,
                  resistance_shunt_ref=400,
                  delta_T=3,
-                 use_clear_times=True,
+                 # use_clear_times=True,
                  cells_in_series=None,
                  singlediode_method='newton',
                  technology='mono-Si',
@@ -57,7 +57,7 @@ class PvProHandler:
         # self.df = df
         self.system_name = system_name
         self.delta_T = delta_T
-        self.use_clear_times = use_clear_times
+        # self.use_clear_times = use_clear_times
         self.cells_in_series = cells_in_series
         self.alpha_isc = alpha_isc
         self.resistance_shunt_ref = resistance_shunt_ref
@@ -109,7 +109,6 @@ class PvProHandler:
         """
         self.dh.data_frame_raw = value
 
-
     def calculate_cell_temperature(self):
         """
         Set cell temeperature in dataframe.
@@ -160,7 +159,6 @@ class PvProHandler:
         # Make cell temp column
         self.calculate_cell_temperature()
 
-
     # def check_keys(self):
     #
     #     if not self.temperature_module_key in self.df:
@@ -185,7 +183,6 @@ class PvProHandler:
     #         ))
     #
 
-
     def run_preprocess(self, correct_tz=True, data_sampling=None,
                        correct_dst=False, fix_shifts=True):
         """
@@ -205,15 +202,11 @@ class PvProHandler:
 
         """
 
-
-
         self.simulation_setup()
 
         if self.df[self.temperature_module_key].max() > 85:
             warnings.warn(
                 'Maximum module temperature is larger than 85 C. Double check that input temperature is in Celsius, not Farenheight.')
-
-
 
         if type(data_sampling) != type(None):
             self.dh.data_sampling = data_sampling
@@ -238,8 +231,9 @@ class PvProHandler:
             dh.extra_matrices[self.voltage_key], nan=-9999)
         dh.augment_data_frame(voltage_fill_nan > 0.01 * np.nanquantile(
             dh.extra_matrices[self.voltage_key], 0.98), 'high_v')
-        dh.augment_data_frame(dh.filled_data_matrix < 0.01 * dh.capacity_estimate,
-                              'low_p')
+        dh.augment_data_frame(
+            dh.filled_data_matrix < 0.01 * dh.capacity_estimate,
+            'low_p')
         dh.augment_data_frame(dh.daily_flags.no_errors, 'no_errors')
         dh.augment_data_frame(
             np.any([np.isnan(dh.extra_matrices[self.voltage_key]),
@@ -249,6 +243,13 @@ class PvProHandler:
                    axis=0),
             'missing_data')
         # Apply operating class labels
+
+        # 0: System at maximum power point.
+        # 1: System at open circuit conditions.
+        # 2: Clipped or curtailed. DC operating point is not necessarily at MPP.
+        # -1: No power/inverter off
+        # -2: Other
+
         for df in [dh.data_frame_raw, dh.data_frame]:
             df.loc[:, 'operating_cls'] = 0
             df.loc[np.logical_or(
@@ -278,7 +279,6 @@ class PvProHandler:
         plt.colorbar()
         return fig
 
-
     def info(self):
         """
         Print info about the class.
@@ -291,8 +291,7 @@ class PvProHandler:
                 'cells_in_series',
                 'alpha_isc', 'voltage_key', 'current_key',
                 'temperature_module_key',
-                'irradiance_poa_key', 'modules_per_string', 'parallel_strings',
-                'dataset_length_days']
+                'irradiance_poa_key', 'modules_per_string', 'parallel_strings']
 
         info_display = {}
         for k in keys:
@@ -517,7 +516,7 @@ class PvProHandler:
         #     imp_max = imp_est['i_mp_ref']
         #     imp_max = 1.1 * imp_max
 
-        # Initialize pfit dataframe.
+        # Initialize pfit dataframe for saving fit values.
         pfit = pd.DataFrame(index=range(len(iteration_start_days)),
                             columns=[*fit_params,
                                      *['residual', 'i_sc_ref', 'v_oc_ref',
@@ -525,6 +524,7 @@ class PvProHandler:
                                        'v_mp_ref', 'p_mp_ref', 'i_x_ref',
                                        'i_xx_ref']])
 
+        # p0 contains the start point for each fit.
         p0 = pd.DataFrame(index=range(len(iteration_start_days)),
                           columns=fit_params)
 
@@ -713,7 +713,6 @@ class PvProHandler:
                     self.plot_suns_voc_scatter(df=df,
                                                p_plot=pfit_iter,
                                                figure_number=101,
-                                               use_clear_times=self.use_clear_times,
                                                plot_voc_max=plot_vmp_max * 1.1)
                     plt.savefig(os.path.join(save_figs_directory,
                                              'suns_Voc',
@@ -725,7 +724,6 @@ class PvProHandler:
                         df=df,
                         p_plot=pfit_iter,
                         figure_number=103,
-                        use_clear_times=self.use_clear_times,
                         plot_imp_max=plot_imp_max)
                     plt.savefig(os.path.join(save_figs_directory,
                                              'clipped',
@@ -736,7 +734,8 @@ class PvProHandler:
                     self.plot_current_irradiance_mpp_scatter(df=df,
                                                              p_plot=pfit_iter,
                                                              figure_number=104,
-                                                             use_clear_times=self.use_clear_times)
+                                                             plot_imp_max=plot_imp_max
+                                                             )
                     plt.savefig(os.path.join(save_figs_directory,
                                              'poa_Imp',
                                              '{}_poa-Imp_{}.png'.format(
@@ -1010,7 +1009,6 @@ class PvProHandler:
                               figure_number=1,
                               vmin=0,
                               vmax=70,
-                              use_clear_times=None,
                               plot_voc_max=45.):
         """
         Make Vmp, Imp scatter plot.
@@ -1027,8 +1025,6 @@ class PvProHandler:
         -------
 
         """
-        if use_clear_times == None:
-            use_clear_times = self.use_clear_times
 
         # Make figure for inverter on.
         fig = plt.figure(figure_number, figsize=(6.5, 3.5))
@@ -1126,8 +1122,10 @@ class PvProHandler:
                      )
 
         text_str = 'System: {}\n'.format(self.system_name) + \
-                   'Start day: {:.0f}\n'.format(df.index[0]) + \
-                   'End day: {:.0f}\n'.format(df.index[-1]) + \
+                   'Start: {}\n'.format(
+                       df.index[0].strftime("%m/%d/%Y, %H:%M:%S")) + \
+                   'End: {}\n'.format(
+                       df.index[-1].strftime("%m/%d/%Y, %H:%M:%S")) + \
                    'Current: {}\n'.format(self.current_key) + \
                    'Voltage: {}\n'.format(self.voltage_key) + \
                    'Temperature: {}\n'.format(self.temperature_module_key) + \
@@ -1142,8 +1140,7 @@ class PvProHandler:
                    'resistance_series: {:1.2f} Ohm\n'.format(
                        p_plot['resistance_series_ref']) + \
                    'conductance shunt extra: {:1.2f} Ohm\n\n'.format(
-                       p_plot['conductance_shunt_extra']) + \
-                   'Clear time: {}\n'.format(use_clear_times)
+                       p_plot['conductance_shunt_extra'])
 
         plt.text(0.05, 0.95, text_str,
                  horizontalalignment='left',
@@ -1179,7 +1176,6 @@ class PvProHandler:
                                                 figure_number=1,
                                                 vmin=0,
                                                 vmax=70,
-                                                use_clear_times=None,
                                                 plot_imp_max=8):
         """
         Make Vmp, Imp scatter plot.
@@ -1196,8 +1192,6 @@ class PvProHandler:
         -------
 
         """
-        if use_clear_times == None:
-            use_clear_times = self.use_clear_times
 
         # Make figure for inverter on.
         fig = plt.figure(figure_number, figsize=(6.5, 3.5))
@@ -1257,8 +1251,10 @@ class PvProHandler:
         #              )
 
         text_str = 'System: {}\n'.format(self.system_name) + \
-                   'Start day: {:.0f}\n'.format(df.index[0]) + \
-                   'End day: {:.0f}\n'.format(df.index[-1]) + \
+                   'Start: {}\n'.format(
+                       df.index[0].strftime("%m/%d/%Y, %H:%M:%S")) + \
+                   'End: {}\n'.format(
+                       df.index[-1].strftime("%m/%d/%Y, %H:%M:%S")) + \
                    'Current: {}\n'.format(self.current_key) + \
                    'Voltage: {}\n'.format(self.voltage_key) + \
                    'Temperature: {}\n'.format(self.temperature_module_key) + \
@@ -1273,8 +1269,7 @@ class PvProHandler:
                    'resistance_series: {:1.2f} Ohm\n'.format(
                        p_plot['resistance_series_ref']) + \
                    'conductance shunt extra: {:1.2f} Ohm\n\n'.format(
-                       p_plot['conductance_shunt_extra']) + \
-                   'Clear time: {}\n'.format(use_clear_times)
+                       p_plot['conductance_shunt_extra'])
 
         plt.text(0.05, 0.95, text_str,
                  horizontalalignment='left',
@@ -1309,7 +1304,6 @@ class PvProHandler:
                                             figure_number=1,
                                             vmin=0,
                                             vmax=70,
-                                            use_clear_times=None,
                                             plot_imp_max=8):
         """
 
@@ -1326,8 +1320,7 @@ class PvProHandler:
         -------
 
         """
-        if use_clear_times == None:
-            use_clear_times = self.use_clear_times
+
 
         # Make figure for inverter on.
         fig = plt.figure(figure_number, figsize=(6.5, 3.5))
@@ -1391,8 +1384,10 @@ class PvProHandler:
                      )
 
         text_str = 'System: {}\n'.format(self.system_name) + \
-                   'Start day: {:.0f}\n'.format(df.index[0]) + \
-                   'End day: {:.0f}\n'.format(df.index[-1]) + \
+                   'Start: {}\n'.format(
+                       df.index[0].strftime("%m/%d/%Y, %H:%M:%S")) + \
+                   'End: {}\n'.format(
+                       df.index[-1].strftime("%m/%d/%Y, %H:%M:%S")) + \
                    'Current: {}\n'.format(self.current_key) + \
                    'Voltage: {}\n'.format(self.voltage_key) + \
                    'Temperature: {}\n'.format(self.temperature_module_key) + \
@@ -1407,8 +1402,7 @@ class PvProHandler:
                    'resistance_series: {:1.2f} Ohm\n'.format(
                        p_plot['resistance_series_ref']) + \
                    'conductance shunt extra: {:1.2f} Ohm\n\n'.format(
-                       p_plot['conductance_shunt_extra']) + \
-                   'Clear time: {}\n'.format(use_clear_times)
+                       p_plot['conductance_shunt_extra'])
 
         plt.text(0.05, 0.95, text_str,
                  horizontalalignment='left',
