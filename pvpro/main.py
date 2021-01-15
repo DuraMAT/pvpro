@@ -121,8 +121,8 @@ class PvProHandler:
         """
         # Calculate cell temperature
         self.df.loc[:, 'temperature_cell'] = sapm_cell_from_module(
-            self.df[self.temperature_module_key],
-            self.df[self.irradiance_poa_key],
+            module_temperature=self.df[self.temperature_module_key],
+            poa_global=self.df[self.irradiance_poa_key],
             deltaT=self.delta_T)
 
     def simulation_setup(self):
@@ -214,6 +214,7 @@ class PvProHandler:
         # Run solar-data-tools.
         if correct_dst:
             self.dh.fix_dst()
+
         self.dh.run_pipeline(power_col='power_dc',
                              correct_tz=correct_tz,
                              extra_cols=[self.temperature_module_key,
@@ -222,6 +223,7 @@ class PvProHandler:
                                          self.current_key],
                              verbose=False,
                              fix_shifts=fix_shifts)
+        print('Finding clipped times...')
         self.dh.find_clipped_times()
         # Calculate boolean masks
         dh = self.dh
@@ -254,11 +256,11 @@ class PvProHandler:
             df.loc[:, 'operating_cls'] = 0
             df.loc[np.logical_or(
                 df['missing_data'],
-                ~df['no_errors']
+                np.logical_not(df['no_errors'])
             ), 'operating_cls'] = -2
             df.loc[np.logical_and(
-                ~df['high_v'],
-                ~df['daytime']
+                np.logical_not(df['high_v']),
+                np.logical_not(df['daytime'])
             ), 'operating_cls'] = -1
             df.loc[np.logical_and(
                 df['high_v'],
