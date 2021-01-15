@@ -183,8 +183,12 @@ class PvProHandler:
     #         ))
     #
 
-    def run_preprocess(self, correct_tz=True, data_sampling=None,
-                       correct_dst=False, fix_shifts=True):
+    def run_preprocess(self,
+                       correct_tz=True,
+                       data_sampling=None,
+                       correct_dst=False,
+                       fix_shifts=True,
+                       classification_method='solar-data-tools'):
         """
         Perform "time-consuming" preprocessing steps
 
@@ -223,55 +227,73 @@ class PvProHandler:
                                          self.current_key],
                              verbose=False,
                              fix_shifts=fix_shifts)
-        print('Finding clipped times...')
-        self.dh.find_clipped_times()
-        # Calculate boolean masks
-        dh = self.dh
-        dh.augment_data_frame(dh.boolean_masks.daytime, 'daytime')
-        dh.augment_data_frame(dh.boolean_masks.clipped_times, 'clipped_times')
-        voltage_fill_nan = np.nan_to_num(
-            dh.extra_matrices[self.voltage_key], nan=-9999)
-        dh.augment_data_frame(voltage_fill_nan > 0.01 * np.nanquantile(
-            dh.extra_matrices[self.voltage_key], 0.98), 'high_v')
-        dh.augment_data_frame(
-            dh.filled_data_matrix < 0.01 * dh.capacity_estimate,
-            'low_p')
-        dh.augment_data_frame(dh.daily_flags.no_errors, 'no_errors')
-        dh.augment_data_frame(
-            np.any([np.isnan(dh.extra_matrices[self.voltage_key]),
-                    np.isnan(dh.extra_matrices[self.current_key]),
-                    np.isnan(dh.extra_matrices[self.irradiance_poa_key]),
-                    np.isnan(dh.extra_matrices[self.temperature_module_key])],
-                   axis=0),
-            'missing_data')
-        # Apply operating class labels
 
-        # 0: System at maximum power point.
-        # 1: System at open circuit conditions.
-        # 2: Clipped or curtailed. DC operating point is not necessarily at MPP.
-        # -1: No power/inverter off
-        # -2: Other
+        if classification_method.lower()=='solar-data-tools':
+            print('Finding clipped times...')
+            self.dh.find_clipped_times()
+            # Calculate boolean masks
+            dh = self.dh
+            dh.augment_data_frame(dh.boolean_masks.daytime, 'daytime')
+            dh.augment_data_frame(dh.boolean_masks.clipped_times, 'clipped_times')
+            voltage_fill_nan = np.nan_to_num(
+                dh.extra_matrices[self.voltage_key], nan=-9999)
+            dh.augment_data_frame(voltage_fill_nan > 0.01 * np.nanquantile(
+                dh.extra_matrices[self.voltage_key], 0.98), 'high_v')
+            dh.augment_data_frame(
+                dh.filled_data_matrix < 0.01 * dh.capacity_estimate,
+                'low_p')
+            dh.augment_data_frame(dh.daily_flags.no_errors, 'no_errors')
+            dh.augment_data_frame(
+                np.any([np.isnan(dh.extra_matrices[self.voltage_key]),
+                        np.isnan(dh.extra_matrices[self.current_key]),
+                        np.isnan(dh.extra_matrices[self.irradiance_poa_key]),
+                        np.isnan(dh.extra_matrices[self.temperature_module_key])],
+                       axis=0),
+                'missing_data')
 
-        for df in [dh.data_frame_raw, dh.data_frame]:
-            df.loc[:, 'operating_cls'] = 0
-            df.loc[np.logical_or(
-                df['missing_data'],
-                np.logical_not(df['no_errors'])
-            ), 'operating_cls'] = -2
-            df.loc[np.logical_and(
-                np.logical_not(df['high_v']),
-                np.logical_not(df['daytime'])
-            ), 'operating_cls'] = -1
-            df.loc[np.logical_and(
-                df['high_v'],
-                np.logical_or(~df['daytime'], df['low_p'])
-            ), 'operating_cls'] = 1
-            df.loc[df['clipped_times'], 'operating_cls'] = 2
-        # Create matrix view of operating class labels for plotting
-        dh.generate_extra_matrix('operating_cls', new_index=dh.data_frame.index)
+            # TODO: Check with Bennet that this is the correct way to fix this.
+            dh.data_frame_raw['missing_data'].fillna(True, inplace=True)
+            dh.data_frame_raw['low_p'].fillna(True, inplace=True)
+            dh.data_frame_raw['high_v'].fillna(False, inplace=True)
+            dh.data_frame_raw['daytime'].fillna(False, inplace=True)
+            dh.data_frame_raw['clipped_times'].fillna(False, inplace=True)
+
+            # Apply operating class labels
+
+            # 0: System at maximum power point.
+            # 1: System at open circuit conditions.
+            # 2: Clipped or curtailed. DC operating point is not necessarily at MPP.
+            # -1: No power/inverter off
+            # -2: Other
+
+            for df in [dh.data_frame_raw, dh.data_frame]:
+                df.loc[:, 'operating_cls'] = 0
+                df.loc[np.logical_or(
+                    df['missing_data'],
+                    np.logical_not(df['no_errors'])
+                ), 'operating_cls'] = -2
+                df.loc[np.logical_and(
+                    np.logical_not(df['high_v']),
+                    np.logical_not(df['daytime'])
+                ), 'operating_cls'] = -1
+                df.loc[np.logical_and(
+                    df['high_v'],
+                    np.logical_or(np.logical_not(df['daytime']), df['low_p'])
+                ), 'operating_cls'] = 1
+                df.loc[df['clipped_times'], 'operating_cls'] = 2
+            # Create matrix view of operating class labels for plotting
+            dh.generate_extra_matrix('operating_cls', new_index=dh.data_frame.index)
+        elif classification_method.lower()=='simple':
+            self.df['operating_cls'] = classify_operating_mode(
+                voltage=self.df[self.voltage_key],
+                current=self.df[self.current_key],
+                power_clip=np.inf
+            )
+        else:
+            raise Exception('`classification_method` must be "solar-data-tools" or "simple"')
 
         # TODO: this always overwrites p0 and should be changed so that if the user has set p0, it is not changed.
-        self.estimate_p0()
+        # self.estimate_p0()
 
     def visualize_operating_cls(self):
         fig = plt.figure()
@@ -1322,7 +1344,6 @@ class PvProHandler:
         -------
 
         """
-
 
         # Make figure for inverter on.
         fig = plt.figure(figure_number, figsize=(6.5, 3.5))
