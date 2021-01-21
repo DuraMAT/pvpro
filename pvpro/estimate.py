@@ -561,8 +561,8 @@ def estimate_vmp_ref(poa,
 
         def vmp_model(temperature, irradiance):
             return vmp_ref + beta_vmp * (temperature - temperature_ref) + \
-                   coeff_irrad_1 * np.log(irradiance / irradiance_ref) + \
-                   coeff_irrad_2 * np.log(irradiance / irradiance_ref) ** 2
+                   coeff_irrad_1 * (temperature + 273.15) * np.log(irradiance / irradiance_ref) + \
+                   coeff_irrad_2 * ((temperature + 273.15) *np.log(irradiance / irradiance_ref)) ** 2
 
         out = {'v_mp_ref': vmp_ref,
                'beta_vmp': beta_vmp,
