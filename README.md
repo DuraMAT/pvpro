@@ -20,7 +20,6 @@ Here's a high level overview of the most important parts of the package.
 - main.PvProHandler - class method for running the pvpro data analysis. Convenient way to keep track of all the variables required for the analysis and run production_data_curve_fit iteratively over time-series data.
 - main.PvProHandler.execute - Runs the pvpro simulfit.
 
-
 # Installation
 
 ## Install with conda
@@ -41,8 +40,7 @@ pip install -e .
 pip install pvpro
 ```
 
-## Make environment by installing things seperately
-
+## Make environment manually
 Another way to make a valid virtual environment is with the following commands. This section will be updated in the future to make a more minimal environment.
 
 ```
@@ -57,3 +55,10 @@ pip install solar-data-tools statistical-clear-sky
 pip install NREL-PySAM
 pip install matplotlib==3.3.2
 ```
+
+# Examples
+
+## Estimate size of power block
+The size of a power block can be estimated by first estimating `vmp_ref` and `imp_ref`. The number of modules in series in and parallel are then found by dividing by the datasheet  
+
+An example with the NIST ground dataset is provided in the file [example_estimate_number_series_parallel.py](examples/example_estimate_number_series_parallel.py)
