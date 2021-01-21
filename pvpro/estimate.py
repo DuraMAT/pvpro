@@ -28,9 +28,12 @@ def estimate_imp_ref(poa,
                      verbose=False
                      ):
     """
-    Estimate imp_ref and beta_imp using operation data. Note that typically
-    imp for an array would be divided by parallel_strings before calling this
-    function.
+    Estimate imp_ref and beta_imp using operation data.
+
+    Model forms taken from Ref. [1]
+
+    [1] D.L. King, W.E. Boyson, J.A. Kratochvill. Photovoltaic Array
+    Performance Model. SAND2004-3535.
 
     Parameters
     ----------
@@ -210,8 +213,8 @@ def estimate_imp_ref(poa,
         # plt.show()
 
     return out
-#
-#
+
+
 # def estimate_mpp_ref_full(poa,
 #                           temperature_cell,
 #                           imp,
@@ -438,21 +441,58 @@ def estimate_vmp_ref(poa,
                      model='sandia'
                      ):
     """
-    Estimate vmp_ref using operation data. Note that typically vmp for an
-    array would be divided by parallel_strings before calling this function.
+    Estimate vmp_ref using operation data. Function works for any size of
+    power block.
 
-    vmp does not depend much on irradiance so long as the irradiance is not
-    too low.
+    Model forms taken from Ref. [1]
+
+    [1] D.L. King, W.E. Boyson, J.A. Kratochvill. Photovoltaic Array
+    Performance Model. SAND2004-3535.
+
 
     Parameters
     ----------
-    poa
-    temperature_cell
-    imp
-    makefigure
+    poa : array
+        Plane-of-array irradiance in W/m2
+
+    temperature_cell : array
+        cell temperature in C.
+
+    vmp : array
+        DC voltage at max power, in V.
+
+    irradiance_ref : float
+        Reference irradiance, typically 1000 W/m^2
+
+    temperature_ref : float
+        Reference temperature, typically 25 C
+
+    figure : bool
+        Whether to plot a figure
+
+    figure_number : int
+        Figure number for plotting
+
+    model : str
+
+        Model to solve. Options are:
+
+        'temperature' - Model is Vmp = Vmp_ref + beta_vmp*(T-T_ref)
+
+        'sandia'. Model is Vmp = Vmp_ref + beta_vmp*(T-T_ref) + c0*delta*log(E/E_ref) + c1 * (delta * log(E/E_ref))^2
+        where delta = (temperature_cell + 273.15)
+
+    verbose : bool
+        Verbose output
 
     Returns
     -------
+    dict containing
+        v_mp_ref
+
+        beta_vmp
+
+        v_mp_model
 
     """
 
@@ -471,10 +511,13 @@ def estimate_vmp_ref(poa,
     temperature_cell = np.array(temperature_cell[cax])
     vmp = np.array(vmp[cax])
     poa = np.array(poa[cax])
-    #
+
+
+
     # kB = 1.381e-23
     # q = 1.602e-19
     # Vth = kB * (temperature_cell + 273.15) / q
+    delta = (temperature_cell + 273.15)
 
     # avoid problem with integer input
     Ee = np.array(poa, dtype='float64') / irradiance_ref
@@ -506,8 +549,8 @@ def estimate_vmp_ref(poa,
         X = np.zeros(shape=(len(temperature_cell), 4))
         X[:, 0] = 1
         X[:, 1] = temperature_cell - temperature_ref
-        X[:, 2] = logEe
-        X[:, 3] = logEe ** 2
+        X[:, 2] = delta*logEe
+        X[:, 3] = (delta*logEe) ** 2
 
         coeff = np.dot(pinv(X), vmp)
 
