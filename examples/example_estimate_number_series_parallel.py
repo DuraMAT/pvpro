@@ -68,6 +68,7 @@ est_imp = estimate_imp_ref(poa=df.loc[mpp, poa_key],
                            imp=df.loc[mpp, current_key],
                            figure=True
                            )
+
 # Estimate Vmp ref
 est_vmp = estimate_vmp_ref(poa=df.loc[mpp, poa_key],
                            temperature_cell=df.loc[mpp, temperature_module_key],
