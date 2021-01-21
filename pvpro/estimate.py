@@ -90,6 +90,7 @@ from time import time
 def estimate_imp_ref(poa,
                      temperature_cell,
                      imp,
+                     poa_lower_limit=200,
                      irradiance_ref=1000,
                      temperature_ref=25,
                      figure=False,
@@ -102,22 +103,53 @@ def estimate_imp_ref(poa,
     imp for an array would be divided by parallel_strings before calling this
     function.
 
-
     Parameters
     ----------
-    poa
-    temperature_cell
-    imp
-    figure
+    poa : array
+        Plane-of-array irradiance in W/m2
 
+    temperature_cell : array
+        cell temperature in C.
+
+    imp : array
+        DC current at max power.
+
+    irradiance_ref : float
+        Reference irradiance, typically 1000 W/m^2
+
+    temperature_ref : float
+        Reference temperature, typically 25 C
+
+    figure : bool
+        Whether to plot a figure
+
+    figure_number : int
+        Figure number for plotting
+
+    model : str
+
+        Model to solve. Options are:
+
+        'temperature' - Model is Imp = I_mp_ref * E/E_ref *(1 + alpha_imp * (T-T_ref))
+
+        'sandia'. Model is Imp = I_mp_ref * (c0*E/E_ref + c1* (E/E_ref)^2) *(1 + alpha_imp * (T-T_ref))
+
+    verbose : bool
+        Verbose output
 
     Returns
     -------
+    dict containing
+        i_mp_ref
+
+        alpha_imp
+
+        i_mp_model
 
     """
 
     cax = np.logical_and.reduce((
-        poa > 200,
+        poa > poa_lower_limit,
         poa < 1100,
         np.isfinite(poa),
         np.isfinite(temperature_cell),
