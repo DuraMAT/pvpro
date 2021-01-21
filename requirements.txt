@@ -13,7 +13,7 @@ Mosek
 numpy
 olefile==0.46
 osqp==0.6.1
-pandas
+pandas==1.2.0
 Pillow
 pyparsing==2.4.7
 python-dateutil==2.8.1
@@ -30,3 +30,4 @@ tornado==6.0.4
 tqdm
 urllib3==1.25.10
 pvlib==0.7.2
+solar-data-tools==0.4.3
