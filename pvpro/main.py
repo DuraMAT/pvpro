@@ -23,7 +23,7 @@ from pvpro.classify import classify_operating_mode
 
 from pvpro.estimate import estimate_singlediode_params, estimate_imp_ref, \
     estimate_vmp_ref
-
+from pvpro.preprocess import find_irradiance_current_inbounds
 
 class PvProHandler:
     """
@@ -38,6 +38,7 @@ class PvProHandler:
                  current_key=None,
                  # power_key=None,
                  temperature_module_key=None,
+                 temperature_ambient_key=None,
                  irradiance_poa_key=None,
                  modules_per_string=None,
                  parallel_strings=None,
@@ -65,6 +66,7 @@ class PvProHandler:
         self.current_key = current_key
         # self.power_key = power_key
         self.temperature_module_key = temperature_module_key
+        self.temperature_ambient_key = temperature_ambient_key
         self.irradiance_poa_key = irradiance_poa_key
         self.modules_per_string = modules_per_string
         self.parallel_strings = parallel_strings
@@ -228,13 +230,14 @@ class PvProHandler:
                              verbose=False,
                              fix_shifts=fix_shifts)
 
-        if classification_method.lower()=='solar-data-tools':
+        if classification_method.lower() == 'solar-data-tools':
             print('Finding clipped times...')
             self.dh.find_clipped_times()
             # Calculate boolean masks
             dh = self.dh
             dh.augment_data_frame(dh.boolean_masks.daytime, 'daytime')
-            dh.augment_data_frame(dh.boolean_masks.clipped_times, 'clipped_times')
+            dh.augment_data_frame(dh.boolean_masks.clipped_times,
+                                  'clipped_times')
             voltage_fill_nan = np.nan_to_num(
                 dh.extra_matrices[self.voltage_key], nan=-9999)
             dh.augment_data_frame(voltage_fill_nan > 0.01 * np.nanquantile(
@@ -247,7 +250,8 @@ class PvProHandler:
                 np.any([np.isnan(dh.extra_matrices[self.voltage_key]),
                         np.isnan(dh.extra_matrices[self.current_key]),
                         np.isnan(dh.extra_matrices[self.irradiance_poa_key]),
-                        np.isnan(dh.extra_matrices[self.temperature_module_key])],
+                        np.isnan(
+                            dh.extra_matrices[self.temperature_module_key])],
                        axis=0),
                 'missing_data')
 
@@ -282,15 +286,17 @@ class PvProHandler:
                 ), 'operating_cls'] = 1
                 df.loc[df['clipped_times'], 'operating_cls'] = 2
             # Create matrix view of operating class labels for plotting
-            dh.generate_extra_matrix('operating_cls', new_index=dh.data_frame.index)
-        elif classification_method.lower()=='simple':
+            dh.generate_extra_matrix('operating_cls',
+                                     new_index=dh.data_frame.index)
+        elif classification_method.lower() == 'simple':
             self.df['operating_cls'] = classify_operating_mode(
                 voltage=self.df[self.voltage_key],
                 current=self.df[self.current_key],
                 power_clip=np.inf
             )
         else:
-            raise Exception('`classification_method` must be "solar-data-tools" or "simple"')
+            raise Exception(
+                '`classification_method` must be "solar-data-tools" or "simple"')
 
         # TODO: this always overwrites p0 and should be changed so that if the user has set p0, it is not changed.
         # self.estimate_p0()
@@ -425,6 +431,20 @@ class PvProHandler:
                 optimize_Rs_Io=optimize_Rs_Io
             )
 
+            # Filter
+
+            inbounds, huber = find_irradiance_current_inbounds(
+                poa=np.array(
+                    df[self.irradiance_poa_key][df['operating_cls'] == 0]),
+                current=df[self.current_key][df['operating_cls'] == 0] / self.parallel_strings,
+            )
+
+            keepers = df['operating_cls'] == 0
+
+            print('Length df before filter: ', len(df))
+            df = df[inbounds]
+            print('Length df after filter: ', len(df))
+
             ret_list.append(ret)
 
         out['p'] = pd.DataFrame(ret_list, index=time_center[:num_iter])
@@ -451,7 +471,8 @@ class PvProHandler:
                 plot_vmp_max=40,
                 fit_params=None,
                 lower_bounds=None,
-                upper_bounds=None):
+                upper_bounds=None,
+                filter_current_irradiance=True):
         """
         Main PVPRO Method.
 
@@ -588,6 +609,8 @@ class PvProHandler:
 
             # Get a section of df for this iteration.
             df = self.df[idx]
+
+
 
             if len(df) > 10:
 
@@ -1324,7 +1347,7 @@ class PvProHandler:
 
     def plot_current_irradiance_mpp_scatter(self,
                                             df,
-                                            p_plot,
+                                            p_plot=None,
                                             figure_number=1,
                                             vmin=0,
                                             vmax=70,
@@ -1366,66 +1389,77 @@ class PvProHandler:
                            vmin=0,
                            vmax=70)
 
-        # Plot irradiance scan
-        for j in np.flip(np.arange(len(temp_limits))):
-            temp_curr = temp_limits[j]
-            irrad_smooth = np.linspace(1, 1200, 500)
+        if p_plot is not None:
+            # Plot irradiance scan
+            for j in np.flip(np.arange(len(temp_limits))):
+                temp_curr = temp_limits[j]
+                irrad_smooth = np.linspace(1, 1200, 500)
 
-            voltage_plot, current_plot = pv_system_single_diode_model(
-                effective_irradiance=irrad_smooth,
-                temperature_cell=temp_curr + np.zeros_like(irrad_smooth),
-                operating_cls=np.zeros_like(irrad_smooth) + 0,
-                cells_in_series=self.cells_in_series,
-                alpha_isc=self.alpha_isc,
-                resistance_shunt_ref=self.resistance_shunt_ref,
-                diode_factor=p_plot['diode_factor'],
-                photocurrent_ref=p_plot['photocurrent_ref'],
-                saturation_current_ref=p_plot['saturation_current_ref'],
-                resistance_series_ref=p_plot['resistance_series_ref'],
-                conductance_shunt_extra=p_plot['conductance_shunt_extra']
-            )
+                voltage_plot, current_plot = pv_system_single_diode_model(
+                    effective_irradiance=irrad_smooth,
+                    temperature_cell=temp_curr + np.zeros_like(irrad_smooth),
+                    operating_cls=np.zeros_like(irrad_smooth) + 0,
+                    cells_in_series=self.cells_in_series,
+                    alpha_isc=self.alpha_isc,
+                    resistance_shunt_ref=self.resistance_shunt_ref,
+                    diode_factor=p_plot['diode_factor'],
+                    photocurrent_ref=p_plot['photocurrent_ref'],
+                    saturation_current_ref=p_plot['saturation_current_ref'],
+                    resistance_series_ref=p_plot['resistance_series_ref'],
+                    conductance_shunt_extra=p_plot['conductance_shunt_extra']
+                )
 
-            # out = pvlib_fit_fun( np.transpose(np.array(
-            #     [irrad_smooth,temp_curr + np.zeros_like(irrad_smooth), np.zeros_like(irrad_smooth) ])),
-            #                     *p_plot)
+                # out = pvlib_fit_fun( np.transpose(np.array(
+                #     [irrad_smooth,temp_curr + np.zeros_like(irrad_smooth), np.zeros_like(irrad_smooth) ])),
+                #                     *p_plot)
 
-            # Reshape to get V, I
-            # out = np.reshape(out,(2,int(len(out)/2)))
+                # Reshape to get V, I
+                # out = np.reshape(out,(2,int(len(out)/2)))
 
-            # find the right color to plot.
-            # norm_temp = (temp_curr-df[temperature].min())/(df[temperature].max()-df[temperature].min())
-            norm_temp = (temp_curr - vmin) / (vmax - vmin)
-            line_color = np.array(h_sc.cmap(norm_temp))
-            # line_color[0:3] =line_color[0:3]*0.9
+                # find the right color to plot.
+                # norm_temp = (temp_curr-df[temperature].min())/(df[temperature].max()-df[temperature].min())
+                norm_temp = (temp_curr - vmin) / (vmax - vmin)
+                line_color = np.array(h_sc.cmap(norm_temp))
+                # line_color[0:3] =line_color[0:3]*0.9
 
-            line_color[3] = 0.3
+                line_color[3] = 0.3
 
-            plt.plot(irrad_smooth, current_plot,
-                     label='Fit {:2.0f} C'.format(temp_curr),
-                     color=line_color,
-                     # color='C' + str(j)
-                     )
+                plt.plot(irrad_smooth, current_plot,
+                         label='Fit {:2.0f} C'.format(temp_curr),
+                         color=line_color,
+                         # color='C' + str(j)
+                         )
 
-        text_str = 'System: {}\n'.format(self.system_name) + \
-                   'Start: {}\n'.format(
-                       df.index[0].strftime("%m/%d/%Y, %H:%M:%S")) + \
-                   'End: {}\n'.format(
-                       df.index[-1].strftime("%m/%d/%Y, %H:%M:%S")) + \
-                   'Current: {}\n'.format(self.current_key) + \
-                   'Voltage: {}\n'.format(self.voltage_key) + \
-                   'Temperature: {}\n'.format(self.temperature_module_key) + \
-                   'Irradiance: {}\n'.format(self.irradiance_poa_key) + \
-                   'Temperature module->cell delta_T: {}\n'.format(
-                       self.delta_T) + \
-                   'n_diode: {:1.2f} \n'.format(p_plot['diode_factor']) + \
-                   'reference_photocurrent: {:1.2f} A\n'.format(
-                       p_plot['photocurrent_ref']) + \
-                   'saturation_current_ref: {:1.2f} nA\n'.format(
-                       p_plot['saturation_current_ref'] * 1e9) + \
-                   'resistance_series: {:1.2f} Ohm\n'.format(
-                       p_plot['resistance_series_ref']) + \
-                   'conductance shunt extra: {:1.2f} Ohm\n\n'.format(
-                       p_plot['conductance_shunt_extra'])
+            text_str = 'System: {}\n'.format(self.system_name) + \
+                       'Start: {}\n'.format(
+                           df.index[0].strftime("%m/%d/%Y, %H:%M:%S")) + \
+                       'End: {}\n'.format(
+                           df.index[-1].strftime("%m/%d/%Y, %H:%M:%S")) + \
+                       'Current: {}\n'.format(self.current_key) + \
+                       'Voltage: {}\n'.format(self.voltage_key) + \
+                       'Temperature: {}\n'.format(self.temperature_module_key) + \
+                       'Irradiance: {}\n'.format(self.irradiance_poa_key) + \
+                       'Temperature module->cell delta_T: {}\n'.format(
+                           self.delta_T) + \
+                       'n_diode: {:1.2f} \n'.format(p_plot['diode_factor']) + \
+                       'reference_photocurrent: {:1.2f} A\n'.format(
+                           p_plot['photocurrent_ref']) + \
+                       'saturation_current_ref: {:1.2f} nA\n'.format(
+                           p_plot['saturation_current_ref'] * 1e9) + \
+                       'resistance_series: {:1.2f} Ohm\n'.format(
+                           p_plot['resistance_series_ref']) + \
+                       'conductance shunt extra: {:1.2f} Ohm\n\n'.format(
+                           p_plot['conductance_shunt_extra'])
+        else:
+            text_str = 'System: {}\n'.format(self.system_name) + \
+                       'Start: {}\n'.format(
+                           df.index[0].strftime("%m/%d/%Y, %H:%M:%S")) + \
+                       'End: {}\n'.format(
+                           df.index[-1].strftime("%m/%d/%Y, %H:%M:%S")) + \
+                       'Current: {}\n'.format(self.current_key) + \
+                       'Voltage: {}\n'.format(self.voltage_key) + \
+                       'Temperature: {}\n'.format(self.temperature_module_key) + \
+                       'Irradiance: {}\n'.format(self.irradiance_poa_key)
 
         plt.text(0.05, 0.95, text_str,
                  horizontalalignment='left',
@@ -1442,6 +1476,85 @@ class PvProHandler:
         pcbar.set_label('Cell Temperature (C)')
 
         plt.ylabel('Current (A)', fontsize=9)
+        plt.xlabel('POA (W/m^2)', fontsize=9)
+
+        # plt.show()
+
+        return fig
+
+        # mpp_fig_fname = 'figures/{}_fleets16_simultfit-MPP_clear-times-{}_irraad-lower-lim-{}_alpha-isc-{}_days-per-run_{}_temperature-upper-lim-{}_deltaT-{}_{:02d}.png'.format(
+        #         system, info['use_clear_times'], info['irradiance_lower_lim'], info['alpha_isc'], info['days_per_run'], info['temperature_cell_upper_lim'],info['delta_T'], d)
+        # plt.savefig(mpp_fig_fname,
+        #     dpi=200,
+        #     bbox_inches='tight')
+
+    def plot_temperature_rise_irradiance_scatter(self,
+                                                 df,
+                                                 p_plot,
+                                                 figure_number=1,
+                                                 vmin=0,
+                                                 vmax=70,
+                                                 plot_imp_max=8):
+        """
+
+
+        Parameters
+        ----------
+        p_plot
+        figure_number
+        iteration
+        vmin
+        vmax
+
+        Returns
+        -------
+
+        """
+
+        # Make figure for inverter on.
+        fig = plt.figure(figure_number, figsize=(6.5, 3.5))
+        plt.clf()
+        ax = plt.axes()
+
+        temp_limits = np.linspace(vmin, vmax, 8)
+
+        cax = np.array(df['operating_cls'] == 0)
+
+        current = np.array(
+            df.loc[cax, self.current_key]) / self.parallel_strings
+
+        irrad = np.array(df.loc[cax, self.irradiance_poa_key])
+        Trise = np.array(df.loc[cax, self.temperature_module_key] - df.loc[
+            cax, self.temperature_ambient_key])
+
+        h_sc = plt.scatter(irrad, Trise,
+                           c=df.loc[cax, 'temperature_cell'],
+                           s=0.2,
+                           cmap='jet',
+                           vmin=0,
+                           vmax=70)
+
+        text_str = 'System: {}\n'.format(self.system_name) + \
+                   'Start: {}\n'.format(
+                       df.index[0].strftime("%m/%d/%Y, %H:%M:%S")) + \
+                   'End: {}\n'.format(
+                       df.index[-1].strftime("%m/%d/%Y, %H:%M:%S"))
+
+        plt.text(0.05, 0.95, text_str,
+                 horizontalalignment='left',
+                 verticalalignment='top',
+                 transform=ax.transAxes,
+                 fontsize=8)
+
+        # plt.ylim([0, plot_imp_max])
+        # plt.xlim([0, 1200])
+        plt.xticks(fontsize=9)
+        plt.yticks(fontsize=9)
+
+        pcbar = plt.colorbar(h_sc)
+        pcbar.set_label('Cell Temperature (C)')
+
+        plt.ylabel('T module-T ambient (C)', fontsize=9)
         plt.xlabel('POA (W/m^2)', fontsize=9)
 
         plt.show()
