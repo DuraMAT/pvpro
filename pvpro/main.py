@@ -188,7 +188,8 @@ class PvProHandler:
                        data_sampling=None,
                        correct_dst=False,
                        fix_shifts=True,
-                       classification_method='solar-data-tools'):
+                       classification_method='solar-data-tools',
+                       max_val=None):
         """
         Perform "time-consuming" preprocessing steps
 
@@ -226,7 +227,8 @@ class PvProHandler:
                                          self.voltage_key,
                                          self.current_key],
                              verbose=False,
-                             fix_shifts=fix_shifts)
+                             fix_shifts=fix_shifts,
+                             max_val=max_val)
 
         if classification_method.lower()=='solar-data-tools':
             print('Finding clipped times...')
@@ -295,8 +297,8 @@ class PvProHandler:
         # TODO: this always overwrites p0 and should be changed so that if the user has set p0, it is not changed.
         # self.estimate_p0()
 
-    def visualize_operating_cls(self):
-        fig = plt.figure()
+    def visualize_operating_cls(self, figsize=(12, 6)):
+        fig = plt.figure(figsize=figsize)
         plt.imshow(self.dh.extra_matrices['operating_cls'], aspect='auto',
                    interpolation='none',
                    cmap='Paired')

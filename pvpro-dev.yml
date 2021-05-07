@@ -1,0 +1,36 @@
+name: pvpro-dev
+channels:
+  - mosek
+  - slacgismo
+  - conda-forge
+  - defaults
+dependencies:
+  - jupyter
+  - ipython
+  - matplotlib
+  - scipy
+  - seaborn
+  - python=3.7.6
+  - pandas
+  - pip
+  - nose
+  - numpy
+  - requests
+  - scikit-learn
+  - s3fs
+  - cassandra-driver
+  - openblas
+  - mosek
+  - tqdm
+  - pyqt
+  - pvlib-python
+  - pip:
+    - cvxpy
+    - dill
+    - ecos
+    - future
+    - multiprocess
+    - osqp
+    - scs
+    - xlrd
+    - NREL-pysam
