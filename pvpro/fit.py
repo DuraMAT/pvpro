@@ -373,10 +373,30 @@ def production_data_curve_fit(
 
         return voltage_fit, current_fit
 
+    # def barron_loss(x, alpha=0.1, c=1):
+    #     return np.abs(alpha - 2) / alpha * (
+    #                 ((x / c) ** 2 / np.abs(alpha - 2) + 1) ** (alpha / 2) - 1)
+    #
+    # def huber_loss(x,delta=1):
+    #     return np.where(x<=1,x**2/2,delta*(np.abs(x)-delta/2))
+
     def residual(x):
         voltage_fit, current_fit = model(x)
-        return np.nanmean((np.abs(voltage_fit - voltage) * weights) ** 2 + \
-                          (np.abs(current_fit - current) * weights) ** 2)
+        # return np.nanmean((np.abs(voltage_fit - voltage) * weights) ** 2 + \
+        #                   (np.abs(current_fit - current) * weights) ** 2)
+
+        # Mean absolute error
+        return np.nanmean((np.abs(voltage_fit - voltage) * weights) + \
+                      (np.abs(current_fit - current) * weights) )
+
+        # return np.nanmean(np.log(np.cosh( (voltage_fit - voltage) * weights)) + \
+        #                   np.log(np.cosh( (current_fit - current) * weights)) )
+
+        # return np.nanmean( barron_loss( (voltage_fit - voltage) * weights) + \
+        #                    barron_loss((current_fit - current) * weights) )
+        # return np.nanmean( huber_loss( (voltage_fit - voltage) * weights) + \
+        #                    huber_loss((current_fit - current) * weights) )
+
 
     # print(signature(model))
 

@@ -477,10 +477,13 @@ def estimate_vmp_ref(poa,
 
         Model to solve. Options are:
 
+        'sandia'. Model is Vmp = Vmp_ref + beta_vmp*(T-T_ref) + \
+        c0*delta*log(E/E_ref) + c1 * (delta * log(E/E_ref))^2
+
+        where delta = (temperature_cell + 273.15)
+
         'temperature' - Model is Vmp = Vmp_ref + beta_vmp*(T-T_ref)
 
-        'sandia'. Model is Vmp = Vmp_ref + beta_vmp*(T-T_ref) + c0*delta*log(E/E_ref) + c1 * (delta * log(E/E_ref))^2
-        where delta = (temperature_cell + 273.15)
 
     verbose : bool
         Verbose output
