@@ -152,8 +152,6 @@ class PvProHandler:
                     'irradiance_poa_key'.format(
                         k))
 
-        self.df.dropna(axis=0, subset=keys, inplace=True)
-
         # Make power column.
         self.df['power_dc'] = self.df[self.voltage_key] * self.df[
             self.current_key] / self.modules_per_string / self.parallel_strings
@@ -208,9 +206,7 @@ class PvProHandler:
         -------
 
         """
-
         self.simulation_setup()
-
         if self.df[self.temperature_module_key].max() > 85:
             warnings.warn(
                 'Maximum module temperature is larger than 85 C. Double check that input temperature is in Celsius, not Farenheight.')
@@ -221,7 +217,6 @@ class PvProHandler:
         # Run solar-data-tools.
         if correct_dst:
             self.dh.fix_dst()
-
         self.dh.run_pipeline(power_col='power_dc',
                              correct_tz=correct_tz,
                              extra_cols=[self.temperature_module_key,
@@ -233,7 +228,6 @@ class PvProHandler:
                              max_val=max_val)
 
         if classification_method.lower() == 'solar-data-tools':
-            print('Finding clipped times...')
             self.dh.find_clipped_times()
             # Calculate boolean masks
             dh = self.dh
@@ -290,6 +284,7 @@ class PvProHandler:
             # Create matrix view of operating class labels for plotting
             dh.generate_extra_matrix('operating_cls',
                                      new_index=dh.data_frame.index)
+
         elif classification_method.lower() == 'simple':
             self.df['operating_cls'] = classify_operating_mode(
                 voltage=self.df[self.voltage_key],
