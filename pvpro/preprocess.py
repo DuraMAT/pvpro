@@ -1,4 +1,4 @@
-from sklearn.linear_model import HuberRegressor
+
 import numpy as np
 from tqdm import tqdm
 import pandas as pd
@@ -11,7 +11,7 @@ from pvlib.clearsky import detect_clearsky
 import pandas as pd
 
 from sklearn.utils.extmath import safe_sparse_dot
-
+from sklearn.linear_model import HuberRegressor
 
 def monotonic(ac_power, fractional_rate_limit=0.05):
     dP = np.diff(ac_power)
@@ -43,14 +43,21 @@ def find_huber_outliers(x, y, sample_weight=None,
 
     """
 
+    mask = np.logical_and(np.isfinite(x), np.isfinite(y))
+
+    if np.sum(mask) <= 2:
+        print('Need more than two points for linear regression.')
+        return outliers
+
     X = np.atleast_2d(x).transpose()
     y = np.array(y)
 
     huber = HuberRegressor(epsilon=epsilon,
-                           fit_intercept=fit_intercept).fit(X, y,
-                                                            sample_weight=sample_weight)
+                           fit_intercept=fit_intercept)
+    huber.fit(np.atleast_2d(x[mask]).transpose(), y[mask],
+              sample_weight=sample_weight[mask])
 
-    outliers = huber.outliers_
+    #     outliers = huber.outliers_
 
     def is_outlier(x, y):
         X = np.atleast_2d(x).transpose()
@@ -66,6 +73,8 @@ def find_huber_outliers(x, y, sample_weight=None,
         outliers = residual <= huber.scale_ * huber.epsilon
         return outliers
 
+    outliers = is_outlier(x, y)
+
     huber.is_outlier = is_outlier
     huber.is_inbounds = is_inbounds
 
@@ -75,7 +84,7 @@ def find_huber_outliers(x, y, sample_weight=None,
 def find_linear_model_outliers_timeseries(x, y,
                                           boolean_mask=None,
                                           fit_intercept=True,
-                                          points_per_iteration=2000,
+                                          points_per_iteration=20000,
                                           epsilon=2.5,
                                           ):
     outliers = np.zeros_like(x).astype('bool')
@@ -83,18 +92,40 @@ def find_linear_model_outliers_timeseries(x, y,
     #     poa = poa[boolean_mask]
     #     current = current[boolean_mask]
 
-    lower_iter_idx = np.arange(0, len(x), points_per_iteration).astype('int')
-    upper_iter_idx = lower_iter_idx + points_per_iteration
-    if upper_iter_idx[-1] != len(x):
-        upper_iter_idx[-1] = len(x)
-        upper_iter_idx[-2] = len(x) - points_per_iteration
+    #     lower_iter_idx = np.arange(0, len(x), points_per_iteration).astype('int')
+    #     upper_iter_idx = lower_iter_idx + points_per_iteration
+    #     if upper_iter_idx[-1] != len(x):
+    #         upper_iter_idx[-1] = len(x)
+    #         upper_iter_idx[-2] = len(x) - points_per_iteration
 
+    isfinite = np.logical_and(np.isfinite(x), np.isfinite(y))
+    lower_iter_idx = []
+    upper_iter_idx = []
+
+    lenx = len(x)
+    n = 0
+    isfinite_count = np.cumsum(isfinite)
+    while True:
+        if n == 0:
+            lower_lim = 0
+        else:
+            lower_lim = upper_iter_idx[-1]
+
+        upper_lim_finder = isfinite_count == int((n + 1) * points_per_iteration)
+
+        if lower_lim < lenx and upper_lim < lenx and np.sum(
+                upper_lim_finder) >= 1:
+            lower_iter_idx.append(lower_lim)
+            upper_iter_idx.append(np.where(upper_lim_finder)[0][0])
+        else:
+            break
+
+        n = n + 1
     num_iterations = len(lower_iter_idx)
 
     huber = []
     for k in range(num_iterations):
         cax = np.arange(lower_iter_idx[k], upper_iter_idx[k]).astype('int')
-
         # Filter
         outliers_iter, huber_iter = find_huber_outliers(
             x=x[cax],
