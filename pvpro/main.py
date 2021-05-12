@@ -193,7 +193,8 @@ class PvProHandler:
                        correct_dst=False,
                        fix_shifts=True,
                        classification_method='solar-data-tools',
-                       max_val=None):
+                       max_val=None,
+                       verbose=True):
         """
         Perform "time-consuming" preprocessing steps
 
@@ -219,8 +220,15 @@ class PvProHandler:
             self.dh.data_sampling = data_sampling
 
         # Run solar-data-tools.
+
         if correct_dst:
+            if verbose:
+                print('Fixing daylight savings time shift...')
             self.dh.fix_dst()
+
+        if verbose:
+            print('Running solar data tools...')
+
         self.dh.run_pipeline(power_col='power_dc',
                              correct_tz=correct_tz,
                              extra_cols=[self.temperature_module_key,
@@ -1448,7 +1456,6 @@ class PvProHandler:
             df.loc[cax, self.current_key]) / self.parallel_strings
 
         irrad = np.array(df.loc[cax, self.irradiance_poa_key])
-        print(current)
         h_sc = plt.scatter(irrad, current,
                            c=df.loc[cax, 'temperature_cell'],
                            s=0.2,
