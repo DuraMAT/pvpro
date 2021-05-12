@@ -1,10 +1,10 @@
 name: pvpro-user
 channels:
+  - defaults
   - anaconda
   - mosek
   - slacgismo
   - conda-forge
-  - defaults
 dependencies:
   - jupyter
   - ipython

@@ -1,9 +1,9 @@
 name: pvpro-dev
 channels:
-  - mosek
-  - slacgismo
-  - conda-forge
   - defaults
+  - anaconda
+  - mosek
+  - conda-forge
 dependencies:
   - jupyter
   - ipython
