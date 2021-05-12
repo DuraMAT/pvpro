@@ -967,20 +967,21 @@ class PvProHandler:
         # df = self.get_df_for_iteration(iteration,
         #                                use_clear_times=use_clear_times)
 
-        inv_on_points = np.array(df['operating_cls'] == 0)
 
-        vmp = np.array(
-            df.loc[inv_on_points, self.voltage_key]) / self.modules_per_string
-        imp = np.array(
-            df.loc[inv_on_points, self.current_key]) / self.parallel_strings
+        if len(df)>0:
+            inv_on_points = np.array(df['operating_cls'] == 0)
+            vmp = np.array(
+                df.loc[inv_on_points, self.voltage_key]) / self.modules_per_string
+            imp = np.array(
+                df.loc[inv_on_points, self.current_key]) / self.parallel_strings
 
-        # Make scatterplot
-        h_sc = plt.scatter(vmp, imp,
-                           c=df.loc[inv_on_points, 'temperature_cell'],
-                           s=0.2,
-                           cmap='jet',
-                           vmin=vmin,
-                           vmax=vmax)
+            # Make scatterplot
+            h_sc = plt.scatter(vmp, imp,
+                               c=df.loc[inv_on_points, 'temperature_cell'],
+                               s=0.2,
+                               cmap='jet',
+                               vmin=vmin,
+                               vmax=vmax)
 
         if p_plot is not None:
             # Plot one sun
@@ -1101,20 +1102,21 @@ class PvProHandler:
         # df = self.get_df_for_iteration(iteration,
         #                                use_clear_times=use_clear_times)
 
-        inv_on_points = np.array(df['operating_cls'] == 0)
+        if len(df)>0:
+            inv_on_points = np.array(df['operating_cls'] == 0)
 
-        vmp = np.array(
-            df.loc[inv_on_points, self.voltage_key]) / self.modules_per_string
-        imp = np.array(
-            df.loc[inv_on_points, self.current_key]) / self.parallel_strings
+            vmp = np.array(
+                df.loc[inv_on_points, self.voltage_key]) / self.modules_per_string
+            imp = np.array(
+                df.loc[inv_on_points, self.current_key]) / self.parallel_strings
 
-        # Make scatterplot
-        h_sc = plt.scatter(df.loc[inv_on_points, 'temperature_cell'], vmp,
-                           c=df.loc[inv_on_points, self.irradiance_poa_key],
-                           s=0.2,
-                           cmap=cmap,
-                           vmin=vmin,
-                           vmax=vmax)
+            # Make scatterplot
+            h_sc = plt.scatter(df.loc[inv_on_points, 'temperature_cell'], vmp,
+                               c=df.loc[inv_on_points, self.irradiance_poa_key],
+                               s=0.2,
+                               cmap=cmap,
+                               vmin=vmin,
+                               vmax=vmax)
 
         if p_plot is not None:
 
@@ -1193,19 +1195,20 @@ class PvProHandler:
         ax = plt.axes()
 
         temp_limits = np.linspace(vmin, vmax, 8)
+        if len(df)>0:
 
-        inv_off_points = np.array(df['operating_cls'] == 1)
+            inv_off_points = np.array(df['operating_cls'] == 1)
 
-        voc = np.array(
-            df.loc[inv_off_points, self.voltage_key]) / self.modules_per_string
-        irrad = np.array(df.loc[inv_off_points, self.irradiance_poa_key])
+            voc = np.array(
+                df.loc[inv_off_points, self.voltage_key]) / self.modules_per_string
+            irrad = np.array(df.loc[inv_off_points, self.irradiance_poa_key])
 
-        h_sc = plt.scatter(voc, irrad,
-                           c=df.loc[inv_off_points, 'temperature_cell'],
-                           s=0.2,
-                           cmap='jet',
-                           vmin=0,
-                           vmax=70)
+            h_sc = plt.scatter(voc, irrad,
+                               c=df.loc[inv_off_points, 'temperature_cell'],
+                               s=0.2,
+                               cmap='jet',
+                               vmin=0,
+                               vmax=70)
 
         # one_sun_points = np.logical_and.reduce((df['operating_cls'] == 1,
         #                                         df[
@@ -1340,20 +1343,21 @@ class PvProHandler:
         # ax = plt.axes()
 
         temp_limits = np.linspace(vmin, vmax, 8)
+        if len(df)>0:
+            cax = np.array(df['operating_cls'] == 2)
 
-        cax = np.array(df['operating_cls'] == 2)
 
-        current = np.array(
-            df.loc[cax, self.current_key]) / self.parallel_strings
+            current = np.array(
+                df.loc[cax, self.current_key]) / self.parallel_strings
 
-        irrad = np.array(df.loc[cax, self.irradiance_poa_key])
+            irrad = np.array(df.loc[cax, self.irradiance_poa_key])
 
-        h_sc = plt.scatter(irrad, current,
-                           c=df.loc[cax, 'temperature_cell'],
-                           s=0.2,
-                           cmap='jet',
-                           vmin=0,
-                           vmax=70)
+            h_sc = plt.scatter(irrad, current,
+                               c=df.loc[cax, 'temperature_cell'],
+                               s=0.2,
+                               cmap='jet',
+                               vmin=0,
+                               vmax=70)
 
         #
         # # Plot irradiance scan
@@ -1450,18 +1454,19 @@ class PvProHandler:
 
         temp_limits = np.linspace(vmin, vmax, 8)
 
-        cax = np.array(df['operating_cls'] == 0)
+        if len(df)>0:
+            cax = np.array(df['operating_cls'] == 0)
 
-        current = np.array(
-            df.loc[cax, self.current_key]) / self.parallel_strings
+            current = np.array(
+                df.loc[cax, self.current_key]) / self.parallel_strings
 
-        irrad = np.array(df.loc[cax, self.irradiance_poa_key])
-        h_sc = plt.scatter(irrad, current,
-                           c=df.loc[cax, 'temperature_cell'],
-                           s=0.2,
-                           cmap='jet',
-                           vmin=0,
-                           vmax=70)
+            irrad = np.array(df.loc[cax, self.irradiance_poa_key])
+            h_sc = plt.scatter(irrad, current,
+                               c=df.loc[cax, 'temperature_cell'],
+                               s=0.2,
+                               cmap='jet',
+                               vmin=0,
+                               vmax=70)
 
         if p_plot is not None:
             # Plot irradiance scan
@@ -1564,20 +1569,17 @@ class PvProHandler:
         temp_limits = np.linspace(vmin, vmax, 8)
 
         cax = np.array(df['operating_cls'] == 0)
+        if len(df)>0:
+            irrad = np.array(df.loc[cax, self.irradiance_poa_key])
+            Trise = np.array(df.loc[cax, self.temperature_module_key] - df.loc[
+                cax, self.temperature_ambient_key])
 
-        current = np.array(
-            df.loc[cax, self.current_key]) / self.parallel_strings
-
-        irrad = np.array(df.loc[cax, self.irradiance_poa_key])
-        Trise = np.array(df.loc[cax, self.temperature_module_key] - df.loc[
-            cax, self.temperature_ambient_key])
-
-        h_sc = plt.scatter(irrad, Trise,
-                           c=df.loc[cax, 'temperature_cell'],
-                           s=0.2,
-                           cmap='jet',
-                           vmin=0,
-                           vmax=70)
+            h_sc = plt.scatter(irrad, Trise,
+                               c=df.loc[cax, 'temperature_cell'],
+                               s=0.2,
+                               cmap='jet',
+                               vmin=0,
+                               vmax=70)
 
         text_str = self.build_plot_text_str(df, p_plot=p_plot)
 
