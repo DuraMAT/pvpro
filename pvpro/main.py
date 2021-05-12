@@ -268,10 +268,6 @@ class PvProHandler:
 
             for df in [dh.data_frame_raw, dh.data_frame]:
                 df.loc[:, 'operating_cls'] = 0
-                df.loc[np.logical_or(
-                    df['missing_data'],
-                    np.logical_not(df['no_errors'])
-                ), 'operating_cls'] = -2
                 df.loc[np.logical_and(
                     np.logical_not(df['high_v']),
                     np.logical_not(df['daytime'])
@@ -281,6 +277,10 @@ class PvProHandler:
                     np.logical_or(np.logical_not(df['daytime']), df['low_p'])
                 ), 'operating_cls'] = 1
                 df.loc[df['clipped_times'], 'operating_cls'] = 2
+                df.loc[np.logical_or(
+                    df['missing_data'],
+                    np.logical_not(df['no_errors'])
+                ), 'operating_cls'] = -2
             # Create matrix view of operating class labels for plotting
             dh.generate_extra_matrix('operating_cls',
                                      new_index=dh.data_frame.index)
@@ -1378,7 +1378,7 @@ class PvProHandler:
             df.loc[cax, self.current_key]) / self.parallel_strings
 
         irrad = np.array(df.loc[cax, self.irradiance_poa_key])
-
+        print(current)
         h_sc = plt.scatter(irrad, current,
                            c=df.loc[cax, 'temperature_cell'],
                            s=0.2,
