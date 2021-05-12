@@ -251,7 +251,7 @@ def production_data_curve_fit(
     if lower_bounds is None:
         lower_bounds = dict(
             diode_factor=0.5,
-            photocurrent_ref=0,
+            photocurrent_ref=0.01,
             saturation_current_ref=1e-13,
             resistance_series_ref=0,
             conductance_shunt_extra=0
@@ -348,6 +348,10 @@ def production_data_curve_fit(
     # note that this will be the order of parameters in the model function.
     fit_params = p0.keys()
 
+    # Set scale factor for current and voltage:
+    current_median = np.median(current[operating_cls==0])
+    voltage_median = np.median(voltage[operating_cls==0])
+
     def model(x):
         """
         Return vdc, idc operating point given the fixed parameters.
@@ -386,8 +390,8 @@ def production_data_curve_fit(
         #                   (np.abs(current_fit - current) * weights) ** 2)
 
         # Mean absolute error
-        return np.nanmean((np.abs(voltage_fit - voltage) * weights) + \
-                      (np.abs(current_fit - current) * weights) )
+        return np.nanmean((np.abs(voltage_fit - voltage) * weights))/voltage_median + \
+                      np.nanmean((np.abs(current_fit - current) * weights))/current_median
 
         # return np.nanmean(np.log(np.cosh( (voltage_fit - voltage) * weights)) + \
         #                   np.log(np.cosh( (current_fit - current) * weights)) )
