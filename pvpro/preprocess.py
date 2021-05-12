@@ -113,10 +113,14 @@ def find_linear_model_outliers_timeseries(x, y,
 
         upper_lim_finder = isfinite_count == int((n + 1) * points_per_iteration)
 
-        if lower_lim < lenx and upper_lim < lenx and np.sum(
-                upper_lim_finder) >= 1:
+        if np.sum(upper_lim_finder) >= 1:
+            upper_lim = np.where(upper_lim_finder)[0][0]
+        else:
+            upper_lim=np.nan
+
+        if lower_lim < lenx and upper_lim < lenx:
             lower_iter_idx.append(lower_lim)
-            upper_iter_idx.append(np.where(upper_lim_finder)[0][0])
+            upper_iter_idx.append(upper_lim)
         else:
             break
 
