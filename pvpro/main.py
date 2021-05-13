@@ -896,17 +896,24 @@ class PvProHandler:
 
     def build_plot_text_str(self, df, p_plot=None):
 
-        if p_plot is not None:
-            text_str = 'System: {}\n'.format(self.system_name) + \
-                       'Dates: {} to {}\n'.format(
+        if len(df)>0:
+            dates_str = 'Dates: {} to {}\n'.format(
                            df.index[0].strftime("%m/%d/%Y"),
-                           df.index[-1].strftime("%m/%d/%Y")) + \
+                           df.index[-1].strftime("%m/%d/%Y"))
+        else:
+            dates_str = 'Dates: None\n'
+
+        system_info_str = 'System: {}\n'.format(self.system_name) + \
+                       dates_str + \
                        'Current: {}\n'.format(self.current_key) + \
                        'Voltage: {}\n'.format(self.voltage_key) + \
                        'Temperature: {}\n'.format(self.temperature_module_key) + \
                        'Irradiance: {}\n'.format(self.irradiance_poa_key) + \
                        'Temperature module->cell delta_T: {}\n'.format(
-                           self.delta_T) + \
+                           self.delta_T)
+
+        if p_plot is not None:
+            text_str = system_info_str + \
                        'n_diode: {:1.2f} \n'.format(p_plot['diode_factor']) + \
                        'reference_photocurrent: {:1.2f} A\n'.format(
                            p_plot['photocurrent_ref']) + \
@@ -917,14 +924,7 @@ class PvProHandler:
                        'conductance shunt extra: {:1.4f} 1/Ω\n\n'.format(
                            p_plot['conductance_shunt_extra'])
         else:
-            text_str = 'System: {}\n'.format(self.system_name) + \
-                       'Dates: {} to {}\n'.format(
-                           df.index[0].strftime("%m/%d/%Y"),
-                           df.index[-1].strftime("%m/%d/%Y")) + \
-                       'Current: {}\n'.format(self.current_key) + \
-                       'Voltage: {}\n'.format(self.voltage_key) + \
-                       'Temperature: {}\n'.format(self.temperature_module_key) + \
-                       'Irradiance: {}\n'.format(self.irradiance_poa_key)
+            text_str = system_info_str
 
         return text_str
 
