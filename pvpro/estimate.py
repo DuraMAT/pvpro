@@ -1414,9 +1414,9 @@ def estimate_singlediode_params(poa,
     if verbose:
         print('resistance_series_ref estimate: {}'.format(resistance_series_ref))
 
-
+    results = {}
     num_iter = max_iter
-
+    """
     # More complex optimization not working so well on real data.
     if optimize_Rs_Io:
         results = pd.DataFrame(columns=['saturation_current_ref'])
@@ -1529,7 +1529,7 @@ def estimate_singlediode_params(poa,
             diode_factor = get_average_diode_factor(technology)
         # print('Diode factor: {:.3f}'.format(diode_factor))
         figure_number+=1
-
+    """
 
     # print('Time to point c: {}'.format(time() - start_time))
 
