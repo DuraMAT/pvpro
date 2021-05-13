@@ -264,11 +264,11 @@ class PvProHandler:
                 'missing_data')
 
             # TODO: Check with Bennet that this is the correct way to fix this.
-            dh.data_frame_raw['missing_data'].fillna(True, inplace=True)
-            dh.data_frame_raw['low_p'].fillna(True, inplace=True)
-            dh.data_frame_raw['high_v'].fillna(False, inplace=True)
-            dh.data_frame_raw['daytime'].fillna(False, inplace=True)
-            dh.data_frame_raw['clipped_times'].fillna(False, inplace=True)
+            dh.data_frame_raw['missing_data'] = dh.data_frame_raw['missing_data'].fillna(True)
+            dh.data_frame_raw['low_p'] = dh.data_frame_raw['low_p'].fillna(True)
+            dh.data_frame_raw['high_v'] = dh.data_frame_raw['high_v'].fillna(False)
+            dh.data_frame_raw['daytime'] = dh.data_frame_raw['daytime'].fillna(False)
+            dh.data_frame_raw['clipped_times'] = dh.data_frame_raw['clipped_times'].fillna(False)
 
             # Apply operating class labels
 
