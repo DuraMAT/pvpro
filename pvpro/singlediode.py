@@ -166,6 +166,7 @@ def pvlib_single_diode(
                                                 Eg_ref=Eg_ref, dEgdT=dEgdT,
                                                 irradiance_ref=irradiance_ref,
                                                 temperature_ref=temperature_ref)
+    iph[iph<=0] = np.nan
 
     out = singlediode(iph,
                       io,
