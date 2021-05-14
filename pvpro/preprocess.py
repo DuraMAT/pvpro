@@ -561,7 +561,7 @@ class Preprocessor():
 
 
     def find_current_irradiance_outliers(self,
-                                         # boolean_mask=None,
+                                         boolean_mask=None,
                                          poa_lower_lim=10,
                                          epsilon=2.0,
                                          points_per_iteration=2000):
@@ -575,12 +575,12 @@ class Preprocessor():
             (self.df['operating_cls'] == 0,
              self.df[self.irradiance_poa_key] > poa_lower_lim)
         )
-        boolean_mask = filter
+        # boolean_mask = filter
 
-        # if boolean_mask is None:
-        #     boolean_mask = filter
-        # else:
-        #     boolean_mask = np.logical_and(boolean_mask, filter)
+        if boolean_mask is None:
+            boolean_mask = filter
+        else:
+            boolean_mask = np.logical_and(boolean_mask, filter)
 
         current_irradiance_filter = find_linear_model_outliers_timeseries(
             x=self.df[self.irradiance_poa_key],
@@ -594,6 +594,49 @@ class Preprocessor():
             'outliers']
 
         return current_irradiance_filter
+
+
+    def find_temperature_voltage_outliers(self,
+                                         boolean_mask=None,
+                                         poa_lower_lim=10,
+                                         voltage_lower_lim = 10,
+                                         epsilon=2.0,
+                                         points_per_iteration=2000):
+
+        # filter = np.logical_and.reduce(
+        #     (np.logical_not(self.df['clipped_times']),
+        #      self.df['operating_cls'] == 0
+        #      ))
+        #
+        filter = np.logical_and.reduce(
+            (self.df['operating_cls'] == 0,
+             self.df[self.irradiance_poa_key] > poa_lower_lim,
+             self.df[self.voltage_dc_key]/self.modules_per_string > voltage_lower_lim)
+        )
+
+
+        if boolean_mask is None:
+            boolean_mask = filter
+        else:
+            boolean_mask = np.logical_and(boolean_mask, filter)
+        if 'temperature_cell' not in self.df:
+            raise Exception("""Need 'temperature_cell' in dataframe, 
+            run 'calculate_cell_temperature' first. 
+            
+            """)
+
+        voltage_temperature_filter = find_linear_model_outliers_timeseries(
+            x=self.df['temperature_cell'],
+            y=self.df[self.voltage_dc_key] / self.modules_per_string,
+            boolean_mask=boolean_mask,
+            fit_intercept=True,
+            epsilon=epsilon,
+            points_per_iteration=points_per_iteration)
+
+        self.df['voltage_temperature_outliers'] = voltage_temperature_filter[
+            'outliers']
+
+        return voltage_temperature_filter
 
 
     def plot_operating_cls(self, figsize=(12, 6)):
