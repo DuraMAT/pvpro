@@ -565,7 +565,7 @@ class Preprocessor():
                                          poa_lower_lim=10,
                                          epsilon=2.0,
                                          points_per_iteration=2000):
-        #
+
         # filter = np.logical_and.reduce(
         #     (np.logical_not(self.df['clipped_times']),
         #      self.df['operating_cls'] == 0
@@ -582,7 +582,7 @@ class Preprocessor():
         # else:
         #     boolean_mask = np.logical_and(boolean_mask, filter)
 
-        self.current_irradiance_filter = find_linear_model_outliers_timeseries(
+        current_irradiance_filter = find_linear_model_outliers_timeseries(
             x=self.df[self.irradiance_poa_key],
             y=self.df[self.current_dc_key] / self.parallel_strings,
             boolean_mask=boolean_mask,
@@ -590,9 +590,10 @@ class Preprocessor():
             epsilon=epsilon,
             points_per_iteration=points_per_iteration)
 
-        self.df['current_irradiance_outliers'] = \
-        self.current_irradiance_filter[
+        self.df['current_irradiance_outliers'] = current_irradiance_filter[
             'outliers']
+
+        return current_irradiance_filter
 
 
     def plot_operating_cls(self, figsize=(12, 6)):
