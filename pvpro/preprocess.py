@@ -8,10 +8,16 @@ from pvlib.solarposition import get_solarposition
 from pvlib.irradiance import get_total_irradiance
 from pvlib.tracking import singleaxis
 from pvlib.clearsky import detect_clearsky
+from pvlib.temperature import sapm_cell_from_module
 import pandas as pd
 
 from sklearn.utils.extmath import safe_sparse_dot
 from sklearn.linear_model import HuberRegressor
+from solardatatools import DataHandler
+
+from pvpro.classify import classify_operating_mode
+
+import warnings
 
 def monotonic(ac_power, fractional_rate_limit=0.05):
     dP = np.diff(ac_power)
@@ -47,10 +53,10 @@ def find_huber_outliers(x, y, sample_weight=None,
 
     if np.sum(mask) <= 2:
         print('Need more than two points for linear regression.')
-        return outliers
+        return [], []
 
-    X = np.atleast_2d(x).transpose()
-    y = np.array(y)
+    # X = np.atleast_2d(x).transpose()
+    # y = np.array(y)
 
     huber = HuberRegressor(epsilon=epsilon,
                            fit_intercept=fit_intercept)
@@ -153,6 +159,7 @@ def find_linear_model_outliers_timeseries(x, y,
         'lower_iter_idx': lower_iter_idx,
         'upper_iter_idx': upper_iter_idx,
         'huber': huber,
+        'boolean_mask': boolean_mask
     }
     return out
 
@@ -235,3 +242,242 @@ def find_clearsky_poa(df, lat, lon,
     clearSeries = clearSeries.reindex(index=df.index, method='ffill', limit=3)
 
     return clearSeries
+
+
+class Preprocessor():
+
+    def __init__(self,
+                 df,
+                 system_name='Unknown',
+                 voltage_key=None,
+                 current_key=None,
+                 temperature_module_key=None,
+                 temperature_ambient_key=None,
+                 irradiance_poa_key=None,
+                 modules_per_string=None,
+                 parallel_strings=None,
+                 freq=None,
+                 ):
+
+        # Initialize datahandler object.
+
+        self.dh = DataHandler(df)
+
+        # self.df = df
+        self.system_name = system_name
+        # self.use_clear_times = use_clear_times
+
+        self.voltage_key = voltage_key
+        self.current_key = current_key
+        # self.power_key = power_key
+        self.temperature_module_key = temperature_module_key
+        self.temperature_ambient_key = temperature_ambient_key
+        self.irradiance_poa_key = irradiance_poa_key
+        self.modules_per_string = modules_per_string
+        self.parallel_strings = parallel_strings
+
+        if freq is None:
+            timedelta_minutes = np.median(np.diff(df.index)) / np.timedelta64(1,
+                                                                              's') / 60
+            freq = '{:.0f}min'.format(timedelta_minutes)
+            print('Autodetected freq: {}'.format(freq))
+
+    @property
+    def df(self):
+        """
+        Store dataframe inside the DataHandler.
+
+        Returns
+        -------
+        df : dataframe
+            Time-series data
+        """
+        return self.dh.data_frame_raw
+
+    @df.setter
+    def df(self, value):
+        """
+        Set Dataframe by setting the version inside datahandler.
+
+        Parameters
+        ----------
+        value : dataframe
+            Time-series data
+
+        Returns
+        -------
+
+        """
+        self.dh.data_frame_raw = value
+
+    def calculate_cell_temperature(self,delta_T=3):
+        """
+        Set cell temeperature in dataframe.
+
+        Todo: move this functionality to preprocessing.
+
+        Returns
+        -------
+
+        """
+        # Calculate cell temperature
+        self.df.loc[:, 'temperature_cell'] = sapm_cell_from_module(
+            module_temperature=self.df[self.temperature_module_key],
+            poa_global=self.df[self.irradiance_poa_key],
+            deltaT=delta_T)
+
+    def simulation_setup(self):
+        """
+        Perform "quick" preprocessing steps.
+
+
+        Returns
+        -------
+
+        """
+
+        # Remove nan from df.
+        keys = [self.voltage_key,
+                self.current_key,
+                self.temperature_module_key,
+                self.irradiance_poa_key]
+
+        for k in keys:
+            if not k in self.df.keys():
+                raise Exception(
+                    'Key "{}" not in dataframe. Check specification of '
+                    'voltage_key, current_key, temperature_module_key and '
+                    'irradiance_poa_key'.format(
+                        k))
+
+        # Make normalized power column.
+        self.df['power_dc'] = self.df[self.voltage_key] * self.df[
+            self.current_key] / self.modules_per_string / self.parallel_strings
+
+        # Make cell temp column
+        self.calculate_cell_temperature()
+
+
+
+    def run_preprocess(self,
+                       correct_tz=True,
+                       data_sampling=None,
+                       correct_dst=False,
+                       fix_shifts=True,
+                       classification_method='solar-data-tools',
+                       max_val=None,
+                       verbose=True):
+        """
+        Perform "time-consuming" preprocessing steps
+
+
+
+        Parameters
+        ----------
+        correct_tz
+        data_sampling
+        run_solar_data_tools
+
+        Returns
+        -------
+
+        """
+        self.simulation_setup()
+        if self.df[self.temperature_module_key].max() > 85:
+            warnings.warn(
+                'Maximum module temperature is larger than 85 C. Double check that input temperature is in Celsius, not Farenheight.')
+
+        if type(data_sampling) != type(None):
+            self.dh.data_sampling = data_sampling
+
+        # Run solar-data-tools.
+
+        if correct_dst:
+            if verbose:
+                print('Fixing daylight savings time shift...')
+            self.dh.fix_dst()
+
+        if verbose:
+            print('Running solar data tools...')
+
+        self.dh.run_pipeline(power_col='power_dc',
+                             correct_tz=correct_tz,
+                             extra_cols=[self.temperature_module_key,
+                                         self.irradiance_poa_key,
+                                         self.voltage_key,
+                                         self.current_key],
+                             verbose=False,
+                             fix_shifts=fix_shifts,
+                             max_val=max_val)
+
+        if classification_method.lower() == 'solar-data-tools':
+            self.dh.find_clipped_times()
+            # Calculate boolean masks
+            dh = self.dh
+            dh.augment_data_frame(dh.boolean_masks.daytime, 'daytime')
+            dh.augment_data_frame(dh.boolean_masks.clipped_times,
+                                  'clipped_times')
+            voltage_fill_nan = np.nan_to_num(
+                dh.extra_matrices[self.voltage_key], nan=-9999)
+            dh.augment_data_frame(voltage_fill_nan > 0.01 * np.nanquantile(
+                dh.extra_matrices[self.voltage_key], 0.98), 'high_v')
+            dh.augment_data_frame(
+                dh.filled_data_matrix < 0.01 * dh.capacity_estimate,
+                'low_p')
+            dh.augment_data_frame(dh.daily_flags.no_errors, 'no_errors')
+            dh.augment_data_frame(
+                np.any([np.isnan(dh.extra_matrices[self.voltage_key]),
+                        np.isnan(dh.extra_matrices[self.current_key]),
+                        np.isnan(dh.extra_matrices[self.irradiance_poa_key]),
+                        np.isnan(
+                            dh.extra_matrices[self.temperature_module_key])],
+                       axis=0),
+                'missing_data')
+
+            dh.data_frame_raw['missing_data'] = dh.data_frame_raw[
+                'missing_data'].fillna(True, inplace=False)
+            dh.data_frame_raw['low_p'] = dh.data_frame_raw['low_p'].fillna(True,
+                                                                           inplace=False)
+            dh.data_frame_raw['high_v'] = dh.data_frame_raw['high_v'].fillna(
+                False, inplace=False)
+            dh.data_frame_raw['daytime'] = dh.data_frame_raw['daytime'].fillna(
+                False, inplace=False)
+            dh.data_frame_raw['clipped_times'] = dh.data_frame_raw[
+                'clipped_times'].fillna(False, inplace=False)
+
+            # Apply operating class labels
+
+            # 0: System at maximum power point.
+            # 1: System at open circuit conditions.
+            # 2: Clipped or curtailed. DC operating point is not necessarily at MPP.
+            # -1: No power/inverter off
+            # -2: Other
+
+            for df in [dh.data_frame_raw, dh.data_frame]:
+                df.loc[:, 'operating_cls'] = 0
+                df.loc[np.logical_and(
+                    np.logical_not(df['high_v']),
+                    np.logical_not(df['daytime'])
+                ), 'operating_cls'] = -1
+                df.loc[np.logical_and(
+                    df['high_v'],
+                    np.logical_or(np.logical_not(df['daytime']), df['low_p'])
+                ), 'operating_cls'] = 1
+                df.loc[df['clipped_times'], 'operating_cls'] = 2
+                df.loc[np.logical_or(
+                    df['missing_data'],
+                    np.logical_not(df['no_errors'])
+                ), 'operating_cls'] = -2
+            # Create matrix view of operating class labels for plotting
+            dh.generate_extra_matrix('operating_cls',
+                                     new_index=dh.data_frame.index)
+
+        elif classification_method.lower() == 'simple':
+            self.df['operating_cls'] = classify_operating_mode(
+                voltage=self.df[self.voltage_key],
+                current=self.df[self.current_key],
+                freq=self.freq
+            )
+        else:
+            raise Exception(
+                '`classification_method` must be "solar-data-tools" or "simple"')

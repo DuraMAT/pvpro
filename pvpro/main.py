@@ -27,6 +27,10 @@ from pvpro.estimate import estimate_singlediode_params, estimate_imp_ref, \
 from pvpro.preprocess import monotonic
 from pvanalytics.features import clipping
 
+from matplotlib.colors import LinearSegmentedColormap
+import seaborn as sns
+from pvpro.preprocess import find_linear_model_outliers_timeseries
+
 
 class PvProHandler:
     """
@@ -115,53 +119,53 @@ class PvProHandler:
         """
         self.dh.data_frame_raw = value
 
-    def calculate_cell_temperature(self):
-        """
-        Set cell temeperature in dataframe.
+    # def calculate_cell_temperature(self):
+    #     """
+    #     Set cell temeperature in dataframe.
+    #
+    #     Todo: move this functionality to preprocessing.
+    #
+    #     Returns
+    #     -------
+    #
+    #     """
+    #     # Calculate cell temperature
+    #     self.df.loc[:, 'temperature_cell'] = sapm_cell_from_module(
+    #         module_temperature=self.df[self.temperature_module_key],
+    #         poa_global=self.df[self.irradiance_poa_key],
+    #         deltaT=self.delta_T)
 
-        Todo: move this functionality to preprocessing.
-
-        Returns
-        -------
-
-        """
-        # Calculate cell temperature
-        self.df.loc[:, 'temperature_cell'] = sapm_cell_from_module(
-            module_temperature=self.df[self.temperature_module_key],
-            poa_global=self.df[self.irradiance_poa_key],
-            deltaT=self.delta_T)
-
-    def simulation_setup(self):
-        """
-        Perform "quick" preprocessing steps.
-
-        TODO: remove this functionality to preprocessing library.
-
-        Returns
-        -------
-
-        """
-
-        # Remove nan from df.
-        keys = [self.voltage_key,
-                self.current_key,
-                self.temperature_module_key,
-                self.irradiance_poa_key]
-
-        for k in keys:
-            if not k in self.df.keys():
-                raise Exception(
-                    'Key "{}" not in dataframe. Check specification of '
-                    'voltage_key, current_key, temperature_module_key and '
-                    'irradiance_poa_key'.format(
-                        k))
-
-        # Make power column.
-        self.df['power_dc'] = self.df[self.voltage_key] * self.df[
-            self.current_key] / self.modules_per_string / self.parallel_strings
-
-        # Make cell temp column
-        self.calculate_cell_temperature()
+    # def simulation_setup(self):
+    #     """
+    #     Perform "quick" preprocessing steps.
+    #
+    #     TODO: remove this functionality to preprocessing library.
+    #
+    #     Returns
+    #     -------
+    #
+    #     """
+    #
+    #     # Remove nan from df.
+    #     keys = [self.voltage_key,
+    #             self.current_key,
+    #             self.temperature_module_key,
+    #             self.irradiance_poa_key]
+    #
+    #     for k in keys:
+    #         if not k in self.df.keys():
+    #             raise Exception(
+    #                 'Key "{}" not in dataframe. Check specification of '
+    #                 'voltage_key, current_key, temperature_module_key and '
+    #                 'irradiance_poa_key'.format(
+    #                     k))
+    #
+    #     # Make power column.
+    #     self.df['power_dc'] = self.df[self.voltage_key] * self.df[
+    #         self.current_key] / self.modules_per_string / self.parallel_strings
+    #
+    #     # Make cell temp column
+    #     self.calculate_cell_temperature()
 
     # def check_keys(self):
     #
@@ -263,11 +267,16 @@ class PvProHandler:
                        axis=0),
                 'missing_data')
 
-            dh.data_frame_raw['missing_data'] = dh.data_frame_raw['missing_data'].fillna(True, inplace=False)
-            dh.data_frame_raw['low_p'] = dh.data_frame_raw['low_p'].fillna(True, inplace=False)
-            dh.data_frame_raw['high_v'] = dh.data_frame_raw['high_v'].fillna(False, inplace=False)
-            dh.data_frame_raw['daytime'] = dh.data_frame_raw['daytime'].fillna(False, inplace=False)
-            dh.data_frame_raw['clipped_times'] = dh.data_frame_raw['clipped_times'].fillna(False, inplace=False)
+            dh.data_frame_raw['missing_data'] = dh.data_frame_raw[
+                'missing_data'].fillna(True, inplace=False)
+            dh.data_frame_raw['low_p'] = dh.data_frame_raw['low_p'].fillna(True,
+                                                                           inplace=False)
+            dh.data_frame_raw['high_v'] = dh.data_frame_raw['high_v'].fillna(
+                False, inplace=False)
+            dh.data_frame_raw['daytime'] = dh.data_frame_raw['daytime'].fillna(
+                False, inplace=False)
+            dh.data_frame_raw['clipped_times'] = dh.data_frame_raw[
+                'clipped_times'].fillna(False, inplace=False)
 
             # Apply operating class labels
 
@@ -306,14 +315,20 @@ class PvProHandler:
             raise Exception(
                 '`classification_method` must be "solar-data-tools" or "simple"')
 
-        # TODO: this always overwrites p0 and should be changed so that if the user has set p0, it is not changed.
-        # self.estimate_p0()
-
     def visualize_operating_cls(self, figsize=(12, 6)):
+
         fig = plt.figure(figsize=figsize)
+
+        # Build colormap
+        colors = sns.color_palette("Paired")[:5]
+        n_bins = 5  # Discretizes the interpolation into bins
+        cmap_name = 'my_map'
+        cmap = LinearSegmentedColormap.from_list(cmap_name, colors, N=n_bins)
+
         plt.imshow(self.dh.extra_matrices['operating_cls'], aspect='auto',
                    interpolation='none',
-                   cmap='Paired')
+                   cmap=cmap,
+                   vmin=-2.5, vmax=2.5)
         plt.colorbar()
         return fig
 
@@ -338,18 +353,52 @@ class PvProHandler:
         print(pd.Series(info_display))
         return info_display
 
-    def find_monotonic_times(self):
+    def find_monotonic_times(self, fractional_rate_limit=0.05):
         self.df['monotonic'] = monotonic(
-            self.df[self.voltage_key] * self.df[self.current_key])
+            self.df[self.voltage_key] * self.df[self.current_key],
+            fractional_rate_limit=fractional_rate_limit)
 
-    def find_clipping_times(self, freq='15min'):
-        # TODO: autoset freq.
-        self.df['is_clipping'] = clipping.geometric(
-            ac_power=self.df[self.voltage_key] * self.df[self.current_key],
-            freq='15min')
+    # def find_clipping_times(self, freq='15min'):
+    #     # TODO: autoset freq.
+    #     self.df['is_clipping'] = clipping.geometric(
+    #         ac_power=self.df[self.voltage_key] * self.df[self.current_key],
+    #         freq='15min')
+    #
+    #     # not_clipping = np.logical_not(is_clipping)
+    #     # Try adjusting the threshold.
 
-        # not_clipping = np.logical_not(is_clipping)
-        # Try adjusting the threshold.
+    def find_current_irradiance_outliers(self,
+                                         # boolean_mask=None,
+                                         poa_lower_lim=10,
+                                         epsilon=2.0,
+                                         points_per_iteration=2000):
+        #
+        # filter = np.logical_and.reduce(
+        #     (np.logical_not(self.df['clipped_times']),
+        #      self.df['operating_cls'] == 0
+        #      ))
+        #
+        filter = np.logical_and.reduce(
+            (self.df['operating_cls'] == 0,
+             self.df[self.irradiance_poa_key] > poa_lower_lim)
+        )
+        boolean_mask = filter
+
+        # if boolean_mask is None:
+        #     boolean_mask = filter
+        # else:
+        #     boolean_mask = np.logical_and(boolean_mask, filter)
+
+        self.current_irradiance_filter = find_linear_model_outliers_timeseries(
+            x=self.df[self.irradiance_poa_key],
+            y=self.df[self.current_key] / self.parallel_strings,
+            boolean_mask=boolean_mask,
+            fit_intercept=False,
+            epsilon=epsilon,
+            points_per_iteration=points_per_iteration)
+
+        self.df['current_irradiance_outliers'] = self.current_irradiance_filter[
+            'outliers']
 
     def find_clear_times(self,
                          min_length=2,
@@ -357,7 +406,6 @@ class PvProHandler:
         """
         Find clear times.
 
-        TODO: remove this functionality to preprocessing library.
 
         Parameters
         ----------
@@ -525,7 +573,7 @@ class PvProHandler:
         #     np.arange(0, dataset_length_days - days_per_run,
         #               time_step_between_iterations_days))
         iteration_start_days = np.arange(0, dataset_length_days - days_per_run,
-                      365.25 / iterations_per_year)
+                                         365.25 / iterations_per_year)
 
         # Fit params taken from p0
         if fit_params == None:
@@ -608,9 +656,9 @@ class PvProHandler:
                         len(boolean_mask), len(self.df)))
 
             pfit.loc[k, 't_start'] = self.df.index[0] + datetime.timedelta(
-                        iteration_start_days[k])
+                iteration_start_days[k])
             pfit.loc[k, 't_end'] = self.df.index[0] + datetime.timedelta(
-                        iteration_start_days[k] + days_per_run)
+                iteration_start_days[k] + days_per_run)
 
             idx = np.logical_and.reduce(
                 (
@@ -895,21 +943,22 @@ class PvProHandler:
 
     def build_plot_text_str(self, df, p_plot=None):
 
-        if len(df)>0:
+        if len(df) > 0:
             dates_str = 'Dates: {} to {}\n'.format(
-                           df.index[0].strftime("%m/%d/%Y"),
-                           df.index[-1].strftime("%m/%d/%Y"))
+                df.index[0].strftime("%m/%d/%Y"),
+                df.index[-1].strftime("%m/%d/%Y"))
         else:
             dates_str = 'Dates: None\n'
 
         system_info_str = 'System: {}\n'.format(self.system_name) + \
-                       dates_str + \
-                       'Current: {}\n'.format(self.current_key) + \
-                       'Voltage: {}\n'.format(self.voltage_key) + \
-                       'Temperature: {}\n'.format(self.temperature_module_key) + \
-                       'Irradiance: {}\n'.format(self.irradiance_poa_key) + \
-                       'Temperature module->cell delta_T: {}\n'.format(
-                           self.delta_T)
+                          dates_str + \
+                          'Current: {}\n'.format(self.current_key) + \
+                          'Voltage: {}\n'.format(self.voltage_key) + \
+                          'Temperature: {}\n'.format(
+                              self.temperature_module_key) + \
+                          'Irradiance: {}\n'.format(self.irradiance_poa_key) + \
+                          'Temperature module->cell delta_T: {}\n'.format(
+                              self.delta_T)
 
         if p_plot is not None:
             text_str = system_info_str + \
@@ -966,11 +1015,11 @@ class PvProHandler:
         # df = self.get_df_for_iteration(iteration,
         #                                use_clear_times=use_clear_times)
 
-
-        if len(df)>0:
+        if len(df) > 0:
             inv_on_points = np.array(df['operating_cls'] == 0)
             vmp = np.array(
-                df.loc[inv_on_points, self.voltage_key]) / self.modules_per_string
+                df.loc[
+                    inv_on_points, self.voltage_key]) / self.modules_per_string
             imp = np.array(
                 df.loc[inv_on_points, self.current_key]) / self.parallel_strings
 
@@ -1050,7 +1099,7 @@ class PvProHandler:
         plt.ylim([0, plot_imp_max])
         plt.xticks(fontsize=9)
         plt.yticks(fontsize=9)
-        if cbar:
+        if cbar and len(df) > 0:
             pcbar = plt.colorbar(h_sc)
             pcbar.set_label('Cell Temperature (C)')
 
@@ -1073,7 +1122,8 @@ class PvProHandler:
                                      plot_temperature_min=-10,
                                      plot_temperature_max=70,
                                      figsize=(6.5, 3.5),
-                                     cmap='viridis'):
+                                     cmap='viridis',
+                                     cbar=True):
         """
         Make Vmp, Imp scatter plot.
 
@@ -1101,11 +1151,12 @@ class PvProHandler:
         # df = self.get_df_for_iteration(iteration,
         #                                use_clear_times=use_clear_times)
 
-        if len(df)>0:
+        if len(df) > 0:
             inv_on_points = np.array(df['operating_cls'] == 0)
 
             vmp = np.array(
-                df.loc[inv_on_points, self.voltage_key]) / self.modules_per_string
+                df.loc[
+                    inv_on_points, self.voltage_key]) / self.modules_per_string
             imp = np.array(
                 df.loc[inv_on_points, self.current_key]) / self.parallel_strings
 
@@ -1155,8 +1206,9 @@ class PvProHandler:
         plt.ylim([plot_vmp_min, plot_vmp_max])
         plt.xticks(fontsize=9)
         plt.yticks(fontsize=9)
-        pcbar = plt.colorbar(h_sc)
-        pcbar.set_label('Irradiance (W/m^2)')
+        if cbar and len(df) > 0:
+            pcbar = plt.colorbar(h_sc)
+            pcbar.set_label('Irradiance (W/m^2)')
 
         plt.xlabel('Cell Temperature (C)', fontsize=9)
         plt.ylabel('Voltage (V)', fontsize=9)
@@ -1171,7 +1223,8 @@ class PvProHandler:
                               figure_number=2,
                               vmin=0,
                               vmax=70,
-                              plot_voc_max=45.):
+                              plot_voc_max=45.,
+                              cbar=True):
         """
         Make Vmp, Imp scatter plot.
 
@@ -1194,12 +1247,12 @@ class PvProHandler:
         ax = plt.axes()
 
         temp_limits = np.linspace(vmin, vmax, 8)
-        if len(df)>0:
-
+        if len(df) > 0:
             inv_off_points = np.array(df['operating_cls'] == 1)
 
             voc = np.array(
-                df.loc[inv_off_points, self.voltage_key]) / self.modules_per_string
+                df.loc[
+                    inv_off_points, self.voltage_key]) / self.modules_per_string
             irrad = np.array(df.loc[inv_off_points, self.irradiance_poa_key])
 
             h_sc = plt.scatter(voc, irrad,
@@ -1297,8 +1350,9 @@ class PvProHandler:
         plt.xticks(fontsize=9)
         plt.yticks(fontsize=9)
 
-        pcbar = plt.colorbar(h_sc)
-        pcbar.set_label('Cell Temperature (C)')
+        if cbar and len(df) > 0:
+            pcbar = plt.colorbar(h_sc)
+            pcbar.set_label('Cell Temperature (C)')
 
         plt.xlabel('Voc (V)', fontsize=9)
         plt.ylabel('POA (W/m^2)', fontsize=9)
@@ -1319,7 +1373,8 @@ class PvProHandler:
                                                 figure_number=1,
                                                 vmin=0,
                                                 vmax=70,
-                                                plot_imp_max=8):
+                                                plot_imp_max=8,
+                                                cbar=True):
         """
         Make Vmp, Imp scatter plot.
 
@@ -1342,9 +1397,8 @@ class PvProHandler:
         # ax = plt.axes()
 
         temp_limits = np.linspace(vmin, vmax, 8)
-        if len(df)>0:
+        if len(df) > 0:
             cax = np.array(df['operating_cls'] == 2)
-
 
             current = np.array(
                 df.loc[cax, self.current_key]) / self.parallel_strings
@@ -1406,9 +1460,9 @@ class PvProHandler:
         plt.xlim([0, 1200])
         plt.xticks(fontsize=9)
         plt.yticks(fontsize=9)
-
-        pcbar = plt.colorbar(h_sc)
-        pcbar.set_label('Cell Temperature (C)')
+        if cbar and len(df) > 0:
+            pcbar = plt.colorbar(h_sc)
+            pcbar.set_label('Cell Temperature (C)')
 
         plt.ylabel('Current (A)', fontsize=9)
         plt.xlabel('POA (W/m^2)', fontsize=9)
@@ -1429,7 +1483,8 @@ class PvProHandler:
                                             figure_number=3,
                                             vmin=0,
                                             vmax=70,
-                                            plot_imp_max=8):
+                                            plot_imp_max=8,
+                                            cbar=True):
         """
 
 
@@ -1453,7 +1508,7 @@ class PvProHandler:
 
         temp_limits = np.linspace(vmin, vmax, 8)
 
-        if len(df)>0:
+        if len(df) > 0:
             cax = np.array(df['operating_cls'] == 0)
 
             current = np.array(
@@ -1521,8 +1576,9 @@ class PvProHandler:
         plt.xticks(fontsize=9)
         plt.yticks(fontsize=9)
 
-        pcbar = plt.colorbar(h_sc)
-        pcbar.set_label('Cell Temperature (C)')
+        if cbar and len(df) > 0:
+            pcbar = plt.colorbar(h_sc)
+            pcbar.set_label('Cell Temperature (C)')
 
         plt.ylabel('Current (A)', fontsize=9)
         plt.xlabel('POA (W/m^2)', fontsize=9)
@@ -1543,7 +1599,8 @@ class PvProHandler:
                                                  figure_number=1,
                                                  vmin=0,
                                                  vmax=70,
-                                                 plot_imp_max=8):
+                                                 plot_imp_max=8,
+                                                 cbar=True):
         """
 
 
@@ -1568,7 +1625,7 @@ class PvProHandler:
         temp_limits = np.linspace(vmin, vmax, 8)
 
         cax = np.array(df['operating_cls'] == 0)
-        if len(df)>0:
+        if len(df) > 0:
             irrad = np.array(df.loc[cax, self.irradiance_poa_key])
             Trise = np.array(df.loc[cax, self.temperature_module_key] - df.loc[
                 cax, self.temperature_ambient_key])
@@ -1592,9 +1649,9 @@ class PvProHandler:
         # plt.xlim([0, 1200])
         plt.xticks(fontsize=9)
         plt.yticks(fontsize=9)
-
-        pcbar = plt.colorbar(h_sc)
-        pcbar.set_label('Cell Temperature (C)')
+        if cbar and len(df) > 0:
+            pcbar = plt.colorbar(h_sc)
+            pcbar.set_label('Cell Temperature (C)')
 
         plt.ylabel('T module-T ambient (C)', fontsize=9)
         plt.xlabel('POA (W/m^2)', fontsize=9)
