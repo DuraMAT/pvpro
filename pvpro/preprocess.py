@@ -27,13 +27,29 @@ import seaborn as sns
 
 from pvpro.classify import build_operating_cls
 
-def monotonic(ac_power, fractional_rate_limit=0.05):
-    dP = np.diff(ac_power)
+def monotonic(y, fractional_rate_limit=0.05):
+    """
+    Find times when vector has a run of three increasing values,
+    three decreasing values or is changing less than a fractional percent.
+
+    Parameters
+    ----------
+    y : array
+
+    fractional_rate_limit : float
+
+    Returns
+    -------
+    boolean_mask
+        True if monotonic or rate of change is less than a fractional limit.
+
+    """
+    dP = np.diff(y)
     dP = np.append(dP, dP[-1])
     boolean_mask = np.logical_or.reduce((
         np.logical_and(dP > 0, np.roll(dP, 1) > 0),
         np.logical_and(dP < 0, np.roll(dP, 1) < 0),
-        np.abs(dP / ac_power) < fractional_rate_limit
+        np.abs(dP / y ) < fractional_rate_limit
     ))
     return boolean_mask
 
@@ -423,7 +439,6 @@ class Preprocessor():
 
     def classify_points_sdt(self):
 
-
         self.dh.find_clipped_times()
 
         # Calculate boolean masks
@@ -491,12 +506,19 @@ class Preprocessor():
         self.df.loc[:,'daytime'] = np.logical_not(self.df.loc[:, 'low_p'])
 
     def build_operating_cls(self):
+        """
+        Adds a key to self.df of 'operating_cls'. This field classifies the
+        operating point according to the following table:
 
-        # 0: System at maximum power point.
-        # 1: System at open circuit conditions.
-        # 2: Clipped or curtailed. DC operating point is not necessarily at MPP.
-        # -1: No power/inverter off
-        # -2: Other
+        0: System at maximum power point.
+        1: System at open circuit conditions.
+        2: Clipped or curtailed. DC operating point is not necessarily at MPP.
+        -1: No power/inverter off
+        -2: Other
+
+
+        """
+
 
 
         if self._ran_sdt:
@@ -504,7 +526,7 @@ class Preprocessor():
                 df.loc[:, 'operating_cls'] = build_operating_cls(df)
 
             self.dh.generate_extra_matrix('operating_cls',
-                                                 new_index=self.dh.data_frame.index)
+                          new_index=self.dh.data_frame.index)
         else:
             for df in [self.dh.data_frame_raw]:
                 df.loc[:, 'operating_cls'] = build_operating_cls(df)
