@@ -55,10 +55,47 @@ def classify_operating_mode(voltage, current,
 
 
 def build_operating_cls(df):
+    """
+    Build array of classifications of each time stamp based on boolean arrays
+    provided.
+
+
+    Parameters
+    ----------
+    df : dataframe or dict
+        Needs to have fields:
+
+        - 'high_v':
+
+        - 'daytime':
+
+        - 'low_p':
+
+        - 'clipped_times':
+
+        - 'missing_data':
+
+        - 'no_errors':
+
+    Returns
+    -------
+
+    operating_cls : array
+
+        integer array of operating_cls
+
+            0: System at maximum power point.
+            1: System at open circuit conditions.
+            2: Clipped or curtailed. DC operating point is not necessarily at MPP.
+            -1: No power/inverter off
+            -2: Other
+
+
+    """
     if isinstance(df, pd.DataFrame):
         operating_cls = np.zeros(len(df), dtype='int')
     else:
-        operating_cls = np.zeros(df['high_V'].shape,dtype='int')
+        operating_cls = np.zeros(df['high_v'].shape,dtype='int')
 
     # df.loc[:, 'operating_cls'] = 0
     operating_cls[np.logical_and(
