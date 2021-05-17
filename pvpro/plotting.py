@@ -138,17 +138,17 @@ def plot_results_timeseries(pfit, yoy_result=None,
 
             plt.plot(t_smooth,
                      scale * pfit[k].median() * (1 + (t_smooth - t_mean) * (
-                                 yoy_result[k]['percent_per_year_CI'][
-                                     0] * 1e-2)),
+                             yoy_result[k]['percent_per_year_CI'][
+                                 0] * 1e-2)),
                      color=[1, 0.5, 0, 0.3])
             plt.plot(t_smooth,
                      scale * pfit[k].median() * (1 + (t_smooth - t_mean) * (
-                                 yoy_result[k]['percent_per_year_CI'][
-                                     1] * 1e-2)),
+                             yoy_result[k]['percent_per_year_CI'][
+                                 1] * 1e-2)),
                      color=[1, 0.5, 0, 0.3])
             plt.plot(t_smooth,
                      scale * pfit[k].median() * (1 + (t_smooth - t_mean) * (
-                                 yoy_result[k]['percent_per_year'] * 1e-2)),
+                             yoy_result[k]['percent_per_year'] * 1e-2)),
                      color=[1, 0.5, 0, 0.8],
                      label='YOY trend')
             plt.text(0.5, 0.1, '{:.2f}%/yr\n{:.2f} to {:.2f}%/yr'.format(
@@ -163,6 +163,204 @@ def plot_results_timeseries(pfit, yoy_result=None,
             plt.legend(loc=[0, 1.2])
 
         n = n + 1
+
+
+def plot_scatter(x, y, c, boolean_mask=None, figure_number=None,
+                 vmin=0,
+                 vmax=70,
+                 plot_x_min=0,
+                 plot_x_max=40,
+                 plot_y_min=0,
+                 plot_y_max=10,
+                 figsize=(6.5, 3.5),
+                 text_str='',
+                 cbar=True,
+                 cmap='jet',
+                 ylabel='',
+                 xlabel='',
+                 clabel=''):
+    """
+    Make Vmp, Imp scatter plot.
+
+    Parameters
+    ----------
+    p_plot
+    figure_number
+    iteration
+    vmin
+    vmax
+
+    Returns
+    -------
+
+    """
+
+    # if figure_number is not None:
+    # Make figure for inverter on.
+    # fig = plt.figure(figure_number, figsize=figsize)
+    # plt.clf()
+    # ax = plt.axes()
+
+    # df = self.get_df_for_iteration(iteration,
+    #                                use_clear_times=use_clear_times)
+    if boolean_mask is None:
+        boolean_mask = np.ones_like(x, dtype='bool')
+
+    if len(x[boolean_mask]) > 0:
+
+        # Make scatterplot
+        h_sc = plt.scatter(x[boolean_mask], y[boolean_mask],
+                           c=c[boolean_mask],
+                           s=0.2,
+                           cmap=cmap,
+                           vmin=vmin,
+                           vmax=vmax)
+
+        if cbar:
+            pcbar = plt.colorbar(h_sc)
+            pcbar.set_label(clabel)
+
+    plt.text(0.05, 0.95, text_str,
+             horizontalalignment='left',
+             verticalalignment='top',
+             transform=plt.gca().transAxes,
+             fontsize=8)
+
+    plt.xlim([plot_x_min, plot_x_max])
+    plt.ylim([plot_y_min, plot_y_max])
+    plt.xticks(fontsize=9)
+    plt.yticks(fontsize=9)
+    plt.xlabel(xlabel, fontsize=9)
+    plt.ylabel(ylabel, fontsize=9)
+
+    return h_sc
+
+
+def plot_Vmp_Imp_scatter(voltage, current, poa, temperature_cell,
+                         operating_cls,
+                         boolean_mask=None,
+                         vmin=0,
+                         vmax=70,
+                         plot_imp_max=8,
+                         plot_vmp_max=40,
+                         figsize=(6.5, 3.5),
+                         cbar=True,
+                         text_str='',
+                         ylabel='Current (A)',
+                         xlabel='Voltage (V)'):
+    """
+    Make Vmp, Imp scatter plot.
+
+    Parameters
+    ----------
+    p_plot
+    figure_number
+    iteration
+    vmin
+    vmax
+
+    Returns
+    -------
+
+    """
+
+    # if figure_number is not None:
+    # Make figure for inverter on.
+    # fig = plt.figure(figure_number, figsize=figsize)
+    # plt.clf()
+    # ax = plt.axes()
+
+
+
+    # df = self.get_df_for_iteration(iteration,
+    #                                use_clear_times=use_clear_times)
+
+    if boolean_mask is None:
+        boolean_mask = operating_cls == 0
+    else:
+        boolean_mask = np.logical_and(operating_cls == 0, boolean_mask)
+
+    h_sc = plot_scatter(
+        x=voltage,
+        y=current,
+        c=temperature_cell,
+        boolean_mask=boolean_mask,
+        vmin=vmin,
+        vmax=vmax,
+        plot_x_max=plot_vmp_max,
+        plot_y_max=plot_imp_max,
+        text_str=text_str,
+        cbar=cbar,
+        xlabel=xlabel,
+        ylabel=ylabel
+    )
+
+    return h_sc
+
+def plot_poa_Imp_scatter(current, poa, temperature_cell,
+                         operating_cls,
+                         voltage=None,
+                         boolean_mask=None,
+                         vmin=0,
+                         vmax=70,
+                         plot_poa_max=1200,
+                         plot_imp_max=10,
+                         figsize=(6.5, 3.5),
+                         cbar=True,
+                         text_str='',
+                         ylabel='Current (A)',
+                         xlabel='POA (W/m2^2)'):
+    """
+    Make Vmp, Imp scatter plot.
+
+    Parameters
+    ----------
+    p_plot
+    figure_number
+    iteration
+    vmin
+    vmax
+
+    Returns
+    -------
+
+    """
+
+    # if figure_number is not None:
+    # Make figure for inverter on.
+    # fig = plt.figure(figure_number, figsize=figsize)
+    # plt.clf()
+    # ax = plt.axes()
+
+    # df = self.get_df_for_iteration(iteration,
+    #                                use_clear_times=use_clear_times)
+
+    if boolean_mask is None:
+        boolean_mask = operating_cls == 0
+    else:
+        boolean_mask = np.logical_and(operating_cls == 0, boolean_mask)
+
+    h_sc = plot_scatter(
+        x=poa,
+        y=current,
+        c=temperature_cell,
+        boolean_mask=boolean_mask,
+        vmin=vmin,
+        vmax=vmax,
+        plot_x_max=plot_poa_max,
+        plot_y_max=plot_imp_max,
+        text_str=text_str,
+        cbar=cbar,
+        xlabel=xlabel,
+        ylabel=ylabel
+    )
+
+    return h_sc
+
+    #
+    # plt.show()
+    #
+    # return fig
 
 # def plot_voltage_current_scatter(current,
 #                          voltage,
