@@ -44,6 +44,7 @@ class PvProHandler:
                  voltage_key=None,
                  current_key=None,
                  # power_key=None,
+                 temperature_cell_key='temperature_cell',
                  temperature_module_key=None,
                  temperature_ambient_key=None,
                  irradiance_poa_key=None,
@@ -51,7 +52,7 @@ class PvProHandler:
                  parallel_strings=None,
                  alpha_isc=None,
                  resistance_shunt_ref=400,
-                 delta_T=3,
+                 # delta_T=3,
                  # use_clear_times=True,
                  cells_in_series=None,
                  singlediode_method='newton',
@@ -64,7 +65,7 @@ class PvProHandler:
 
         # self.df = df
         self.system_name = system_name
-        self.delta_T = delta_T
+        # self.delta_T = delta_T
         # self.use_clear_times = use_clear_times
         self.cells_in_series = cells_in_series
         # alpha_isc is in units of A/C.
@@ -73,7 +74,8 @@ class PvProHandler:
         self.voltage_key = voltage_key
         self.current_key = current_key
         # self.power_key = power_key
-        self.temperature_module_key = temperature_module_key
+        # self.temperature_module_key = temperature_module_key
+        self.temperature_cell_key = temperature_cell_key
         self.temperature_ambient_key = temperature_ambient_key
         self.irradiance_poa_key = irradiance_poa_key
         self.modules_per_string = modules_per_string
@@ -423,11 +425,11 @@ class PvProHandler:
 
             ret, opt_result = estimate_singlediode_params(
                 poa=df.loc[cax, self.irradiance_poa_key],
-                temperature_module=df.loc[cax, self.temperature_module_key],
+                temperature_cell=df.loc[cax, self.temperature_cell_key],
                 vmp=df.loc[cax, self.voltage_key] / self.modules_per_string,
                 imp=df.loc[cax, self.current_key] / self.parallel_strings,
                 cells_in_series=self.cells_in_series,
-                delta_T=self.delta_T,
+                # delta_T=self.delta_T,
                 figure=draw_figure,
                 verbose=verbose,
                 optimize_Rs_Io=optimize_Rs_Io
@@ -830,11 +832,11 @@ class PvProHandler:
 
         self.p0, result = estimate_singlediode_params(
             poa=self.df[self.irradiance_poa_key],
-            temperature_module=self.df[self.temperature_module_key],
+            temperature_cell=self.df[self.temperature_cell_key],
             vmp=self.df[self.voltage_key] / self.modules_per_string,
             imp=self.df[self.current_key] / self.parallel_strings,
             cells_in_series=self.cells_in_series,
-            delta_T=self.delta_T,
+            # delta_T=self.delta_T,
             technology=technology,
             verbose=verbose
         )
@@ -887,11 +889,7 @@ class PvProHandler:
                           dates_str + \
                           'Current: {}\n'.format(self.current_key) + \
                           'Voltage: {}\n'.format(self.voltage_key) + \
-                          'Temperature: {}\n'.format(
-                              self.temperature_module_key) + \
-                          'Irradiance: {}\n'.format(self.irradiance_poa_key) + \
-                          'Temperature module->cell delta_T: {}\n'.format(
-                              self.delta_T)
+                          'Irradiance: {}\n'.format(self.irradiance_poa_key)
 
         if p_plot is not None:
             text_str = system_info_str + \
