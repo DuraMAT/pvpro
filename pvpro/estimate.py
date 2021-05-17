@@ -1235,10 +1235,10 @@ def estimate_resistance_series(poa,
 
 
 def estimate_singlediode_params(poa,
-                                temperature_module,
+                                temperature_cell,
                                 vmp,
                                 imp,
-                                delta_T=3,
+                                # delta_T=3,
                                 band_gap_ref=1.121,
                                 dEgdT=-0.0002677,
                                 alpha_isc=None,
@@ -1313,16 +1313,17 @@ def estimate_singlediode_params(poa,
         )
 
     poa = np.array(poa)
-    temperature_module = np.array(temperature_module)
+    # temperature_module = np.array(temperature_module)
+    temperature_cell = np.array(temperature_cell)
     vmp = np.array(vmp)
     imp = np.array(imp)
     figure_number = figure_number_start
-
-    temperature_cell = sapm_cell_from_module(
-        module_temperature=temperature_module,
-        poa_global=poa,
-        deltaT=delta_T,
-        irrad_ref=irradiance_ref)
+    #
+    # temperature_cell = sapm_cell_from_module(
+    #     module_temperature=temperature_module,
+    #     poa_global=poa,
+    #     deltaT=delta_T,
+    #     irrad_ref=irradiance_ref)
 
     out = estimate_imp_ref(poa=poa,
                            temperature_cell=temperature_cell,
