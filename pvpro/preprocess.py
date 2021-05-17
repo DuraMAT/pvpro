@@ -516,14 +516,13 @@ class Preprocessor():
         -1: No power/inverter off
         -2: Other
 
-
         """
 
 
 
         if self._ran_sdt:
             for df in [self.dh.data_frame_raw, self.dh.data_frame]:
-                df.loc[:, 'operating_cls'] = build_operating_cls(df)
+                df.loc[:,'operating_cls'] = build_operating_cls(df)
 
             self.dh.generate_extra_matrix('operating_cls',
                           new_index=self.dh.data_frame.index)
