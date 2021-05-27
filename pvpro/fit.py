@@ -301,30 +301,6 @@ def production_data_curve_fit(
     current = current[keepers]
 
 
-    # if not use_mpp_points:
-    #     cax = operating_cls != 0
-    #     effective_irradiance = effective_irradiance[cax]
-    #     temperature_cell = temperature_cell[cax]
-    #     operating_cls = operating_cls[cax]
-    #     voltage = voltage[cax]
-    #     current = current[cax]
-    #
-    # if not use_voc_points:
-    #     cax = operating_cls != 1
-    #     effective_irradiance = effective_irradiance[cax]
-    #     temperature_cell = temperature_cell[cax]
-    #     operating_cls = operating_cls[cax]
-    #     voltage = voltage[cax]
-    #     current = current[cax]
-    #
-    # if not use_clip_points:
-    #     cax = operating_cls != 2
-    #     effective_irradiance = effective_irradiance[cax]
-    #     temperature_cell = temperature_cell[cax]
-    #     operating_cls = operating_cls[cax]
-    #     voltage = voltage[cax]
-    #     current = current[cax]
-
     # Weights (equally weighted currently)
     weights = np.zeros_like(operating_cls)
     weights[operating_cls == 0] = 1
