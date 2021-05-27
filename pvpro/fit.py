@@ -24,8 +24,8 @@ from pvpro.estimate import estimate_imp_ref, estimate_singlediode_params
 from pvpro.singlediode import pvlib_single_diode, pv_system_single_diode_model, \
     singlediode_closest_point
 
-
-def x_to_p(x, key):
+from pvlib.singlediode import _lambertw_i_from_v
+def _x_to_p(x, key):
     """
     Change from numerical fit value (x) to physical parameter (p). This
     transformation improves the numerical performance of the fitting algorithm.
@@ -63,11 +63,21 @@ def x_to_p(x, key):
         return np.exp(2 * (x - 1))
     elif key == 'conductance_shunt_extra':
         return x
+    elif key == 'nNsVth':
+        return x
+    elif key == 'photocurrent':
+        return x
+    elif key == 'saturation_current':
+        return np.exp(x - 21)
+    elif key == 'resistance_series':
+        return x
+    elif key == 'resistance_shunt':
+        return np.exp(2 * (x - 1))
     else:
         raise Exception("Key '{}' not understood".format(key))
 
 
-def p_to_x(p, key):
+def _p_to_x(p, key):
     """
     Change from physical parameter (p) to numerical fit value (x). This
     transformation improves the numerical performance of the fitting algorithm.
@@ -102,8 +112,21 @@ def p_to_x(p, key):
         return np.log(p) / 2 + 1
     elif key == 'conductance_shunt_extra':
         return p
+    elif key == 'nNsVth':
+        return p
+    elif key == 'photocurrent':
+        return p
+    elif key == 'saturation_current':
+        return np.log(p) + 21
+    elif key == 'resistance_series':
+        return p
+    elif key == 'resistance_shunt':
+        return np.log(p) / 2 + 1
     else:
         raise Exception("Key '{}' not understood".format(key))
+
+
+
 
 
 def production_data_curve_fit(
@@ -266,30 +289,41 @@ def production_data_curve_fit(
             conductance_shunt_extra=10
         )
 
+    keepers = np.logical_or.reduce(
+        (use_mpp_points * (operating_cls==0),
+         use_voc_points * (operating_cls == 1),
+         use_clip_points * (operating_cls == 2)
+         ))
+    effective_irradiance = effective_irradiance[keepers]
+    temperature_cell = temperature_cell[keepers]
+    operating_cls = operating_cls[keepers]
+    voltage = voltage[keepers]
+    current = current[keepers]
 
-    if not use_mpp_points:
-        cax = operating_cls != 0
-        effective_irradiance = effective_irradiance[cax]
-        temperature_cell = temperature_cell[cax]
-        operating_cls = operating_cls[cax]
-        voltage = voltage[cax]
-        current = current[cax]
 
-    if not use_voc_points:
-        cax = operating_cls != 1
-        effective_irradiance = effective_irradiance[cax]
-        temperature_cell = temperature_cell[cax]
-        operating_cls = operating_cls[cax]
-        voltage = voltage[cax]
-        current = current[cax]
-
-    if not use_clip_points:
-        cax = operating_cls != 2
-        effective_irradiance = effective_irradiance[cax]
-        temperature_cell = temperature_cell[cax]
-        operating_cls = operating_cls[cax]
-        voltage = voltage[cax]
-        current = current[cax]
+    # if not use_mpp_points:
+    #     cax = operating_cls != 0
+    #     effective_irradiance = effective_irradiance[cax]
+    #     temperature_cell = temperature_cell[cax]
+    #     operating_cls = operating_cls[cax]
+    #     voltage = voltage[cax]
+    #     current = current[cax]
+    #
+    # if not use_voc_points:
+    #     cax = operating_cls != 1
+    #     effective_irradiance = effective_irradiance[cax]
+    #     temperature_cell = temperature_cell[cax]
+    #     operating_cls = operating_cls[cax]
+    #     voltage = voltage[cax]
+    #     current = current[cax]
+    #
+    # if not use_clip_points:
+    #     cax = operating_cls != 2
+    #     effective_irradiance = effective_irradiance[cax]
+    #     temperature_cell = temperature_cell[cax]
+    #     operating_cls = operating_cls[cax]
+    #     voltage = voltage[cax]
+    #     current = current[cax]
 
     # Weights (equally weighted currently)
     weights = np.zeros_like(operating_cls)
@@ -349,6 +383,7 @@ def production_data_curve_fit(
     fit_params = p0.keys()
 
     # Set scale factor for current and voltage:
+    # TODO: This line is a problem if no MPP points.
     current_median = np.median(current[operating_cls==0])
     voltage_median = np.median(voltage[operating_cls==0])
 
@@ -371,7 +406,7 @@ def production_data_curve_fit(
         p = model_kwargs.copy()
         n = 0
         for param in fit_params:
-            p[param] = x_to_p(x[n], param)
+            p[param] = _x_to_p(x[n], param)
             n = n + 1
         voltage_fit, current_fit = pv_system_single_diode_model(**p)
 
@@ -412,8 +447,8 @@ def production_data_curve_fit(
             bounds = None
         elif solver.upper() == 'L-BFGS-B':
             bounds = scipy.optimize.Bounds(
-                [p_to_x(lower_bounds[k], k) for k in fit_params],
-                [p_to_x(upper_bounds[k], k) for k in fit_params])
+                [_p_to_x(lower_bounds[k], k) for k in fit_params],
+                [_p_to_x(upper_bounds[k], k) for k in fit_params])
         else:
             raise Exception('solver must be "Nelder-Mead" or "L-BFGS-B"')
 
@@ -425,7 +460,7 @@ def production_data_curve_fit(
             print('--')
 
         # Get numerical fit start point.
-        x0 = [p_to_x(p0[k], k) for k in fit_params]
+        x0 = [_p_to_x(p0[k], k) for k in fit_params]
 
         # print('p0: ', p0)
         # print('bounds:', bounds)
@@ -448,7 +483,7 @@ def production_data_curve_fit(
         n = 0
         p_fit = {}
         for param in fit_params:
-            p_fit[param] = x_to_p(res.x[n], param)
+            p_fit[param] = _x_to_p(res.x[n], param)
             n = n + 1
 
         # print('Best fit parameters (with scale included):')
@@ -459,7 +494,7 @@ def production_data_curve_fit(
     elif method == 'basinhopping':
         # lower_bounds_x = [p_to_x(lower_bounds[k], k) for k in fit_params]
         # upper_bounds_x = [p_to_x(upper_bounds[k], k) for k in fit_params]
-        x0 = [p_to_x(p0[k], k) for k in fit_params]
+        x0 = [_p_to_x(p0[k], k) for k in fit_params]
 
         res = basinhopping(residual,
                            x0=x0,
@@ -469,7 +504,7 @@ def production_data_curve_fit(
         n = 0
         p_fit = {}
         for param in fit_params:
-            p_fit[param] = x_to_p(res.x[n], param)
+            p_fit[param] = _x_to_p(res.x[n], param)
             n = n + 1
 
         # print('Best fit parameters (with scale included):')
