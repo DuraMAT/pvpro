@@ -1,49 +1,39 @@
-import pvlib
 import numpy as np
 import pandas as pd
-# import pytz
-# from collections import OrderedDict
-# from functools import partial
+
 import scipy
-import datetime
-import os
-import warnings
-import time
 
-from pvlib.singlediode import _lambertw_i_from_v, _lambertw_v_from_i
-from pvlib.pvsystem import calcparams_desoto
-from scipy.optimize import minimize
-import matplotlib
-
-# matplotlib.use('TkAgg')
-import matplotlib.pyplot as plt
-
-from scipy.optimize import basinhopping
-
-from pvpro.estimate import estimate_imp_ref, estimate_singlediode_params
 from pvpro.singlediode import pvlib_single_diode, pv_system_single_diode_model, \
     singlediode_closest_point
 
-from pvlib.singlediode import _lambertw_i_from_v
+from scipy.optimize import minimize
+from scipy.optimize import basinhopping
 from scipy.optimize import lsq_linear
-import cvxpy as cp
+from sklearn.linear_model import LinearRegression
 
+from functools import partial
 
-def _fit_desoto_linear(voltage, current, temperature_cell, poa,
-                       resistance_series, diode_factor, cells_in_series,
-                       alpha_sc,
-                       photocurrent_ref_max=100,
-                       saturation_current_ref_max=1e-3,
-                       resistance_shunt_ref_min=1e-5,
-                       resistance_shunt_ref_max=1e5,
-                       Eg_ref=1.121, dEgdT=-0.0002677,
-                       temperature_ref=25, irrad_ref=1000,
-                       solver='lsq_linear',
-                       tol=1e-8):
+def _fit_singlediode_linear(voltage, current, temperature_cell, poa,
+                            resistance_series, diode_factor, cells_in_series,
+                            alpha_sc,
+                            photocurrent_ref_min=0,
+                            photocurrent_ref_max=100,
+                            saturation_current_ref_min=1e-15,
+                            saturation_current_ref_max=1e-3,
+                            resistance_shunt_ref_min=1e-5,
+                            resistance_shunt_ref_max=1e5,
+                            Eg_ref=1.121, dEgdT=-0.0002677,
+                            temperature_ref=25, irrad_ref=1000,
+                            solver='lsq_linear',
+                            model='pvpro',
+                            tol=1e-8,
+                            verbose=False):
     """
     Fit a set of voltage, current, temperature_cell and poa values to the
     Desoto single diode model at fixed values of series resistance and diode
     factor.
+
+
 
     Parameters
     ----------
@@ -120,6 +110,16 @@ def _fit_desoto_linear(voltage, current, temperature_cell, poa,
 
         Solver for linear fit. Can be 'lsq_linear' or 'pinv'
 
+    model : str
+
+        Model can be 'desoto', 'pvpro'
+
+        'desoto' is the Desoto single diode model
+
+        'pvpro' is the Desoto single diode model with a constant shunt
+        resistance.
+
+
     tol : float, defualt=1e-8
 
         Tolerence for solver 'lsq_linear'
@@ -177,32 +177,54 @@ def _fit_desoto_linear(voltage, current, temperature_cell, poa,
                               (np.exp(Eg_ref / (k * (Tref_K)) - (
                                       Eg / (k * (Tcell_K))))))
 
+    scale_photocurrent = 1e-1
     scale_sat_current = 1e-9
     scale_shunt_conductance = 1e-2
 
-    A = np.zeros(shape=(len(temperature_cell), 3))
-    A[:, 0] = poa / irrad_ref
+    A = np.zeros(shape=(len(voltage), 3))
+    A[:, 0] = scale_photocurrent * poa / irrad_ref
     A[:, 1] = -1 * scale_sat_current * sat_current_multiplier * (
             np.exp((voltage + current * resistance_series) / nNsVth) - 1)
-    A[:, 2] = -1 * scale_shunt_conductance * (
-            voltage + current * resistance_series) / (irrad_ref / poa)
+    if model.lower() == 'desoto':
+        A[:, 2] = -1 * scale_shunt_conductance * (poa / irrad_ref) * (
+                voltage + current * resistance_series)
+    elif model.lower() == 'pvpro':
+        A[:, 2] = -1 * scale_shunt_conductance * (
+                voltage + current * resistance_series)
 
     y = current - poa / irrad_ref * alpha_sc * (
             temperature_cell - temperature_ref)
 
-    bounds = ([0, 0, 1 / (resistance_shunt_ref_max*scale_shunt_conductance)],
-              [photocurrent_ref_max,
+    bounds = ([photocurrent_ref_min / scale_photocurrent,
+               saturation_current_ref_min / scale_sat_current,
+               1 / (resistance_shunt_ref_max * scale_shunt_conductance)],
+              [photocurrent_ref_max / scale_photocurrent,
                saturation_current_ref_max / scale_sat_current,
-               1 / (resistance_shunt_ref_min*scale_shunt_conductance)])
+               1 / (resistance_shunt_ref_min * scale_shunt_conductance)])
 
     # Solve the problem
     if solver == 'lsq_linear':
-        soln = lsq_linear(A, y, bounds=bounds, method='trf', tol=tol,
+        soln = lsq_linear(A, y,
+                          bounds=bounds,
+                          method='trf',
+                          tol=tol,
                           lsq_solver='lsmr')
         coeff = soln['x']
+
     elif solver == 'pinv':
         soln = {'solver': 'pinv'}
         coeff = np.dot(np.linalg.pinv(A), y)
+    elif solver == 'lstsq':
+        soln = {'solver': 'lstsq'}
+        coeff, residuals, rank, s = np.linalg.lstsq(A, y, rcond=None)
+        # print(m)
+        # print(coeff)
+    elif solver.lower() == 'linearregression':
+        soln = {'solver': 'linearregression'}
+        reg = LinearRegression(fit_intercept=False, copy_X=True).fit(A, y)
+
+        coeff = reg.coef_
+
     # elif solver == 'cvxpy':
     #     # NOT WORKING YET!
     #
@@ -219,9 +241,12 @@ def _fit_desoto_linear(voltage, current, temperature_cell, poa,
     #     soln = {}
     #     coeff = x.value
 
-    loss = np.mean(np.abs(np.dot(A, coeff) - y))
+    # loss = np.mean(np.abs(np.dot(A, coeff) - y))
+    loss = np.mean((np.dot(A, coeff) - y) ** 2)
+    # TODO: try l2 norm as well, may work better for data without large outliers.
+
     out = {
-        'photocurrent_ref': coeff[0],
+        'photocurrent_ref': coeff[0] * scale_photocurrent,
         'saturation_current_ref': coeff[1] * scale_sat_current,
         'resistance_shunt_ref': 1 / (coeff[2] * scale_shunt_conductance),
         'resistance_series_ref': resistance_series,
@@ -231,23 +256,148 @@ def _fit_desoto_linear(voltage, current, temperature_cell, poa,
         'solution': soln,
     }
 
+    if verbose:
+        print('* Linear problem solved')
+        for k in ['photocurrent_ref', 'saturation_current_ref',
+                  'resistance_shunt_ref', 'resistance_series_ref',
+                  'diode_factor', 'nNsVth_ref', 'loss']:
+            print('{}: {}'.format(k, out[k]))
+
+    return out
+
+def _fit_singlediode_linear_power(voltage, current, temperature_cell, poa,
+                            resistance_series, diode_factor, cells_in_series,
+                            alpha_sc,
+                            photocurrent_ref_min=0,
+                            photocurrent_ref_max=100,
+                            saturation_current_ref_min=1e-15,
+                            saturation_current_ref_max=1e-3,
+                            resistance_shunt_ref_min=1e-5,
+                            resistance_shunt_ref_max=1e5,
+                            Eg_ref=1.121, dEgdT=-0.0002677,
+                            temperature_ref=25, irrad_ref=1000,
+                            solver='lsq_linear',
+                            model='pvpro',
+                            tol=1e-8,
+                            verbose=False):
+
+    Tcell_K = temperature_cell + 273.15
+    Tref_K = temperature_ref + 273.15
+
+    # Boltzmann constant in eV/K
+    k = 8.617332478e-05
+
+    Eg = Eg_ref * (1 + dEgdT * (Tcell_K - Tref_K))
+
+    nNsVth = diode_factor * cells_in_series * k * Tcell_K
+
+    sat_current_multiplier = (((Tcell_K / Tref_K) ** 3) *
+                              (np.exp(Eg_ref / (k * (Tref_K)) - (
+                                      Eg / (k * (Tcell_K))))))
+
+    scale_photocurrent = 1e-1
+    scale_sat_current = 1e-9
+    scale_shunt_conductance = 1e-2
+
+
+    # weights = 1 - voltage/np.max(voltage)
+    # weights = 1 - 0.75*voltage/np.max(voltage)
+    weights = current/np.max(current) + 0.2
+
+    # weights = np.ones_like(voltage)
+
+    A = np.zeros(shape=(len(voltage), 3))
+    A[:, 0] = scale_photocurrent * poa / irrad_ref * weights
+    A[:, 1] = -1 * scale_sat_current * sat_current_multiplier * (
+            np.exp((voltage + current * resistance_series) / nNsVth) - 1)  * weights
+    if model.lower() == 'desoto':
+        A[:, 2] = -1 * scale_shunt_conductance * (poa / irrad_ref) * (
+                voltage + current * resistance_series) * weights
+    elif model.lower() == 'pvpro':
+        A[:, 2] = -1 * scale_shunt_conductance * (
+                voltage + current * resistance_series) * weights
+
+    y = weights*(current - poa / irrad_ref * alpha_sc * (
+            temperature_cell - temperature_ref))
+
+    bounds = ([photocurrent_ref_min / scale_photocurrent,
+               saturation_current_ref_min / scale_sat_current,
+               1 / (resistance_shunt_ref_max * scale_shunt_conductance)],
+              [photocurrent_ref_max / scale_photocurrent,
+               saturation_current_ref_max / scale_sat_current,
+               1 / (resistance_shunt_ref_min * scale_shunt_conductance)])
+
+    # Solve the problem
+    if solver == 'lsq_linear':
+        soln = lsq_linear(A, y,
+                          bounds=bounds,
+                          method='trf',
+                          tol=tol,
+                          lsq_solver='lsmr')
+        coeff = soln['x']
+
+    elif solver == 'pinv':
+        soln = {'solver': 'pinv'}
+        coeff = np.dot(np.linalg.pinv(A), y)
+    elif solver == 'lstsq':
+        soln = {'solver': 'lstsq'}
+        coeff, residuals, rank, s = np.linalg.lstsq(A, y, rcond=None)
+        # print(m)
+        # print(coeff)
+    elif solver.lower() == 'linearregression':
+        soln = {'solver': 'linearregression'}
+        reg = LinearRegression(fit_intercept=False, copy_X=True).fit(A, y)
+
+        coeff = reg.coef_
+
+    # loss = np.mean(np.abs(np.dot(A, coeff) - y))
+    loss = np.mean((np.dot(A, coeff) - y) ** 2)
+
+    out = {
+        'photocurrent_ref': coeff[0] * scale_photocurrent,
+        'saturation_current_ref': coeff[1] * scale_sat_current,
+        'resistance_shunt_ref': 1 / (coeff[2] * scale_shunt_conductance),
+        'resistance_series_ref': resistance_series,
+        'diode_factor': diode_factor,
+        'nNsVth_ref': diode_factor * cells_in_series * k * Tref_K,
+        'loss': loss,
+        'solution': soln,
+    }
+
+    if verbose:
+        print('* Linear problem solved')
+        for k in ['photocurrent_ref', 'saturation_current_ref',
+                  'resistance_shunt_ref', 'resistance_series_ref',
+                  'diode_factor', 'nNsVth_ref', 'loss']:
+            print('{}: {}'.format(k, out[k]))
+
     return out
 
 
-def fit_desoto_lbl(voltage, current, temperature_cell, poa,
-                   cells_in_series,
-                   alpha_sc,
-                   resistance_series_start=0.35,
-                   diode_factor_start=1.0,
-                   resistance_series_min=0,
-                   resistance_series_max=2,
-                   diode_factor_min=0.5,
-                   diode_factor_max=1.5,
-                   tol=1e-8,
-                   Eg_ref=1.121, dEgdT=-0.0002677,
-                   temperature_ref=25, irrad_ref=1000,
-                   solver='lsq_linear',
-                   ):
+
+def fit_singlediode_model(voltage, current, temperature_cell, poa,
+                          cells_in_series,
+                          alpha_sc,
+                          resistance_series_start=0.35,
+                          diode_factor_start=1.0,
+                          resistance_series_min=0,
+                          resistance_series_max=2,
+                          diode_factor_min=0.5,
+                          diode_factor_max=1.5,
+                          photocurrent_ref_min=0,
+                          photocurrent_ref_max=100,
+                          saturation_current_ref_min=1e-15,
+                          saturation_current_ref_max=1e-3,
+                          resistance_shunt_ref_min=1e-5,
+                          resistance_shunt_ref_max=1e5,
+                          tol=1e-8,
+                          Eg_ref=1.121, dEgdT=-0.0002677,
+                          temperature_ref=25, irrad_ref=1000,
+                          model='desoto',
+                          linear_solver='lsq_linear',
+                          nonlinear_solver='L-BFGS-B',
+                          verbose=False,
+                          ):
     """
     Fit a set of voltage, current, temperature_cell and poa values to the
     Desoto single diode model.
@@ -389,30 +539,62 @@ def fit_desoto_lbl(voltage, current, temperature_cell, poa,
     """
     if len(voltage) == 0:
         raise Exception('No values given.')
+    # Remove nans
+
+    isfinite = np.logical_and.reduce((
+        np.isfinite(voltage),
+        np.isfinite(current),
+        np.isfinite(temperature_cell),
+        np.isfinite(poa),
+    ))
+
+    voltage = voltage[isfinite]
+    current = current[isfinite]
+    temperature_cell = temperature_cell[isfinite]
+    poa = poa[isfinite]
 
     bounds = [(resistance_series_min, resistance_series_max),
               (diode_factor_min, diode_factor_max)]
     x0 = np.array([resistance_series_start, diode_factor_start])
 
+    args = dict(
+        voltage=voltage,
+        current=current,
+        temperature_cell=temperature_cell,
+        poa=poa,
+        cells_in_series=cells_in_series,
+        alpha_sc=alpha_sc,
+        Eg_ref=Eg_ref,
+        dEgdT=dEgdT,
+        temperature_ref=temperature_ref,
+        irrad_ref=irrad_ref, solver=linear_solver,
+        model=model,
+        tol=tol,
+        verbose=verbose,
+        photocurrent_ref_min=photocurrent_ref_min,
+        photocurrent_ref_max=photocurrent_ref_max,
+        saturation_current_ref_min=saturation_current_ref_min,
+        saturation_current_ref_max=saturation_current_ref_max,
+        resistance_shunt_ref_min=resistance_shunt_ref_min,
+        resistance_shunt_ref_max=resistance_shunt_ref_max,
+    )
+
+    fsl = partial(_fit_singlediode_linear_power,**args)
+
     def residual(x):
         # x is list: [resistance_series, diode factor]
-        out = _fit_desoto_linear(voltage, current, temperature_cell, poa, x[0],
-                                 x[1], cells_in_series, alpha_sc, Eg_ref=Eg_ref,
-                                 dEgdT=dEgdT, temperature_ref=temperature_ref,
-                                 irrad_ref=irrad_ref, solver=solver, tol=tol)
+        out = fsl(resistance_series=x[0],diode_factor=x[1])
         return out['loss']
 
     ret = minimize(residual,
                    x0=x0,
                    bounds=bounds,
-                   method='L-BFGS-B')
+                   method=nonlinear_solver,
+                   # verbose=2
+                   )
 
     # Get values at best fit.
-    out = _fit_desoto_linear(voltage, current, temperature_cell, poa,
-                             ret['x'][0], ret['x'][1], cells_in_series,
-                             alpha_sc, Eg_ref=Eg_ref, dEgdT=dEgdT,
-                             temperature_ref=temperature_ref,
-                             irrad_ref=irrad_ref)
+    out = fsl(resistance_series=ret['x'][0], diode_factor=ret['x'][1])
     out['optimziation'] = ret
 
     return out
@@ -438,12 +620,13 @@ def fit_singlediode_brute(voltage, current, temperature_cell, poa,
     loss_minimal = np.inf
     for j in range(len(diode_factor_list)):
         for k in range(len(resistance_series_list)):
-            out = _fit_desoto_linear(voltage, current, temperature_cell, poa,
-                                     resistance_series_list[k],
-                                     diode_factor_list[j], cells_in_series,
-                                     alpha_sc, Eg_ref=Eg_ref, dEgdT=dEgdT,
-                                     temperature_ref=temperature_ref,
-                                     irrad_ref=irrad_ref)
+            out = _fit_singlediode_linear(voltage, current, temperature_cell,
+                                          poa,
+                                          resistance_series_list[k],
+                                          diode_factor_list[j], cells_in_series,
+                                          alpha_sc, Eg_ref=Eg_ref, dEgdT=dEgdT,
+                                          temperature_ref=temperature_ref,
+                                          irrad_ref=irrad_ref)
             loss[j, k] = out['loss']
             diode_factor[j, k] = diode_factor_list[j]
             resistance_series[j, k] = resistance_series_list[k]
@@ -642,13 +825,15 @@ def production_data_curve_fit(
         band_gap_ref=1.121,
         verbose=False,
         solver='nelder-mead',
-        singlediode_method='newton',
+        singlediode_method='fast',
         method='minimize',
         use_mpp_points=True,
         use_voc_points=True,
         use_clip_points=True,
         fit_params=None,
+        saturation_current_multistart=None,
         brute_number_grid_points=2,
+
 ):
     """
     Use curve fitting to find best-fit single-diode-model paramters given the
@@ -746,6 +931,11 @@ def production_data_curve_fit(
     -------
 
     """
+    voltage = np.array(voltage)
+    current = np.array(current)
+    effective_irradiance = np.array(effective_irradiance)
+    temperature_cell = np.array(temperature_cell)
+    operating_cls = np.array(operating_cls)
 
     if p0 is None:
         p0 = dict(
@@ -782,18 +972,32 @@ def production_data_curve_fit(
             conductance_shunt_extra=10
         )
 
+    if saturation_current_multistart is None:
+        saturation_current_multistart = [0.2, 0.5, 1, 2, 5]
+
     # Only keep points belonging to certain operating classes
-    keepers = np.logical_or.reduce(
+
+    cls_keepers = np.logical_or.reduce(
         (use_mpp_points * (operating_cls == 0),
          use_voc_points * (operating_cls == 1),
-         use_clip_points * (operating_cls == 2)
+         use_clip_points * (operating_cls == 2),
          ))
+
+    keepers = np.logical_and.reduce((cls_keepers,
+                                     np.isfinite(voltage),
+                                     np.isfinite(current),
+                                     np.isfinite(effective_irradiance),
+                                     np.isfinite(temperature_cell)
+                                     ))
     effective_irradiance = effective_irradiance[keepers]
     temperature_cell = temperature_cell[keepers]
     operating_cls = operating_cls[keepers]
     voltage = voltage[keepers]
     current = current[keepers]
 
+    # print('Effective irradiance: ')
+    # print(effective_irradiance)
+    #
     # Weights (equally weighted currently)
     weights = np.zeros_like(operating_cls)
     weights[operating_cls == 0] = 1
@@ -828,7 +1032,7 @@ def production_data_curve_fit(
         band_gap_ref=band_gap_ref,
         voltage_operation=voltage,
         current_operation=current,
-        method=singlediode_method,
+        singlediode_method=singlediode_method,
     )
 
     # Set kwargs
@@ -850,7 +1054,7 @@ def production_data_curve_fit(
     # Functions for translating from optimization quantity (x) to physical parameter (p)
 
     # note that this will be the order of parameters in the model function.
-    fit_params = p0.keys()
+    # fit_params = p0.keys()
 
     # Set scale factor for current and voltage:
     # current_median = np.median(current[operating_cls == 0])
@@ -892,15 +1096,19 @@ def production_data_curve_fit(
     #     return np.where(x<=1,x**2/2,delta*(np.abs(x)-delta/2))
 
     def residual(x):
+        # TODO: should explicitly pass in voltage_median, current_median. Use functools.partial to define the full function and then freeze certain params.
+        # TODO: change to huber or L2 because BFGS shouldn't work well with L1.
+
+        # Maybe consider Huber loss.
         voltage_fit, current_fit = model(x)
-        # return np.nanmean((np.abs(voltage_fit - voltage) * weights) ** 2 + \
-        #                   (np.abs(current_fit - current) * weights) ** 2)
+        # return np.nanmean(((voltage_fit - voltage) * weights / voltage_median) ** 2 + \
+        #                   ((current_fit - current) * weights / current_median) ** 2)
 
         # Mean absolute error
+        # Note that summing first and then calling nanmean is slightly faster.
         return np.nanmean(
-            (np.abs(voltage_fit - voltage) * weights)) / voltage_median + \
-               np.nanmean(
-                   (np.abs(current_fit - current) * weights)) / current_median
+            np.abs(voltage_fit - voltage) * weights / voltage_median +
+            np.abs(current_fit - current) * weights / current_median)
 
         # return np.nanmean(np.log(np.cosh( (voltage_fit - voltage) * weights)) + \
         #                   np.log(np.cosh( (current_fit - current) * weights)) )
@@ -932,27 +1140,61 @@ def production_data_curve_fit(
                 print(k, p0[k])
             print('--')
 
-        # Get numerical fit start point.
-        x0 = [_p_to_x(p0[k], k) for k in fit_params]
-
         # print('p0: ', p0)
         # print('bounds:', bounds)
 
         # print('Method: {}'.format(solver))
         if verbose:
-            print('Starting minimization: ')
-        res = minimize(residual,
-                       x0=x0,
-                       bounds=bounds,
-                       method=solver,
-                       options=dict(
-                           # maxiter=100,
-                           disp=verbose,
-                           # ftol=0.001,
-                       ),
-                       )
+            print('Performing minimization... ')
 
-        # print(res)
+        if 'saturation_current_ref' in fit_params:
+            saturation_current_ref_start = p0['saturation_current_ref']
+            loss = np.inf
+            for Io_multiplier in saturation_current_multistart:
+
+                p0[
+                    'saturation_current_ref'] = saturation_current_ref_start * Io_multiplier
+                # Get numerical fit start point.
+                x0 = [_p_to_x(p0[k], k) for k in fit_params]
+
+                res_curr = minimize(residual,
+                                    x0=x0,
+                                    bounds=bounds,
+                                    method=solver,
+                                    options=dict(
+                                        # maxiter=500,
+                                        disp=False,
+                                        # ftol=1e-9,
+                                    ),
+                                    )
+                if verbose:
+                    print('Saturation current multiplier: ', Io_multiplier)
+                    print('loss:', res_curr['fun'])
+
+                if res_curr['fun'] < loss:
+                    if verbose:
+                        print('New best value found, setting')
+                    res = res_curr
+                    loss = res_curr['fun']
+        else:
+            # Get numerical fit start point.
+            x0 = [_p_to_x(p0[k], k) for k in fit_params]
+
+            res = minimize(residual,
+                           x0=x0,
+                           bounds=bounds,
+                           method=solver,
+                           options=dict(
+                               # maxiter=100,
+                               disp=False,
+                               # ftol=0.001,
+                           ),
+                           )
+
+        loss = np.inf
+
+        if verbose:
+            print(res)
         n = 0
         p_fit = {}
         for param in fit_params:
