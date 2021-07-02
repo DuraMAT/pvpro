@@ -169,3 +169,4 @@ def calcparams_desoto_ref(effective_irradiance, temperature_cell,
 
     return photocurrent_ref, saturation_current_ref, resistance_series_ref,\
            resistance_shunt_ref, nNsVth_ref
+
