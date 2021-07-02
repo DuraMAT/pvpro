@@ -1254,7 +1254,7 @@ def estimate_singlediode_params(poa,
                                 imp_model='sandia',
                                 verbose=False,
                                 max_iter=10,
-                                optimize_Rs_Io=False
+                                optimize_Rs_Io=False,
                                 ):
     """
 
