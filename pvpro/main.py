@@ -24,6 +24,7 @@ from pvpro.classify import classify_operating_mode
 from pvpro.estimate import estimate_singlediode_params, estimate_imp_ref, \
     estimate_vmp_ref
 
+import shutil
 from pvpro.preprocess import monotonic
 from pvanalytics.features import clipping
 
@@ -55,7 +56,6 @@ class PvProHandler:
                  # delta_T=3,
                  # use_clear_times=True,
                  cells_in_series=None,
-                 singlediode_method='newton',
                  technology='mono-Si',
                  ):
 
@@ -80,7 +80,6 @@ class PvProHandler:
         self.irradiance_poa_key = irradiance_poa_key
         self.modules_per_string = modules_per_string
         self.parallel_strings = parallel_strings
-        self.singlediode_method = singlediode_method
         self.technology = technology
 
         self.p0 = dict(
@@ -462,7 +461,9 @@ class PvProHandler:
                 fit_params=None,
                 lower_bounds=None,
                 upper_bounds=None,
-                filter_current_irradiance=True):
+                singlediode_method='fast',
+                saturation_current_multistart=None,
+                ):
         """
         Main PVPRO Method.
 
@@ -499,6 +500,27 @@ class PvProHandler:
         """
 
         start_time = time.time()
+
+        # Make directories for exporting figures.
+        if save_figs:
+            try:
+                shutil.rmtree(save_figs_directory)
+            except OSError as e:
+                pass
+                # print('Cannot remove directory {}'.format(save_figs_directory))
+
+            os.mkdir(save_figs_directory)
+
+            export_folders = [
+                os.path.join(save_figs_directory, 'Vmp_Imp'),
+                os.path.join(save_figs_directory, 'suns_Voc'),
+                os.path.join(save_figs_directory, 'clipped'),
+                os.path.join(save_figs_directory, 'poa_Imp'),
+            ]
+            for folder in export_folders:
+                if not os.path.exists(folder):
+                    os.mkdir(folder)
+
         q = 1.602e-19
         kB = 1.381e-23
 
@@ -516,6 +538,10 @@ class PvProHandler:
                           'resistance_series_ref', 'conductance_shunt_extra',
                           'diode_factor']
             # self.fit_params = fit_params
+
+
+        if saturation_current_multistart is None:
+            saturation_current_multistart = [0.2, 0.5, 1, 2, 5]
 
         # Calculate time midway through each iteration.
         self.time = []
@@ -554,12 +580,13 @@ class PvProHandler:
         #     imp_max = 1.1 * imp_max
 
         # Initialize pfit dataframe for saving fit values.
-        pfit = pd.DataFrame(index=range(len(iteration_start_days)),
-                            columns=[*fit_params,
-                                     *['residual', 'i_sc_ref', 'v_oc_ref',
-                                       'i_mp_ref',
-                                       'v_mp_ref', 'p_mp_ref', 'i_x_ref',
-                                       'i_xx_ref']])
+        # pfit = pd.DataFrame(index=range(len(iteration_start_days)),
+        #                     columns=[*fit_params,
+        #                              *['residual', 'i_sc_ref', 'v_oc_ref',
+        #                                'i_mp_ref',
+        #                                'v_mp_ref', 'p_mp_ref', 'i_x_ref',
+        #                                'i_xx_ref']])
+        pfit = pd.DataFrame()
 
         # p0 contains the start point for each fit.
         p0 = pd.DataFrame(index=range(len(iteration_start_days)),
@@ -638,8 +665,8 @@ class PvProHandler:
                     temperature_cell=np.array(df['temperature_cell']),
                     effective_irradiance=np.array(df[self.irradiance_poa_key]),
                     operating_cls=np.array(df['operating_cls']),
-                    voltage=df[self.voltage_key] / self.modules_per_string,
-                    current=df[self.current_key] / self.parallel_strings,
+                    voltage=np.array(df[self.voltage_key]) / self.modules_per_string,
+                    current=np.array(df[self.current_key]) / self.parallel_strings,
                     cells_in_series=self.cells_in_series,
                     alpha_isc=self.alpha_isc,
                     resistance_shunt_ref=self.resistance_shunt_ref,
@@ -649,11 +676,12 @@ class PvProHandler:
                     verbose=verbose,
                     solver=solver,
                     method=method,
-                    singlediode_method=self.singlediode_method,
                     use_mpp_points=use_mpp_points,
                     use_voc_points=use_voc_points,
                     use_clip_points=use_clip_points,
-                    fit_params=fit_params
+                    fit_params=fit_params,
+                    singlediode_method=singlediode_method,
+                    saturation_current_multistart=saturation_current_multistart
                 )
 
                 # Estimate parameters quickly.
@@ -717,6 +745,8 @@ class PvProHandler:
                     print(pfit.loc[k, fit_params])
 
                 if save_figs:
+                    plt.figure(10, figsize=(6.5, 3.5))
+                    plt.clf()
 
                     self.plot_Vmp_Imp_scatter(df=df,
                                               p_plot=pfit_iter,
@@ -724,20 +754,6 @@ class PvProHandler:
                                               plot_imp_max=plot_imp_max,
                                               plot_vmp_max=plot_vmp_max,
                                               )
-
-                    if not os.path.exists(save_figs_directory):
-                        os.mkdir(save_figs_directory)
-
-                    export_folders = [
-                        os.path.join(save_figs_directory, 'Vmp_Imp'),
-                        os.path.join(save_figs_directory, 'suns_Voc'),
-                        os.path.join(save_figs_directory, 'clipped'),
-                        os.path.join(save_figs_directory, 'poa_Imp'),
-                    ]
-                    for folder in export_folders:
-                        if not os.path.exists(folder):
-                            os.mkdir(folder)
-
                     vmp_imp_fig_name = os.path.join(save_figs_directory,
                                                     'Vmp_Imp',
                                                     '{}_Vmp-Imp_{}.png'.format(
@@ -747,7 +763,8 @@ class PvProHandler:
                         print('Exporting: {}'.format(vmp_imp_fig_name))
                     plt.savefig(vmp_imp_fig_name,
                                 dpi=350, )
-
+                    plt.figure(11, figsize=(6.5, 3.5))
+                    plt.clf()
                     self.plot_suns_voc_scatter(df=df,
                                                p_plot=pfit_iter,
                                                figure_number=101,
@@ -757,7 +774,8 @@ class PvProHandler:
                                              '{}_suns-Voc_{}.png'.format(
                                                  self.system_name, k)),
                                 dpi=350, )
-
+                    plt.figure(12, figsize=(6.5, 3.5))
+                    plt.clf()
                     self.plot_current_irradiance_clipped_scatter(
                         df=df,
                         p_plot=pfit_iter,
@@ -768,7 +786,8 @@ class PvProHandler:
                                              '{}_clipped_{}.png'.format(
                                                  self.system_name, k)),
                                 dpi=350, )
-
+                    plt.figure(13, figsize=(6.5, 3.5))
+                    plt.clf()
                     self.plot_current_irradiance_mpp_scatter(df=df,
                                                              p_plot=pfit_iter,
                                                              figure_number=104,
@@ -801,12 +820,13 @@ class PvProHandler:
             for p in out.keys():
                 pfit.loc[k, p + '_ref'] = out[p]
 
-            # pfit.index = self.time
+
         pfit['t_mean'] = pfit['t_start'] + datetime.timedelta(
             days=days_per_run / 2)
 
         pfit['t_years'] = np.array(
-            [t.year + (t.dayofyear - 1) / 365 for t in pfit['t_mean']])
+            [t.year + (t.dayofyear - 1) / 365.25 for t in pfit['t_mean']])
+        pfit.index = pfit['t_start']
 
         self.result = dict(
             p=pfit,
@@ -1277,7 +1297,7 @@ class PvProHandler:
 
         plt.xlim([0, plot_voc_max])
         plt.yscale('log')
-        plt.ylim([1e0, 1200])
+        plt.ylim([1, 1200])
         plt.xticks(fontsize=9)
         plt.yticks(fontsize=9)
 
