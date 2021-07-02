@@ -72,6 +72,8 @@ def find_huber_outliers(x, y, sample_weight=None,
     -------
 
     """
+    if sample_weight is None:
+        sample_weight = np.ones_like(x)
 
     mask = np.logical_and(np.isfinite(x), np.isfinite(y))
 
@@ -367,7 +369,7 @@ class Preprocessor():
 
         """
         # Calculate cell temperature
-        self.df[temperature_cell_key] = sapm_cell_from_module(
+        self.df.loc[:,temperature_cell_key] = sapm_cell_from_module(
             module_temperature=self.df[self.temperature_module_key],
             poa_global=self.df[self.irradiance_poa_key],
             deltaT=delta_T)
