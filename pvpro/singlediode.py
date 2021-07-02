@@ -1,10 +1,15 @@
 # import pvlib
 import numpy as np
 
-from pvlib.singlediode import _lambertw_i_from_v, _lambertw_v_from_i
+from pvlib.singlediode import _lambertw_i_from_v, _lambertw_v_from_i, \
+    bishop88_mpp, bishop88_v_from_i
 from pvlib.pvsystem import calcparams_desoto, singlediode
 
+
 # from pvterms import rename
+
+# from pvpro.singlediode_interpolate import singlediode_fast
+
 
 def calcparams_pvpro(effective_irradiance, temperature_cell,
                      alpha_isc, nNsVth_ref, photocurrent_ref,
@@ -52,12 +57,35 @@ def calcparams_pvpro(effective_irradiance, temperature_cell,
         temp_ref=temperature_ref
     )
 
-
     # Increase shunt resistance by the extra shunt conductance, avoid divide by zero error.
     rsh = 1 / (np.abs(1 / rsh) + np.abs(conductance_shunt_extra) + 1e-100)
 
-
     return iph, io, rs, rsh, nNsVth
+
+
+def singlediode_fast(photocurrent, saturation_current, resistance_series,
+                       resistance_shunt, nNsVth,calculate_voc=False):
+    # Calculate points on the IV curve using either 'newton' or 'brentq'
+    # methods. Voltages are determined by first solving the single diode
+    # equation for the diode voltage V_d then backing out voltage
+    args = (photocurrent, saturation_current, resistance_series,
+            resistance_shunt, nNsVth)  # collect args
+
+    i_mp, v_mp, p_mp = bishop88_mpp(
+        *args, method='newton'
+    )
+    if calculate_voc:
+        v_oc = bishop88_v_from_i(
+            0.0, *args, method='newton'
+        )
+
+        return {'v_mp': v_mp,
+               'i_mp': i_mp,
+               'v_oc': v_oc}
+    else:
+        return {'v_mp': v_mp,
+               'i_mp': i_mp}
+
 
 
 def pvlib_single_diode(
@@ -75,9 +103,9 @@ def pvlib_single_diode(
         conductance_shunt_extra=0,
         irradiance_ref=1000,
         temperature_ref=25,
-        method='newton',
         ivcurve_pnts=None,
-        output_all_params=False
+        output_all_params=False,
+        singlediode_method='fast',
 ):
     """
     Find points of interest on the IV curve given module parameters and
@@ -166,16 +194,28 @@ def pvlib_single_diode(
                                                 Eg_ref=Eg_ref, dEgdT=dEgdT,
                                                 irradiance_ref=irradiance_ref,
                                                 temperature_ref=temperature_ref)
-    iph[iph<=0] = np.nan
+    iph[iph <= 0] = 0
 
-    out = singlediode(iph,
-                      io,
-                      rs,
-                      rsh,
-                      nNsVth,
-                      method=method,
-                      ivcurve_pnts=ivcurve_pnts,
-                      )
+    if singlediode_method == 'fast':
+        out = singlediode_fast(iph,
+                               io,
+                               rs,
+                               rsh,
+                               nNsVth,
+                               )
+
+    elif singlediode_method in ['lambertw', 'brentq', 'newton']:
+        out = singlediode(iph,
+                          io,
+                          rs,
+                          rsh,
+                          nNsVth,
+                          method=singlediode_method,
+                          ivcurve_pnts=ivcurve_pnts,
+                          )
+    else:
+        raise Exception(
+            'Method must be "fast","lambertw", "brentq", or "newton"')
     # out = rename(out)
 
     if output_all_params:
@@ -192,6 +232,20 @@ def pvlib_single_diode(
     return out
 
 
+#
+# def calculate_vmp_imp(photocurrent, saturation_current, resistance_series,
+#             resistance_shunt, nNsVth):
+#     args = (photocurrent, saturation_current, resistance_series,
+#             resistance_shunt, nNsVth)  # collect args
+#     # v_oc = _singlediode.bishop88_v_from_i(
+#     #     0.0, *args, method=method.lower()
+#     # )
+#     i_mp, v_mp, p_mp = _singlediode.bishop88_mpp(
+#         *args, method=method.lower()
+#     )
+#
+#     return v_mp, i_mp
+
 def calculate_temperature_coeffs(
         diode_factor,
         photocurrent_ref,
@@ -205,7 +259,7 @@ def calculate_temperature_coeffs(
         temperature_cell=25,
         band_gap_ref=1.121,
         dEgdT=-0.0002677,
-        method='newton',
+        singlediode_method='newton',
         irradiance_ref=1000,
         temperature_ref=25
 ):
@@ -251,7 +305,7 @@ def calculate_temperature_coeffs(
             conductance_shunt_extra=conductance_shunt_extra,
             irradiance_ref=irradiance_ref,
             temperature_ref=temperature_ref,
-            method=method,
+            singlediode_method=singlediode_method,
             ivcurve_pnts=None,
             output_all_params=True
         )
@@ -270,19 +324,19 @@ def calculate_temperature_coeffs(
                     'resistace_shunt': 'tempco_resistance_shunt',
                     'nNsVth': 'tempco_nNsVth'
                     }
-# temp_co_name = {'i_sc': 'alpha_isc',
-#                     'v_oc': 'beta_voc',
-#                     'i_mp': 'alpha_imp',
-#                     'v_mp': 'beta_vmp',
-#                     'p_mp': 'gamma_pmp',
-#                     'i_x': 'alpha_i_x',
-#                     'i_xx': 'alpha_i_xx',
-#                     'photocurrent': 'tempco_photocurrent',
-#                     'saturation_current': 'tempco_saturation_current',
-#                     'resistance_series': 'tempco_resistance_series',
-#                     'resistace_shunt': 'tempco_resistance_shunt',
-#                     'nNsVth': 'tempco_nNsVth'
-#                     }
+    # temp_co_name = {'i_sc': 'alpha_isc',
+    #                     'v_oc': 'beta_voc',
+    #                     'i_mp': 'alpha_imp',
+    #                     'v_mp': 'beta_vmp',
+    #                     'p_mp': 'gamma_pmp',
+    #                     'i_x': 'alpha_i_x',
+    #                     'i_xx': 'alpha_i_xx',
+    #                     'photocurrent': 'tempco_photocurrent',
+    #                     'saturation_current': 'tempco_saturation_current',
+    #                     'resistance_series': 'tempco_resistance_series',
+    #                     'resistace_shunt': 'tempco_resistance_shunt',
+    #                     'nNsVth': 'tempco_nNsVth'
+    #                     }
 
     temp_co = {}
     for p in out_iter:
@@ -309,7 +363,6 @@ def singlediode_closest_point(
         method='newton',
         verbose=False,
         ivcurve_pnts=1000):
-
     """
     Find the closest point on the IV curve, using brute force calculation.
 
@@ -463,7 +516,7 @@ def singlediode_i_from_v(
         reference_temperature=25,
         method='newton',
         verbose=False,
-    ):
+):
     """
     Calculate current at a particular voltage on the IV curve.
 
@@ -527,7 +580,7 @@ def pv_system_single_diode_model(
         current_operation=None,
         band_gap_ref=1.121,
         dEgdT=-0.0002677,
-        method='lambertw',
+        singlediode_method='fast',
         **kwargs
 ):
     """
@@ -584,7 +637,7 @@ def pv_system_single_diode_model(
         photocurrent_ref,
         saturation_current_ref,
         conductance_shunt_extra=conductance_shunt_extra,
-        method=method,
+        singlediode_method=singlediode_method,
         Eg_ref=band_gap_ref,
         dEgdT=dEgdT)
 
@@ -681,7 +734,9 @@ def pv_system_single_diode_model(
     #
 
     # If cls is 1, then system is at open-circuit voltage.
-    voltage_fit[operating_cls == 1] = out['v_oc'][operating_cls == 1]
-    current_fit[operating_cls == 1] = 0
+    cls1 = operating_cls == 1
+    if np.sum(cls1) > 0:
+        voltage_fit[operating_cls == 1] = out['v_oc'][operating_cls == 1]
+        current_fit[operating_cls == 1] = 0
 
     return voltage_fit, current_fit
