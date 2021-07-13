@@ -10,8 +10,6 @@ This package, pvpro, automates the analysis of PV production data to extract the
 
 **The package is still under active development so don't expect it to work perfectly yet!**
 
-To try it out, you need to clone the most recent development branch of solar-data-tools and statistical-clear-sky.
-
 # Methods
 
 Here's a high level overview of the most important parts of the package.
@@ -21,6 +19,13 @@ Here's a high level overview of the most important parts of the package.
 - main.PvProHandler.execute - Runs the pvpro simulfit.
 
 # Installation
+
+## Install with pip
+```
+pip install pvpro
+```
+
+
 
 ## Install with conda
 
@@ -34,12 +39,6 @@ Next activate the environment, cd into the pvpro repository and run:
 ```
 pip install -e .
 ```
-
-## Install with pip
-```
-pip install pvpro
-```
-
 ## Make environment manually
 Another way to make a valid virtual environment is with the following commands. This section will be updated in the future to make a more minimal environment.
 
@@ -62,3 +61,9 @@ pip install matplotlib==3.3.2
 The size of a power block can be estimated by first estimating `vmp_ref` and `imp_ref`. The number of modules in series in and parallel are then found by dividing by the datasheet  
 
 An example with the NIST ground dataset is provided in the file [example_estimate_number_series_parallel.py](examples/example_estimate_number_series_parallel.py)
+
+## Run analysis on synthetic data
+
+By generating a PV dataset with known module degradation, the performance of the algorithm in extracting single diode model parameters can be tested.
+
+First, generate sythetic data using [synth01_generate_synthetic_data.py](examples/synth01_generate_synthetic_data.py). Next, run the time series parameter extraction in [synth02_simulfit.py](examples/synth02_simulfit.py).
