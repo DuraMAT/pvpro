@@ -72,8 +72,17 @@ First, generate sythetic data using [synth01_generate_synthetic_data.py](example
 
 The NIST ground array provides a useful testbed for PVPRO [1]. A jupyter notebook showing analysis of this dataset is provided in [NIST16_analyze.ipynb](examples/NIST16_analyze.ipynb). 
 
-PVPRO analysis of this dataset results in 
+PVPRO analysis fits a single diode model to the data at each timestep in the analysis. Below, the thoery lines are shown next to the cleaned data.
 
 ![Image of PVPRO fit result](https://github.com/DuraMAT/pvpro/blob/master/doc/img/nist-ground-fit-result.png)
+
+The trend of these parameters over time can be used to interpret what is degrading in the system. This analysis is only sensitive to module degradation (excepting drift in sensors) and not inverter degradation. Below, the PVPRO result for this system shows which parameters cause the observed power loss.
+
+![Image of PVPRO parameter trend](https://github.com/DuraMAT/pvpro/blob/master/doc/img/nist-ground-parameter-trend.png)
+
+
+
+
+
 
 [1]. Boyd, M. (2017), Performance Data from the NIST Photovoltaic (PV) Arrays and Weather Station, Journal of Research (NIST JRES), National Institute of Standards and Technology, Gaithersburg, MD, [online], https://doi.org/10.6028/jres.122.040 (Accessed July 13, 2021)
