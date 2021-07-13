@@ -1,5 +1,7 @@
 """
-Example full run of pv-pro analysis using synthetic data.
+
+Example full run of pv-pro analysis using synthetic data. Synthetic data is
+generated using file 'synth01_generate_synthetic_data.py'.
 
 @author: toddkarin
 """
