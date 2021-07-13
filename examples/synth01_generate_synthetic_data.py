@@ -42,9 +42,12 @@ df.drop(df.index[df['ghi'] <= 1.], inplace=True)
 df['poa_actual'] = df['ghi']
 
 # Simulate some noise on the measured poa irradiance.
-poa_noise_level = 0.02
-df['poa_meas'] = df['poa_actual'] * (
-            1 + poa_noise_level * (np.random.random(df['ghi'].shape) - 0.5))
+poa_noise_level = 0.01
+# poa_noise_level = 0.0001
+# poa_noise_level = 0
+
+np.random.seed(0)
+df['poa_meas'] = df['poa_actual'] * np.random.normal(1, poa_noise_level, df['ghi'].shape)
 
 # estimate module/cell temperature
 df['temperature_module_actual'] = sapm_module(
@@ -64,9 +67,11 @@ df['temperature_cell_actual'] = sapm_cell(
     deltaT=3)
 
 # "measured" module temperature has noise.
-temperature_noise_level = 2
-df['temperature_module_meas'] = df['temperature_module_actual'] + (
-        np.random.random(df['ghi'].shape) - 0.5) * temperature_noise_level
+temperature_noise_level = 1
+# temperature_noise_level = 0.1
+# temperature_noise_level = 0.0
+df['temperature_module_meas'] = df['temperature_module_actual'] + \
+        np.random.normal(0,temperature_noise_level, df['ghi'].shape)
 
 q = 1.60218e-19  # Elementary charge in units of coulombs
 kb = 1.38066e-23  # Boltzmann's constant in units of J/K
@@ -88,15 +93,16 @@ df['alpha_sc'] = 0.001
 df['diode_factor'] = 1.1 - 0.01 * t_years
 df['nNsVth_ref'] = df['diode_factor'] * df['cells_in_series'] * kb / q * (
         273.15 + 25)
-df['photocurrent_ref'] = 6.0 - (0.1 * t_years - 0.1 * np.sin(2 * np.pi * t_years))
-df['saturation_current_ref'] = 1e-9 + 1e-9 * t_years
+df['photocurrent_ref'] = 6.0 - (0.1 * t_years - 0.05 * np.sin(2 * np.pi * t_years))
+df['saturation_current_ref'] = 1e-9 + 0.01e-9 * t_years
 # df['resistance_shunt_ref'] = step_change(1000, 100, t_years, 2)
 df['resistance_shunt_ref'] = 400
 df['conductance_shunt_extra'] = 0.000 + 0.0003 * t_years
 # df['resistance_shunt_ref'] = 1000 - 950/4*t_years
 # df.loc[t_years>2,'resistance_shunt_ref'] = 13
 # df['resistance_series_ref'] = 0.2 +  0.4 * t_years
-df['resistance_series_ref'] = 0.3 +  0.05 * t_years
+df['resistance_series_ref'] = 0.3 + 0.05 * t_years
+df['resistance_series_ref'] = step_change(0.35, 0.7, t_years)
 df['EgRef'] = 1.121
 df['dEgdT'] = -0.0002677
 
@@ -114,7 +120,7 @@ out = pvlib_single_diode(
     Eg_ref=df['EgRef'],
     dEgdT=df['dEgdT'],
     conductance_shunt_extra=df['conductance_shunt_extra'],
-    method='newton',
+    singlediode_method='newton',
     ivcurve_pnts=None,
 )
 
@@ -136,7 +142,7 @@ out_ref = pvlib_single_diode(
     Eg_ref=df['EgRef'],
     dEgdT=df['dEgdT'],
     conductance_shunt_extra=df['conductance_shunt_extra'],
-    method='newton',
+    singlediode_method='newton',
     ivcurve_pnts=None,
 )
 
@@ -169,7 +175,15 @@ df.loc[df['poa_actual'] < 50, 'v_dc'] = df.loc[
     df['poa_actual'] < 50, 'v_oc']
 df.loc[df['poa_actual'] < 50, 'i_dc'] = 0
 
+
+df.loc[df.index.day==1, 'v_dc'] = df.loc[df.index.day==1, 'v_oc']
+df.loc[df.index.day==1, 'i_dc'] = 0
+
+
 # Save data
 df.to_pickle('synth01_out.pkl')
 print('done!')
 
+
+
+# print(df[['temperature_module_meas','poa_meas','v_dc','i_dc']][:100].to_csv(index=False))
