@@ -67,3 +67,7 @@ An example with the NIST ground dataset is provided in the file [example_estimat
 By generating a PV dataset with known module degradation, the performance of the algorithm in extracting single diode model parameters can be tested.
 
 First, generate sythetic data using [synth01_generate_synthetic_data.py](examples/synth01_generate_synthetic_data.py). Next, run the time series parameter extraction in [synth02_simulfit.py](examples/synth02_simulfit.py).
+
+## Example analysis of real data.
+
+A jupyter notebook showing analysis of the NIST ground dataset is provided in [NIST16_analyze.ipynb](examples/NIST16_analyze.ipynb)
