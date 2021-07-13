@@ -70,4 +70,10 @@ First, generate sythetic data using [synth01_generate_synthetic_data.py](example
 
 ## Example analysis of real data.
 
-A jupyter notebook showing analysis of the NIST ground dataset is provided in [NIST16_analyze.ipynb](examples/NIST16_analyze.ipynb)
+The NIST ground array provides a useful testbed for PVPRO [1]. A jupyter notebook showing analysis of this dataset is provided in [NIST16_analyze.ipynb](examples/NIST16_analyze.ipynb). 
+
+PVPRO analysis of this dataset results in 
+
+![Image of PVPRO fit result](https://github.com/DuraMAT/pvpro/blob/master/doc/img/nist-ground-fit-result.png)
+
+[1]. Boyd, M. (2017), Performance Data from the NIST Photovoltaic (PV) Arrays and Weather Station, Journal of Research (NIST JRES), National Institute of Standards and Technology, Gaithersburg, MD, [online], https://doi.org/10.6028/jres.122.040 (Accessed July 13, 2021)
