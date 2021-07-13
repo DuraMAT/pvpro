@@ -76,7 +76,7 @@ PVPRO analysis fits a single diode model to the data at each timestep in the ana
 
 ![Image of PVPRO fit result](https://github.com/DuraMAT/pvpro/blob/master/doc/img/nist-ground-fit-result.png)
 
-The trend of these parameters over time can be used to interpret what is degrading in the system. This analysis is only sensitive to module degradation (excepting drift in sensors) and not inverter degradation. Below, the PVPRO result for this system shows which parameters cause the observed power loss.
+The trend of these parameters over time can be used to interpret what is degrading in the system. This analysis is only sensitive to module degradation (excepting drift in sensors) and not inverter degradation or downtime. Below, the PVPRO results for this system show which parameters cause the observed power loss.
 
 ![Image of PVPRO parameter trend](https://github.com/DuraMAT/pvpro/blob/master/doc/img/nist-ground-parameter-trend.png)
 
