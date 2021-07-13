@@ -80,6 +80,7 @@ The trend of these parameters over time can be used to interpret what is degradi
 
 ![Image of PVPRO parameter trend](https://github.com/DuraMAT/pvpro/blob/master/doc/img/nist-ground-parameter-trend.png)
 
+For this dataset, the estimated power degradation rate is -1.7%/yr. Inspecting the first panel, photocurrent loss is estimated to cause a -0.8%/yr loss in power, making photocurrent loss responsible for 47% of the observed power loss. This system also appears to show an increase in series resistance over time. 
 
 
 
