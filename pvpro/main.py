@@ -354,7 +354,6 @@ class PvProHandler:
         print(pd.Series(info_display))
         return info_display
 
-
     def quick_parameter_extraction(self,
                                    freq='W',
                                    max_iter=np.inf,
@@ -451,6 +450,11 @@ class PvProHandler:
                 use_mpp_points=True,
                 use_voc_points=True,
                 use_clip_points=True,
+                diode_factor=None,
+                photocurrent_ref=None,
+                saturation_current_ref=None,
+                resistance_series_ref=None,
+                conductance_shunt_extra=None,
                 verbose=False,
                 method='minimize',
                 solver='L-BFGS-B',
@@ -539,7 +543,6 @@ class PvProHandler:
                           'diode_factor']
             # self.fit_params = fit_params
 
-
         if saturation_current_multistart is None:
             saturation_current_multistart = [0.2, 0.5, 1, 2, 5]
 
@@ -567,25 +570,7 @@ class PvProHandler:
             conductance_shunt_extra=10
         )
 
-        #     # Use entire dataset to find the best value for plot ylims.
-        #     imp_est = estimate_imp_ref(
-        #         poa=self.df.loc[
-        #             self.df['operating_cls'] == 0, self.irradiance_poa_key],
-        #         temperature_cell=self.df.loc[
-        #             self.df['operating_cls'] == 0, self.temperature_module_key],
-        #         imp=self.df.loc[self.df[
-        #                             'operating_cls'] == 0, self.current_key] / self.parallel_strings,
-        #     )
-        #     imp_max = imp_est['i_mp_ref']
-        #     imp_max = 1.1 * imp_max
-
         # Initialize pfit dataframe for saving fit values.
-        # pfit = pd.DataFrame(index=range(len(iteration_start_days)),
-        #                     columns=[*fit_params,
-        #                              *['residual', 'i_sc_ref', 'v_oc_ref',
-        #                                'i_mp_ref',
-        #                                'v_mp_ref', 'p_mp_ref', 'i_x_ref',
-        #                                'i_xx_ref']])
         pfit = pd.DataFrame()
 
         # p0 contains the start point for each fit.
@@ -661,31 +646,42 @@ class PvProHandler:
                     print('current for fit: ',
                           df[self.current_key] / self.parallel_strings)
 
-                pfit_iter, residual, fit_result_iter = production_data_curve_fit(
+                fit_result_iter = production_data_curve_fit(
                     temperature_cell=np.array(df['temperature_cell']),
                     effective_irradiance=np.array(df[self.irradiance_poa_key]),
                     operating_cls=np.array(df['operating_cls']),
-                    voltage=np.array(df[self.voltage_key]) / self.modules_per_string,
-                    current=np.array(df[self.current_key]) / self.parallel_strings,
+                    voltage=np.array(
+                        df[self.voltage_key]) / self.modules_per_string,
+                    current=np.array(
+                        df[self.current_key]) / self.parallel_strings,
                     cells_in_series=self.cells_in_series,
                     alpha_isc=self.alpha_isc,
                     resistance_shunt_ref=self.resistance_shunt_ref,
                     lower_bounds=lower_bounds,
                     upper_bounds=upper_bounds,
                     p0=p0.loc[k, fit_params],
+                    diode_factor=diode_factor,
+                    photocurrent_ref=photocurrent_ref,
+                    saturation_current_ref=saturation_current_ref,
+                    resistance_series_ref=resistance_series_ref,
+                    conductance_shunt_extra=conductance_shunt_extra,
                     verbose=verbose,
                     solver=solver,
                     method=method,
                     use_mpp_points=use_mpp_points,
                     use_voc_points=use_voc_points,
                     use_clip_points=use_clip_points,
-                    fit_params=fit_params,
                     singlediode_method=singlediode_method,
                     saturation_current_multistart=saturation_current_multistart
                 )
+                pfit_iter = fit_result_iter['p']
+                pfixed_iter = fit_result_iter['fixed_params']
+                residual = fit_result_iter['residual']
+
+                # print('Fixed params')
+                # print(pfixed_iter)
 
                 # Estimate parameters quickly.
-                # TODO: change to only pass MPP data points.
                 cax = df['operating_cls'] == 0
                 if np.sum(cax) > 10:
                     vmp_out = estimate_vmp_ref(
@@ -712,24 +708,9 @@ class PvProHandler:
                     pfit.loc[k, 'p_mp_ref_est'] = imp_out['i_mp_ref'] * vmp_out[
                         'v_mp_ref']
 
-                # est, est_result = estimate_singlediode_params(
-                #     vmp=df[self.voltage_key] / self.modules_per_string,
-                #     imp=df[self.current_key] / self.parallel_strings,
-                #     poa=np.array(df[self.irradiance_poa_key]),
-                #     temperature_module=df[self.temperature_module_key],
-                #     delta_T=self.delta_T,
-                #     alpha_isc=self.alpha_isc,
-                #     cells_in_series=self.cells_in_series,
-                #     technology=self.technology,
-                #     resistance_shunt_ref=self.resistance_shunt_ref,
-                #     figure=False,
-                #     imp_model='sandia',
-                #     verbose=False,
-                #     max_iter=10,
-                # )
+                for p in pfit_iter: pfit.loc[k, p] = pfit_iter[p]
 
-                for p in pfit_iter:
-                    pfit.loc[k, p] = pfit_iter[p]
+                for p in pfixed_iter: pfit.loc[k, p] = pfixed_iter[p]
 
                 pfit.loc[k, 'residual'] = residual
 
@@ -804,22 +785,21 @@ class PvProHandler:
                 # except:
                 #     print('** Error with this iteration.')
 
-            # Calculate other parameters vs. time.
-            pfit.loc[k, 'nNsVth_ref'] = pfit.loc[
-                                            k, 'diode_factor'] * self.cells_in_series * kB / q * (
-                                                25 + 273.15)
+                # Calculate other parameters vs. time.
+                pfit.loc[k, 'nNsVth_ref'] = pfit.loc[
+                                                k, 'diode_factor'] * self.cells_in_series * kB / q * (
+                                                    25 + 273.15)
 
-            out = pvlib.pvsystem.singlediode(
-                photocurrent=pfit.loc[k, 'photocurrent_ref'],
-                saturation_current=pfit.loc[k, 'saturation_current_ref'],
-                resistance_series=pfit.loc[k, 'resistance_series_ref'],
-                resistance_shunt=1 / (1 / self.resistance_shunt_ref + pfit.loc[
-                    k, 'conductance_shunt_extra']),
-                nNsVth=pfit.loc[k, 'nNsVth_ref'])
+                out = pvlib.pvsystem.singlediode(
+                    photocurrent=pfit.loc[k, 'photocurrent_ref'],
+                    saturation_current=pfit.loc[k, 'saturation_current_ref'],
+                    resistance_series=pfit.loc[k, 'resistance_series_ref'],
+                    resistance_shunt=1 / (1 / self.resistance_shunt_ref + pfit.loc[
+                        k, 'conductance_shunt_extra']),
+                    nNsVth=pfit.loc[k, 'nNsVth_ref'])
 
-            for p in out.keys():
-                pfit.loc[k, p + '_ref'] = out[p]
-
+                for p in out.keys():
+                    pfit.loc[k, p + '_ref'] = out[p]
 
         pfit['t_mean'] = pfit['t_start'] + datetime.timedelta(
             days=days_per_run / 2)
@@ -840,6 +820,7 @@ class PvProHandler:
 
     def estimate_p0(self,
                     verbose=False,
+                    boolean_mask=None,
                     technology='mono-Si'):
         """
         Make a rough estimate of the startpoint for fitting the single diode
@@ -850,16 +831,31 @@ class PvProHandler:
 
         """
 
-        self.p0, result = estimate_singlediode_params(
-            poa=self.df[self.irradiance_poa_key],
-            temperature_cell=self.df[self.temperature_cell_key],
-            vmp=self.df[self.voltage_key] / self.modules_per_string,
-            imp=self.df[self.current_key] / self.parallel_strings,
-            cells_in_series=self.cells_in_series,
-            # delta_T=self.delta_T,
-            technology=technology,
-            verbose=verbose
-        )
+        if boolean_mask is None:
+            self.p0, result = estimate_singlediode_params(
+                poa=self.df[self.irradiance_poa_key],
+                temperature_cell=self.df[self.temperature_cell_key],
+                vmp=self.df[self.voltage_key] / self.modules_per_string,
+                imp=self.df[self.current_key] / self.parallel_strings,
+                cells_in_series=self.cells_in_series,
+                # delta_T=self.delta_T,
+                technology=technology,
+                verbose=verbose
+            )
+        else:
+            self.p0, result = estimate_singlediode_params(
+                poa=self.df.loc[boolean_mask, self.irradiance_poa_key],
+                temperature_cell=self.df.loc[
+                    boolean_mask, self.temperature_cell_key],
+                vmp=self.df.loc[
+                        boolean_mask, self.voltage_key] / self.modules_per_string,
+                imp=self.df.loc[
+                        boolean_mask, self.current_key] / self.parallel_strings,
+                cells_in_series=self.cells_in_series,
+                # delta_T=self.delta_T,
+                technology=technology,
+                verbose=verbose
+            )
 
         #
         # imp_ref = estimate_imp_ref()
