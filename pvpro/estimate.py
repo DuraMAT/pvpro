@@ -13,8 +13,7 @@ from scipy.special import lambertw
 from numpy.linalg import pinv
 
 from time import time
-
-
+from sklearn.linear_model import HuberRegressor
 
 def estimate_imp_ref(poa,
                      temperature_cell,
@@ -25,7 +24,9 @@ def estimate_imp_ref(poa,
                      figure=False,
                      figure_number=20,
                      model='sandia',
-                     verbose=False
+                     verbose=False,
+                     solver='huber',
+                     epsilon=1.5,
                      ):
     """
     Estimate imp_ref and beta_imp using operation data.
@@ -113,7 +114,13 @@ def estimate_imp_ref(poa,
         X[:, 2] = Ee - 1
         X[:, 3] = dT * (Ee - 1)
 
-        coeff = np.dot(pinv(X), imp)
+        if solver.lower() == 'huber':
+            huber = HuberRegressor(epsilon=epsilon,
+                                   fit_intercept=False)
+            huber.fit(X, imp)
+            coeff = huber.coef_
+        elif solver.lower() == 'pinv':
+            coeff = np.dot(pinv(X), imp)
 
         imp_ref = coeff[0]
         alpha_imp = coeff[1]
@@ -336,82 +343,82 @@ def estimate_imp_ref(poa,
 #
 #     return imp_ref, vmp_ref, pmp_ref
 
-    #
-    # imp_irradiance_corrected = imp * out_one_sun['i_mp'] / out['i_mp']
-    #
-    # # TODO: vmp is not proportional to irradiance.
-    # vmp_irradiance_corrected = vmp - out['v_mp'] + out_one_sun['v_mp']
-    # pmp_irradiance_corrected = pmp * out_one_sun['p_mp'] / out['p_mp']
-    #
-    # x = temperature_cell[cax]
-    # y = imp_irradiance_corrected[cax]
-    #
-    # imp_fit = np.polyfit(x, y, 1)
-    # imp_ref = np.polyval(imp_fit, temperature_ref)
-    # alpha_imp = imp_fit[0]
-    #
-    # if figure:
-    #     plt.figure(figure_number)
-    #     plt.clf()
-    #     ax = plt.gca()
-    #     x_smooth = np.linspace(x.min(), x.max(), 5)
-    #     # plt.hist2d(x, y, bins=(25, 25))
-    #     plt.scatter(x, y)
-    #     plt.plot(x_smooth, np.polyval(imp_fit, x_smooth), 'r')
-    #     plt.plot(temperature_ref, np.polyval(imp_fit, temperature_ref), 'r.')
-    #     ax.axvline(temperature_ref - np.abs(temperature_fit_range) / 2)
-    #     ax.axvline(temperature_ref + np.abs(temperature_fit_range) / 2)
-    #     plt.xlabel('Cell temperature (C)')
-    #     plt.ylabel('Imp (A)')
-    #     plt.show()
-    #
-    # # Vmp
-    # x = temperature_cell[cax]
-    # y = vmp_irradiance_corrected[cax]
-    #
-    # vmp_fit = np.polyfit(x, y, 1)
-    # vmp_ref = np.polyval(vmp_fit, temperature_ref)
-    # beta_vmp = vmp_fit[0]
-    #
-    # if figure:
-    #     plt.figure(figure_number + 1)
-    #     plt.clf()
-    #     ax = plt.gca()
-    #     x_smooth = np.linspace(x.min(), x.max(), 5)
-    #     # plt.hist2d(x, y, bins=(25, 25))
-    #     plt.scatter(x, y)
-    #     plt.plot(x_smooth, np.polyval(vmp_fit, x_smooth), 'r')
-    #     plt.plot(temperature_ref, np.polyval(vmp_fit, temperature_ref), 'r.')
-    #     ax.axvline(temperature_ref - np.abs(temperature_fit_range) / 2)
-    #     ax.axvline(temperature_ref + np.abs(temperature_fit_range) / 2)
-    #     plt.xlabel('Cell temperature (C)')
-    #     plt.ylabel('Vmp (A)')
-    #     plt.show()
-    #
-    # # PMP
-    # x = temperature_cell[cax]
-    # y = pmp_irradiance_corrected[cax]
-    #
-    # pmp_fit = np.polyfit(x, y, 1)
-    # pmp_ref = np.polyval(pmp_fit, temperature_ref)
-    # gamma_pmp = pmp_fit[0]
-    #
-    # if figure:
-    #     plt.figure(figure_number + 2)
-    #     plt.clf()
-    #     ax = plt.gca()
-    #     x_smooth = np.linspace(x.min(), x.max(), 5)
-    #     # plt.hist2d(x, y, bins=(25, 25))
-    #     plt.scatter(x, y)
-    #     plt.plot(x_smooth, np.polyval(pmp_fit, x_smooth), 'r')
-    #     plt.plot(temperature_ref, np.polyval(pmp_fit, temperature_ref), 'r.')
-    #     ax.axvline(temperature_ref - np.abs(temperature_fit_range) / 2)
-    #     ax.axvline(temperature_ref + np.abs(temperature_fit_range) / 2)
-    #     plt.xlabel('Cell temperature (C)')
-    #     plt.ylabel('Pmp (A)')
-    #     plt.show()
-    # return imp_ref, alpha_imp, vmp_ref, beta_vmp, pmp_ref, gamma_pmp
-    #
+#
+# imp_irradiance_corrected = imp * out_one_sun['i_mp'] / out['i_mp']
+#
+# # TODO: vmp is not proportional to irradiance.
+# vmp_irradiance_corrected = vmp - out['v_mp'] + out_one_sun['v_mp']
+# pmp_irradiance_corrected = pmp * out_one_sun['p_mp'] / out['p_mp']
+#
+# x = temperature_cell[cax]
+# y = imp_irradiance_corrected[cax]
+#
+# imp_fit = np.polyfit(x, y, 1)
+# imp_ref = np.polyval(imp_fit, temperature_ref)
+# alpha_imp = imp_fit[0]
+#
+# if figure:
+#     plt.figure(figure_number)
+#     plt.clf()
+#     ax = plt.gca()
+#     x_smooth = np.linspace(x.min(), x.max(), 5)
+#     # plt.hist2d(x, y, bins=(25, 25))
+#     plt.scatter(x, y)
+#     plt.plot(x_smooth, np.polyval(imp_fit, x_smooth), 'r')
+#     plt.plot(temperature_ref, np.polyval(imp_fit, temperature_ref), 'r.')
+#     ax.axvline(temperature_ref - np.abs(temperature_fit_range) / 2)
+#     ax.axvline(temperature_ref + np.abs(temperature_fit_range) / 2)
+#     plt.xlabel('Cell temperature (C)')
+#     plt.ylabel('Imp (A)')
+#     plt.show()
+#
+# # Vmp
+# x = temperature_cell[cax]
+# y = vmp_irradiance_corrected[cax]
+#
+# vmp_fit = np.polyfit(x, y, 1)
+# vmp_ref = np.polyval(vmp_fit, temperature_ref)
+# beta_vmp = vmp_fit[0]
+#
+# if figure:
+#     plt.figure(figure_number + 1)
+#     plt.clf()
+#     ax = plt.gca()
+#     x_smooth = np.linspace(x.min(), x.max(), 5)
+#     # plt.hist2d(x, y, bins=(25, 25))
+#     plt.scatter(x, y)
+#     plt.plot(x_smooth, np.polyval(vmp_fit, x_smooth), 'r')
+#     plt.plot(temperature_ref, np.polyval(vmp_fit, temperature_ref), 'r.')
+#     ax.axvline(temperature_ref - np.abs(temperature_fit_range) / 2)
+#     ax.axvline(temperature_ref + np.abs(temperature_fit_range) / 2)
+#     plt.xlabel('Cell temperature (C)')
+#     plt.ylabel('Vmp (A)')
+#     plt.show()
+#
+# # PMP
+# x = temperature_cell[cax]
+# y = pmp_irradiance_corrected[cax]
+#
+# pmp_fit = np.polyfit(x, y, 1)
+# pmp_ref = np.polyval(pmp_fit, temperature_ref)
+# gamma_pmp = pmp_fit[0]
+#
+# if figure:
+#     plt.figure(figure_number + 2)
+#     plt.clf()
+#     ax = plt.gca()
+#     x_smooth = np.linspace(x.min(), x.max(), 5)
+#     # plt.hist2d(x, y, bins=(25, 25))
+#     plt.scatter(x, y)
+#     plt.plot(x_smooth, np.polyval(pmp_fit, x_smooth), 'r')
+#     plt.plot(temperature_ref, np.polyval(pmp_fit, temperature_ref), 'r.')
+#     ax.axvline(temperature_ref - np.abs(temperature_fit_range) / 2)
+#     ax.axvline(temperature_ref + np.abs(temperature_fit_range) / 2)
+#     plt.xlabel('Cell temperature (C)')
+#     plt.ylabel('Pmp (A)')
+#     plt.show()
+# return imp_ref, alpha_imp, vmp_ref, beta_vmp, pmp_ref, gamma_pmp
+#
 
 
 #
@@ -438,7 +445,9 @@ def estimate_vmp_ref(poa,
                      temperature_ref=25,
                      figure=False,
                      figure_number=21,
-                     model='sandia'
+                     model='sandia1',
+                     solver='huber',
+                     epsilon=2.5
                      ):
     """
     Estimate vmp_ref using operation data. Function works for any size of
@@ -515,8 +524,6 @@ def estimate_vmp_ref(poa,
     vmp = np.array(vmp[cax])
     poa = np.array(poa[cax])
 
-
-
     # kB = 1.381e-23
     # q = 1.602e-19
     # Vth = kB * (temperature_cell + 273.15) / q
@@ -552,10 +559,17 @@ def estimate_vmp_ref(poa,
         X = np.zeros(shape=(len(temperature_cell), 4))
         X[:, 0] = 1
         X[:, 1] = temperature_cell - temperature_ref
-        X[:, 2] = delta*logEe
-        X[:, 3] = (delta*logEe) ** 2
+        X[:, 2] = delta * logEe
+        X[:, 3] = (delta * logEe) ** 2
 
-        coeff = np.dot(pinv(X), vmp)
+        if solver.lower() == 'huber':
+            huber = HuberRegressor(epsilon=epsilon,
+                                   fit_intercept=False)
+            huber.fit(X, vmp)
+            coeff = huber.coef_
+            # print('huber coeff', coeff)
+        elif solver.lower() == 'pinv':
+            coeff = np.dot(pinv(X), vmp)
 
         vmp_ref = coeff[0]
         beta_vmp = coeff[1]
@@ -564,8 +578,10 @@ def estimate_vmp_ref(poa,
 
         def vmp_model(temperature, irradiance):
             return vmp_ref + beta_vmp * (temperature - temperature_ref) + \
-                   coeff_irrad_1 * (temperature + 273.15) * np.log(irradiance / irradiance_ref) + \
-                   coeff_irrad_2 * ((temperature + 273.15) *np.log(irradiance / irradiance_ref)) ** 2
+                   coeff_irrad_1 * (temperature + 273.15) * np.log(
+                irradiance / irradiance_ref) + \
+                   coeff_irrad_2 * ((temperature + 273.15) * np.log(
+                irradiance / irradiance_ref)) ** 2
 
         out = {'v_mp_ref': vmp_ref,
                'beta_vmp': beta_vmp,
@@ -573,12 +589,50 @@ def estimate_vmp_ref(poa,
                'coeff_irrad_2': coeff_irrad_2,
                'vmp_model': vmp_model}
 
+    if model.lower() == 'sandia1':
+        X = np.zeros(shape=(len(temperature_cell), 3))
+        X[:, 0] = 1
+        X[:, 1] = temperature_cell - temperature_ref
+        X[:, 2] = delta * logEe
+        # X[:, 3] = (delta * logEe) ** 2
+
+        if solver.lower() == 'huber':
+            huber = HuberRegressor(epsilon=epsilon,
+                                   fit_intercept=False)
+            huber.fit(X, vmp)
+            coeff = huber.coef_
+            # print('huber coeff', coeff)
+        elif solver.lower() == 'pinv':
+            coeff = np.dot(pinv(X), vmp)
+
+        vmp_ref = coeff[0]
+        beta_vmp = coeff[1]
+        coeff_irrad_1 = coeff[2]
+        # coeff_irrad_2 = coeff[3]
+
+        def vmp_model(temperature, irradiance):
+            return vmp_ref + beta_vmp * (temperature - temperature_ref) + \
+                   coeff_irrad_1 * (temperature + 273.15) * np.log(
+                irradiance / irradiance_ref)
+
+        out = {'v_mp_ref': vmp_ref,
+               'beta_vmp': beta_vmp,
+               'coeff_irrad_1': coeff_irrad_1,
+               'vmp_model': vmp_model}
+
     elif model.lower() == 'temperature':
         X = np.zeros(shape=(len(temperature_cell), 2))
         X[:, 0] = 1
         X[:, 1] = temperature_cell - temperature_ref
 
-        coeff = np.dot(pinv(X), vmp)
+        if solver.lower() == 'huber':
+            huber = HuberRegressor(epsilon=epsilon,
+                                   fit_intercept=False)
+            huber.fit(X, vmp)
+            coeff = huber.coef_
+            # print('huber coeff', coeff)
+        elif solver.lower() == 'pinv':
+            coeff = np.dot(pinv(X), vmp)
 
         vmp_ref = coeff[0]
         beta_vmp = coeff[1]
@@ -730,79 +784,124 @@ def get_average_diode_factor(technology):
     return diode_factor_all[technology]
 
 
-def estimate_diode_factor(i_mp, v_mp, photocurrent_ref,
-                          saturation_current_ref,
-                          temperature_cell, poa,
+#
+# def estimate_diode_factor(i_mp, v_mp, photocurrent_ref,
+#                           saturation_current_ref,
+#                           temperature_cell, poa,
+#                           cells_in_series=60,
+#                           resistance_series=0.4,
+#                           resistance_shunt_ref=400,
+#                           EgRef=1.121,
+#                           dEgdT=-0.0002677,
+#                           alpha_isc=0.001,
+#                           temperature_ref=22,
+#                           irradiance_ref=1000,
+#                           figure=False,
+#                           figure_number=28):
+#     cax = np.logical_and.reduce((
+#         i_mp * v_mp > np.nanpercentile(i_mp * v_mp, 1),
+#         np.isfinite(i_mp),
+#         np.isfinite(i_mp),
+#         np.isfinite(poa),
+#         np.isfinite(temperature_cell),
+#     ))
+#
+#     i_mp = i_mp[cax]
+#     v_mp = v_mp[cax]
+#     temperature_cell = temperature_cell[cax]
+#     poa = poa[cax]
+#
+#     kB = 1.381e-23
+#     q = 1.602e-19
+#     Tcell_K = temperature_cell + 273.15
+#     Tref_K = temperature_ref + 273.15
+#
+#     IL, I0ref_to_I0, Rs, Rsh, aref_to_a = calcparams_desoto(
+#         I_L_ref=photocurrent_ref,
+#         I_o_ref=1,
+#         R_sh_ref=resistance_shunt_ref,
+#         R_s=resistance_series,
+#         effective_irradiance=poa,
+#         temp_cell=temperature_cell,
+#         alpha_sc=alpha_isc,
+#         a_ref=1,
+#         EgRef=EgRef,
+#         dEgdT=dEgdT,
+#         irrad_ref=irradiance_ref,
+#         temp_ref=temperature_ref)
+#
+#     I0 = saturation_current_ref * I0ref_to_I0
+#
+#     log1p_arg = -1 / I0 * (i_mp - IL + (v_mp + i_mp * Rs) / Rsh)
+#     log1p_arg[log1p_arg<-0.999] = -0.999
+#     nNsVth = (v_mp + i_mp * Rs) / np.log1p(log1p_arg)
+#
+#     # nNsVth_ref = a_to_aref * nNsVth
+#     nNsVth_ref = 1 / aref_to_a * nNsVth
+#
+#     Vth = kB * (Tref_K) / q
+#     diode_factor = nNsVth_ref / cells_in_series / Vth
+#
+#     diode_factor_mean = np.mean(diode_factor)
+#
+#     if figure:
+#         plt.figure(figure_number)
+#         plt.clf()
+#         ax = plt.gca()
+#         bin_min = 0.5
+#         bin_max = 2
+#
+#         bins = np.linspace(bin_min, bin_max, 100)
+#         plt.hist(diode_factor, bins=bins)
+#         ax.axvline(diode_factor_mean, color='r', ymax=0.5)
+#         plt.ylabel('Occurrences')
+#         plt.xlabel('diode_factor')
+#
+#     return diode_factor_mean
+
+def estimate_beta_voc(beta_vmp, technology='mono-Si'):
+    beta_voc_beta_vmp_ratio = {
+        'multi-Si': 0.978053067,
+        'mono-Si': 0.977447359,
+        'thin-film': 0.957477452,
+        'cigs': 0.974727107,
+        'cdte': 0.979597793}
+
+    beta_voc = beta_vmp * beta_voc_beta_vmp_ratio[technology]
+
+    return beta_voc
+
+
+def estimate_diode_factor(vmp_ref, beta_vmp, imp_ref,
+                          alpha_isc_norm=0,
+                          resistance_series=0.35,
                           cells_in_series=60,
-                          resistance_series=0.4,
-                          resistance_shunt_ref=400,
-                          EgRef=1.121,
-                          dEgdT=-0.0002677,
-                          alpha_isc=0.001,
-                          temperature_ref=22,
-                          irradiance_ref=1000,
-                          figure=False,
-                          figure_number=28):
-    cax = np.logical_and.reduce((
-        i_mp * v_mp > np.nanpercentile(i_mp * v_mp, 1),
-        np.isfinite(i_mp),
-        np.isfinite(i_mp),
-        np.isfinite(poa),
-        np.isfinite(temperature_cell),
-    ))
+                          temperature_ref=25,
+                          technology='mono-Si'):
 
-    i_mp = i_mp[cax]
-    v_mp = v_mp[cax]
-    temperature_cell = temperature_cell[cax]
-    poa = poa[cax]
-
-    kB = 1.381e-23
+    # Thermal temperature
+    k = 1.381e-23
     q = 1.602e-19
-    Tcell_K = temperature_cell + 273.15
-    Tref_K = temperature_ref + 273.15
+    Vth = k * (temperature_ref + 273.15) / q
 
-    IL, I0ref_to_I0, Rs, Rsh, aref_to_a = calcparams_desoto(
-        I_L_ref=photocurrent_ref,
-        I_o_ref=1,
-        R_sh_ref=resistance_shunt_ref,
-        R_s=resistance_series,
-        effective_irradiance=poa,
-        temp_cell=temperature_cell,
-        alpha_sc=alpha_isc,
-        a_ref=1,
-        EgRef=EgRef,
-        dEgdT=dEgdT,
-        irrad_ref=irradiance_ref,
-        temp_ref=temperature_ref)
+    # Rough estimate: beta_voc is typically similar to beta_vmp
+    beta_voc = estimate_beta_voc(beta_vmp, technology=technology)
 
-    I0 = saturation_current_ref * I0ref_to_I0
+    # Rough estimate, voc_ref is a little larger than vmp_ref.
+    voc_ref = estimate_voc_ref(vmp_ref,technology=technology)
 
-    log1p_arg = -1 / I0 * (i_mp - IL + (v_mp + i_mp * Rs) / Rsh)
-    log1p_arg[log1p_arg<-0.999] = -0.999
-    nNsVth = (v_mp + i_mp * Rs) / np.log1p(log1p_arg)
+    beta_voc_norm = beta_voc / voc_ref
 
-    # nNsVth_ref = a_to_aref * nNsVth
-    nNsVth_ref = 1 / aref_to_a * nNsVth
+    delta_0 = (1 - 298.15 * beta_voc_norm) / (
+            50.05 - 298.15 * alpha_isc_norm)
 
-    Vth = kB * (Tref_K) / q
-    diode_factor = nNsVth_ref / cells_in_series / Vth
+    w0 = lambertw(np.exp(1 / delta_0 + 1))
 
-    diode_factor_mean = np.mean(diode_factor)
+    nNsVth = (vmp_ref + resistance_series * imp_ref) / (w0 - 1)
 
-    if figure:
-        plt.figure(figure_number)
-        plt.clf()
-        ax = plt.gca()
-        bin_min = 0.5
-        bin_max = 2
+    diode_factor = nNsVth / (cells_in_series * Vth)
 
-        bins = np.linspace(bin_min, bin_max, 100)
-        plt.hist(diode_factor, bins=bins)
-        ax.axvline(diode_factor_mean, color='r', ymax=0.5)
-        plt.ylabel('Occurrences')
-        plt.xlabel('diode_factor')
-
-    return diode_factor_mean
+    return diode_factor.real
 
 
 def estimate_photocurrent_ref_simple(imp_ref, technology='mono-Si'):
@@ -815,6 +914,7 @@ def estimate_photocurrent_ref_simple(imp_ref, technology='mono-Si'):
     photocurrent_ref = imp_ref * photocurrent_imp_ratio[technology]
 
     return photocurrent_ref
+
 
 #
 # def estimate_saturation_current_full(imp_ref,
@@ -1169,7 +1269,6 @@ def estimate_resistance_series(poa,
     temperature_cell = temperature_cell[cax]
     poa = poa[cax]
 
-
     kB = 1.381e-23
     q = 1.602e-19
     Tcell_K = temperature_cell + 273.15
@@ -1252,6 +1351,7 @@ def estimate_singlediode_params(poa,
                                 figure=False,
                                 figure_number_start=20,
                                 imp_model='sandia',
+                                vmp_model='sandia1',
                                 verbose=False,
                                 max_iter=10,
                                 optimize_Rs_Io=False,
@@ -1335,7 +1435,7 @@ def estimate_singlediode_params(poa,
                            figure_number=figure_number,
                            verbose=verbose
                            )
-    figure_number+=1
+    figure_number += 1
 
     imp_ref = out['i_mp_ref']
     alpha_imp = out['alpha_imp']
@@ -1350,7 +1450,8 @@ def estimate_singlediode_params(poa,
         temperature_ref=temperature_ref,
         irradiance_ref=irradiance_ref,
         figure=figure,
-        figure_number=figure_number)
+        figure_number=figure_number,
+        model=vmp_model)
     figure_number += 1
 
     vmp_ref = out['v_mp_ref']
@@ -1362,13 +1463,20 @@ def estimate_singlediode_params(poa,
     #                                       imp * vmp,
     #                                       figure=figure)
 
-    diode_factor = get_average_diode_factor(technology)
+    # diode_factor = get_average_diode_factor(technology)
 
     voc_ref = estimate_voc_ref(vmp_ref, technology=technology)
-
     if cells_in_series == None:
         cells_in_series = estimate_cells_in_series(voc_ref,
                                                    technology=technology)
+
+    diode_factor = estimate_diode_factor(vmp_ref=vmp_ref,
+                                         beta_vmp=beta_vmp,
+                                         imp_ref=imp_ref,
+                                         cells_in_series=cells_in_series)
+
+
+
     kB = 1.381e-23
     q = 1.602e-19
 
@@ -1376,7 +1484,6 @@ def estimate_singlediode_params(poa,
             temperature_ref + 273.15) / q
 
     beta_voc = estimate_beta_voc(beta_vmp, technology=technology)
-
 
     photocurrent_ref = estimate_photocurrent_ref_simple(imp_ref,
                                                         technology=technology)
@@ -1395,7 +1502,8 @@ def estimate_singlediode_params(poa,
                                                          nNsVth=nNsVth_ref,
                                                          )
     if verbose:
-        print('Simple saturation current ref estimate: {}'.format(saturation_current_ref))
+        print('Simple saturation current ref estimate: {}'.format(
+            saturation_current_ref))
 
     if alpha_isc == None:
         alpha_isc = estimate_alpha_isc(isc_ref, technology=technology)
@@ -1413,7 +1521,8 @@ def estimate_singlediode_params(poa,
                                                                   photocurrent_ref,
                                                                   nNsVth=nNsVth_ref)
     if verbose:
-        print('resistance_series_ref estimate: {}'.format(resistance_series_ref))
+        print(
+            'resistance_series_ref estimate: {}'.format(resistance_series_ref))
 
     results = {}
     num_iter = max_iter
@@ -1661,7 +1770,5 @@ def estimate_singlediode_params(poa,
 
     if verbose:
         print('Elapsed time: {:.2f}'.format(time() - start_time))
-
-
 
     return params, results
