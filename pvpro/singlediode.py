@@ -106,12 +106,13 @@ def pvlib_single_diode(
         ivcurve_pnts=None,
         output_all_params=False,
         singlediode_method='fast',
+        calculate_voc=False,
 ):
     """
     Find points of interest on the IV curve given module parameters and
     operating conditions.
 
-    method 'newton is about twice as fast as method 'lambertw
+    method 'newton' is about twice as fast as method 'lambertw'
 
     Parameters
     ----------
@@ -202,6 +203,7 @@ def pvlib_single_diode(
                                rs,
                                rsh,
                                nNsVth,
+                               calculate_voc=calculate_voc
                                )
 
     elif singlediode_method in ['lambertw', 'brentq', 'newton']:
@@ -291,11 +293,11 @@ def calculate_temperature_coeffs(
     out = []
     for temperature_offset in [0, 1]:
         out_iter = pvlib_single_diode(
-            effective_irradiance=effective_irradiance,
-            temperature_cell=temperature_cell + temperature_offset,
-            resistance_shunt_ref=resistance_shunt_ref,
-            resistance_series_ref=resistance_series_ref,
-            diode_factor=diode_factor,
+            effective_irradiance=np.atleast_1d(effective_irradiance),
+            temperature_cell=np.atleast_1d(temperature_cell + temperature_offset),
+            resistance_shunt_ref=np.atleast_1d(resistance_shunt_ref),
+            resistance_series_ref=np.atleast_1d(resistance_series_ref),
+            diode_factor=np.atleast_1d(diode_factor),
             cells_in_series=cells_in_series,
             alpha_isc=alpha_isc,
             photocurrent_ref=photocurrent_ref,
@@ -339,8 +341,11 @@ def calculate_temperature_coeffs(
     #                     }
 
     temp_co = {}
+
     for p in out_iter:
         temp_co[temp_co_name[p]] = out[1][p] - out[0][p]
+    for p in out_iter:
+        temp_co[p + '_ref'] = out[0][p]
     return temp_co
 
 
@@ -639,7 +644,8 @@ def pv_system_single_diode_model(
         conductance_shunt_extra=conductance_shunt_extra,
         singlediode_method=singlediode_method,
         Eg_ref=band_gap_ref,
-        dEgdT=dEgdT)
+        dEgdT=dEgdT,
+        calculate_voc=np.any(operating_cls==1))
 
     # First, set all points to
     voltage_fit = out['v_mp']
