@@ -561,30 +561,18 @@ def _x_to_p(x, key):
 
 
     """
-    if key == 'diode_factor':
-        return x
-    elif key == 'photocurrent_ref':
-        return x
-    elif key == 'saturation_current_ref':
-        return np.exp(x - 21)
-    elif key == 'resistance_series_ref':
-        return x
+    if key == 'saturation_current_ref':
+        return np.exp(x - 23)
     elif key == 'resistance_shunt_ref':
         return np.exp(2 * (x - 1))
-    elif key == 'conductance_shunt_extra':
-        return x
-    elif key == 'nNsVth':
-        return x
-    elif key == 'photocurrent':
-        return x
     elif key == 'saturation_current':
-        return np.exp(x - 21)
-    elif key == 'resistance_series':
-        return x
+        return np.exp(x - 23)
     elif key == 'resistance_shunt':
         return np.exp(2 * (x - 1))
+    elif key == 'alpha_isc':
+        return x * 1e-3
     else:
-        raise Exception("Key '{}' not understood".format(key))
+        return x
 
 
 def _p_to_x(p, key):
@@ -610,30 +598,18 @@ def _p_to_x(p, key):
 
         Value of parameter for numerical fitting.
     """
-    if key == 'diode_factor':
-        return p
-    elif key == 'photocurrent_ref':
-        return p
-    elif key == 'saturation_current_ref':
-        return np.log(p) + 21
-    elif key == 'resistance_series_ref':
-        return p
+    if key == 'saturation_current_ref':
+        return np.log(p) + 23
     elif key == 'resistance_shunt_ref':
         return np.log(p) / 2 + 1
-    elif key == 'conductance_shunt_extra':
-        return p
-    elif key == 'nNsVth':
-        return p
-    elif key == 'photocurrent':
-        return p
-    elif key == 'saturation_current':
-        return np.log(p) + 21
-    elif key == 'resistance_series':
-        return p
     elif key == 'resistance_shunt':
         return np.log(p) / 2 + 1
+    elif key == 'saturation_current':
+        return np.log(p) + 23
+    elif key == 'alpha_isc':
+        return p * 1e3
     else:
-        raise Exception("Key '{}' not understood".format(key))
+        return p
 
 
 #
@@ -688,7 +664,7 @@ def _p_to_x(p, key):
 #     return out
 
 
-def _pvpro_L1_loss(x,sdm, voltage, current, voltage_scale, current_scale,
+def _pvpro_L1_loss(x, sdm, voltage, current, voltage_scale, current_scale,
                    weights, fit_params):
     voltage_fit, current_fit = sdm(
         **{param: _x_to_p(x[n], param) for n, param in
@@ -701,7 +677,7 @@ def _pvpro_L1_loss(x,sdm, voltage, current, voltage_scale, current_scale,
         np.abs(current_fit - current) * weights / current_scale)
 
 
-def _pvpro_L2_loss(x,sdm, voltage, current, voltage_scale, current_scale,
+def _pvpro_L2_loss(x, sdm, voltage, current, voltage_scale, current_scale,
                    weights, fit_params):
     voltage_fit, current_fit = sdm(
         **{param: _x_to_p(x[n], param) for n, param in
@@ -732,7 +708,7 @@ def production_data_curve_fit(
         resistance_shunt_ref=None,
         conductance_shunt_extra=None,
         verbose=False,
-        solver='nelder-mead',
+        solver='L-BFGS-B',
         singlediode_method='fast',
         method='minimize',
         use_mpp_points=True,
@@ -845,13 +821,20 @@ def production_data_curve_fit(
     temperature_cell = np.array(temperature_cell)
     operating_cls = np.array(operating_cls)
 
+    # Check all the same length:
+    if len(np.unique([len(voltage), len(current), len(effective_irradiance),
+                      len(temperature_cell), len(operating_cls)])) > 1:
+        raise Exception("Length of inputs 'voltage', 'current', 'effective_irradiance', 'temperature_cell', 'operating_cls' must all be the same." )
+
     if p0 is None:
         p0 = dict(
             diode_factor=1.0,
             photocurrent_ref=6,
             saturation_current_ref=1e-9,
             resistance_series_ref=0.2,
-            conductance_shunt_extra=0.001
+            conductance_shunt_extra=0.001,
+            alpha_isc=0.002,
+            band_gap_ref=1.121,
         )
 
     # if fit_params is None:
@@ -867,6 +850,13 @@ def production_data_curve_fit(
         fit_params.append('resistance_series_ref')
     if conductance_shunt_extra is None:
         fit_params.append('conductance_shunt_extra')
+    if resistance_shunt_ref is None:
+        fit_params.append('resistance_shunt_ref')
+    if alpha_isc is None:
+        fit_params.append('alpha_isc')
+    if band_gap_ref is None:
+        fit_params.append('band_gap_ref')
+
         #
         # # Parameters that are optimized in fit.
         # fit_params = ['diode_factor',
@@ -881,7 +871,9 @@ def production_data_curve_fit(
             photocurrent_ref=0.01,
             saturation_current_ref=1e-13,
             resistance_series_ref=0,
-            conductance_shunt_extra=0
+            conductance_shunt_extra=0,
+            alpha_isc=0,
+            band_gap_ref=0.5,
         )
 
     if upper_bounds is None:
@@ -890,14 +882,15 @@ def production_data_curve_fit(
             photocurrent_ref=20,
             saturation_current_ref=1e-5,
             resistance_series_ref=1,
-            conductance_shunt_extra=10
+            conductance_shunt_extra=10,
+            alpha_isc=1,
+            band_gap_ref=2.0,
         )
 
     if saturation_current_multistart is None:
         saturation_current_multistart = [0.2, 0.5, 1, 2, 5]
 
     # Only keep points belonging to certain operating classes
-
     cls_keepers = np.logical_or.reduce(
         (use_mpp_points * (operating_cls == 0),
          use_voc_points * (operating_cls == 1),
@@ -931,92 +924,55 @@ def production_data_curve_fit(
         print('Number Voc points: {}'.format(np.sum(operating_cls == 1)))
         print('Number Clipped points: {}'.format(np.sum(operating_cls == 2)))
 
+    fixed_params = {}
+    # Set kwargs
+    if not diode_factor == None:
+        fixed_params['diode_factor'] = diode_factor
+    if not photocurrent_ref == None:
+        fixed_params['photocurrent_ref'] = photocurrent_ref
+    if not saturation_current_ref == None:
+        fixed_params['saturation_current_ref'] = saturation_current_ref
+    if not resistance_series_ref == None:
+        fixed_params['resistance_series_ref'] = resistance_series_ref
+    if not resistance_shunt_ref == None:
+        fixed_params['resistance_shunt_ref'] = resistance_shunt_ref
+    if not alpha_isc == None:
+        fixed_params['alpha_isc'] = alpha_isc
+    if not conductance_shunt_extra == None:
+        fixed_params['conductance_shunt_extra'] = conductance_shunt_extra
+    if not band_gap_ref == None:
+        fixed_params['band_gap_ref'] = band_gap_ref
+
     # If no points left after removing unused classes, function returns.
     if len(effective_irradiance) == 0 or len(
             operating_cls) == 0 or len(voltage) == 0 or len(current) == 0:
-        p = dict(
-            diode_factor=np.nan,
-            photocurrent_ref=np.nan,
-            saturation_current_ref=np.nan,
-            resistance_series_ref=np.nan,
-            conductance_shunt_extra=np.nan
-        )
+
         if verbose:
             print('No valid values received.')
-        return p, np.nan, -1
+
+        return {'p': {key: np.nan for key in fit_params},
+                'fixed_params': fixed_params,
+                'residual': np.nan,
+                'p0': p0,
+                }
 
     model_kwargs = dict(
         effective_irradiance=effective_irradiance,
         temperature_cell=temperature_cell,
         operating_cls=operating_cls,
         cells_in_series=cells_in_series,
-        band_gap_ref=band_gap_ref,
         voltage_operation=voltage,
         current_operation=current,
         singlediode_method=singlediode_method,
     )
 
-    # Set kwargs
-    if not diode_factor == None:
-        model_kwargs['diode_factor'] = diode_factor
-    if not photocurrent_ref == None:
-        model_kwargs['photocurrent_ref'] = photocurrent_ref
-    if not saturation_current_ref == None:
-        model_kwargs['saturation_current_ref'] = saturation_current_ref
-    if not resistance_series_ref == None:
-        model_kwargs['resistance_series_ref'] = resistance_series_ref
-    if not resistance_shunt_ref == None:
-        model_kwargs['resistance_shunt_ref'] = resistance_shunt_ref
-    if not alpha_isc == None:
-        model_kwargs['alpha_isc'] = alpha_isc
-    if not conductance_shunt_extra == None:
-        model_kwargs['conductance_shunt_extra'] = conductance_shunt_extra
-
     # Set scale factor for current and voltage:
-    # current_median = np.median(current[operating_cls == 0])
-    # voltage_median = np.median(voltage[operating_cls == 0])
-
     current_median = np.median(current)
     voltage_median = np.median(voltage)
 
-    sdm = partial(pv_system_single_diode_model, **model_kwargs)
+    sdm = partial(pv_system_single_diode_model, **model_kwargs, **fixed_params)
 
-    # def model(x):
-    #     """
-    #     Return vdc, idc operating point given the fixed parameters.
-    #
-    #     Parameters
-    #     ----------
-    #     x
-    #
-    #     Returns
-    #     -------
-    #     voltage_fit
-    #
-    #     current_fit
-    #
-    #     """
-    #
-    #     # p = model_kwargs.copy()
-    #     # p = {param: _x_to_p(x[n], param) for n,param in zip(range(len(x)), fit_params)}
-    #
-    #     # p = {}
-    #     # n = 0
-    #     # for param in fit_params:
-    #     #     p[param] = _x_to_p(x[n], param)
-    #     #     n = n + 1
-    #     return sdm(**{param: _x_to_p(x[n], param) for n,param in zip(range(len(x)), fit_params)})
-    #
-    #     # return voltage_fit, current_fit
-
-    # def barron_loss(x, alpha=0.1, c=1):
-    #     return np.abs(alpha - 2) / alpha * (
-    #                 ((x / c) ** 2 / np.abs(alpha - 2) + 1) ** (alpha / 2) - 1)
-    #
-    # def huber_loss(x,delta=1):
-    #     return np.where(x<=1,x**2/2,delta*(np.abs(x)-delta/2))
-
-    residual = partial(_pvpro_L1_loss,
+    residual = partial(_pvpro_L2_loss,
                        sdm=sdm,
                        voltage=voltage,
                        current=current,
@@ -1024,39 +980,6 @@ def production_data_curve_fit(
                        current_scale=current_median,
                        weights=weights,
                        fit_params=fit_params)
-    #
-    # def residual(x):
-    #     # TODO: should explicitly pass in voltage_median, current_median. Use functools.partial to define the full function and then freeze certain params.
-    #     # TODO: change to huber or L2 because BFGS shouldn't work well with L1.
-    #
-    #     # Maybe consider Huber loss.
-    #     # voltage_fit, current_fit = model(x)
-    #
-    #     voltage_fit, current_fit = sdm(
-    #         **{param: _x_to_p(x[n], param) for n, param in
-    #            zip(range(len(x)), fit_params)}
-    #     )
-    #     # return np.nanmean(((voltage_fit - voltage) * weights / voltage_median) ** 2 + \
-    #     #                   ((current_fit - current) * weights / current_median) ** 2)
-    #
-    #     # Mean absolute error
-    #     # Note that summing first and then calling nanmean is slightly faster.
-    #     return np.nanmean(
-    #         np.abs(voltage_fit - voltage) * weights / voltage_median +
-    #         np.abs(current_fit - current) * weights / current_median)
-    #
-    #     # return np.nanmean(np.log(np.cosh( (voltage_fit - voltage) * weights)) + \
-    #     #                   np.log(np.cosh( (current_fit - current) * weights)) )
-    #
-    #     # return np.nanmean( barron_loss( (voltage_fit - voltage) * weights) + \
-    #     #                    barron_loss((current_fit - current) * weights) )
-    #     # return np.nanmean( huber_loss( (voltage_fit - voltage) * weights) + \
-    #     #                    huber_loss((current_fit - current) * weights) )
-
-    # print(signature(model))
-
-    # print('Starting residual: ',
-    #       residual([p_to_x(p0[k], k) for k in fit_params]))
 
     if method == 'minimize':
         if solver.lower() == 'nelder-mead':
@@ -1126,8 +1049,6 @@ def production_data_curve_fit(
                            ),
                            )
 
-        loss = np.inf
-
         if verbose:
             print(res)
         n = 0
@@ -1140,25 +1061,36 @@ def production_data_curve_fit(
         # for p in x_fit:
         #     print('{}: {}'.format(p, x_fit[p]))
         # print('Final Residual: {}'.format(res['fun']))
-        return p_fit, res['fun'], res
-    elif method == 'basinhopping':
-        # lower_bounds_x = [p_to_x(lower_bounds[k], k) for k in fit_params]
-        # upper_bounds_x = [p_to_x(upper_bounds[k], k) for k in fit_params]
-        x0 = [_p_to_x(p0[k], k) for k in fit_params]
 
-        res = basinhopping(residual,
-                           x0=x0,
-                           niter=100,
-                           T=0.2,
-                           stepsize=0.1)
-        n = 0
-        p_fit = {}
-        for param in fit_params:
-            p_fit[param] = _x_to_p(res.x[n], param)
-            n = n + 1
+        out = {'p': p_fit,
+               'fixed_params': fixed_params,
+               'residual': res['fun'],
+               'x0': x0,
+               'p0': p0,
+               }
+        for k in res:
+            out[k] = res[k]
 
-        # print('Best fit parameters (with scale included):')
-        # for p in x_fit:
-        #     print('{}: {}'.format(p, x_fit[p]))
-        # print('Final Residual: {}'.format(res['fun']))
-        return p_fit, res['fun'], res
+        return out
+
+    # elif method == 'basinhopping':
+    #     # lower_bounds_x = [p_to_x(lower_bounds[k], k) for k in fit_params]
+    #     # upper_bounds_x = [p_to_x(upper_bounds[k], k) for k in fit_params]
+    #     x0 = [_p_to_x(p0[k], k) for k in fit_params]
+    #
+    #     res = basinhopping(residual,
+    #                        x0=x0,
+    #                        niter=100,
+    #                        T=0.2,
+    #                        stepsize=0.1)
+    #     n = 0
+    #     p_fit = {}
+    #     for param in fit_params:
+    #         p_fit[param] = _x_to_p(res.x[n], param)
+    #         n = n + 1
+    #
+    #     # print('Best fit parameters (with scale included):')
+    #     # for p in x_fit:
+    #     #     print('{}: {}'.format(p, x_fit[p]))
+    #     # print('Final Residual: {}'.format(res['fun']))
+    #     return res
