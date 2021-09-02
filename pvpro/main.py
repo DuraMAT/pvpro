@@ -436,6 +436,9 @@ class PvProHandler:
             ret_list.append(ret)
 
         out['p'] = pd.DataFrame(ret_list, index=time_center[:num_iter])
+        out['p']['t_years'] = np.array(
+            [t.year + (t.dayofyear - 1) / 365.25 for t in time_center])
+
         out['time'] = time_center[:num_iter]
 
         print('Elapsed time: {:.0f} s'.format((time.time() - start_time)))
@@ -684,29 +687,43 @@ class PvProHandler:
                 # Estimate parameters quickly.
                 cax = df['operating_cls'] == 0
                 if np.sum(cax) > 10:
-                    vmp_out = estimate_vmp_ref(
+
+                    est, est_results = estimate_singlediode_params(
                         poa=df.loc[cax, self.irradiance_poa_key],
                         temperature_cell=df.loc[cax, 'temperature_cell'],
-                        vmp=df.loc[
-                                cax, self.voltage_key] / self.modules_per_string,
-                        figure=False,
-                        figure_number=21,
-                        model='sandia'
-                    )
-                    imp_out = estimate_imp_ref(
-                        poa=df.loc[cax, self.irradiance_poa_key],
-                        temperature_cell=df.loc[cax,
-                                                'temperature_cell'],
-                        imp=df.loc[
-                                cax, self.current_key] / self.parallel_strings,
-                        figure=False,
-                        figure_number=22,
-                        model='sandia'
-                    )
-                    pfit.loc[k, 'v_mp_ref_est'] = vmp_out['v_mp_ref']
-                    pfit.loc[k, 'i_mp_ref_est'] = imp_out['i_mp_ref']
-                    pfit.loc[k, 'p_mp_ref_est'] = imp_out['i_mp_ref'] * vmp_out[
-                        'v_mp_ref']
+                        imp=df.loc[cax, self.current_key] / self.parallel_strings,
+                        vmp=df.loc[cax, self.voltage_key] / self.modules_per_string,
+                        vmp_model='sandia1',
+                        imp_model='sandia')
+
+                    #
+                    # vmp_out = estimate_vmp_ref(
+                    #     poa=df.loc[cax, self.irradiance_poa_key],
+                    #     temperature_cell=df.loc[cax, 'temperature_cell'],
+                    #     vmp=df.loc[
+                    #             cax, self.voltage_key] / self.modules_per_string,
+                    #     figure=False,
+                    #     figure_number=21,
+                    #     model='sandia'
+                    # )
+                    # imp_out = estimate_imp_ref(
+                    #     poa=df.loc[cax, self.irradiance_poa_key],
+                    #     temperature_cell=df.loc[cax,
+                    #                             'temperature_cell'],
+                    #     imp=df.loc[
+                    #             cax, self.current_key] / self.parallel_strings,
+                    #     figure=False,
+                    #     figure_number=22,
+                    #     model='sandia'
+                    # )
+
+
+                    for key in est.keys():
+                        pfit.loc[k, key + '_est'] = est[key]
+                    # pfit.loc[k, 'v_mp_ref_est'] = vmp_out['v_mp_ref']
+                    # pfit.loc[k, 'i_mp_ref_est'] = imp_out['i_mp_ref']
+                    # pfit.loc[k, 'p_mp_ref_est'] = imp_out['i_mp_ref'] * vmp_out[
+                    #     'v_mp_ref']
 
                 for p in pfit_iter: pfit.loc[k, p] = pfit_iter[p]
 
@@ -942,7 +959,7 @@ class PvProHandler:
         ----------
         p_plot
         figure_number
-        iteration
+
         vmin
         vmax
 
@@ -1190,8 +1207,8 @@ class PvProHandler:
 
         # Make figure for inverter on.
 
-        fig = plt.figure(figure_number, figsize=(6.5, 3.5))
-        ax = plt.axes()
+        # fig = plt.figure(figure_number, figsize=(6.5, 3.5))
+        # ax = plt.axes()
 
         temp_limits = np.linspace(vmin, vmax, 8)
         if len(df) > 0:
@@ -1306,7 +1323,7 @@ class PvProHandler:
 
         # plt.show()
 
-        return fig
+        # return fig
 
         # mpp_fig_fname = 'figures/{}_fleets16_simultfit-MPP_clear-times-{}_irraad-lower-lim-{}_alpha-isc-{}_days-per-run_{}_temperature-upper-lim-{}_deltaT-{}_{:02d}.png'.format(
         #         system, info['use_clear_times'], info['irradiance_lower_lim'], info['alpha_isc'], info['days_per_run'], info['temperature_cell_upper_lim'],info['delta_T'], d)
