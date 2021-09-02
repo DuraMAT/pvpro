@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="pvpro",
-    version="0.0.2",
+    version="0.0.3",
     author="toddkarin",
     author_email="pvtools.lbl@gmail.com",
     description="Extract single diode model paramaters from PV power plant production data.",
