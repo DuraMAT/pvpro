@@ -10,8 +10,7 @@ import time
 from tqdm import tqdm
 
 import matplotlib.pyplot as plt
-
-
+from pvpro.singlediode import pvlib_single_diode
 
 
 def plot_results_timeseries(pfit, yoy_result=None,
@@ -83,16 +82,20 @@ def plot_results_timeseries(pfit, yoy_result=None,
             plt.plot(pfit['t_years'], pfit[k] * scale, '.',
                      color=[0, 0, 0.8],
                      label='pvpro')
-            if compare is not None:
-                if k in compare:
-                    plt.plot(compare['t_years'], compare[k] * scale,compare_plot_style,
-                         color=[0.8, 0, 0.8],
-                         label=compare_label,
-                             )
 
             ylims = scale * np.array(
-                [pfit[k].min(), pfit[k].max()]
+                [np.nanmin(pfit[k]), np.nanmax(pfit[k])]
             )
+            if compare is not None:
+                if k in compare:
+                    plt.plot(compare['t_years'], compare[k] * scale,
+                             compare_plot_style,
+                             color=[0.8, 0, 0.8, 0.5],
+                             label=compare_label,
+                             )
+
+                    ylims[0] = np.min([ylims[0], np.nanmin(compare[k]) * scale])
+                    ylims[1] = np.max([ylims[1], np.nanmax(compare[k]) * scale])
 
             #     if k in df.keys():
             #         plt.plot(df.index, df[k] * scale, '--',
@@ -101,11 +104,14 @@ def plot_results_timeseries(pfit, yoy_result=None,
             #         ylims[0] = np.min([ylims[0], df[k].min() * scale])
             #         ylims[1] = np.max([ylims[1], df[k].max() * scale])
 
-
             if plot_est and k in ['i_mp_ref', 'v_mp_ref', 'p_mp_ref']:
                 plt.plot(pfit['t_years'], pfit[k + '_est'], '.',
-                         color=[0, 0.8, 0.8],
+                         color=[0, 0.8, 0.8, 0.7],
                          label='pvpro-fast')
+                ylims[0] = np.min(
+                    [ylims[0], np.nanmin(pfit[k + '_est']) * scale])
+                ylims[1] = np.max(
+                    [ylims[1], np.nanmax(pfit[k + '_est']) * scale])
 
             # plt.gca().fmt_xdata = matplotlib.dates.DateFormatter('%Y-%m-%d')
 
@@ -133,21 +139,27 @@ def plot_results_timeseries(pfit, yoy_result=None,
                 print(R_series_crit)
                 plt.text(pfit['t_years'][0], R_series_crit * scale * 1.05,
                          '10% power loss', fontsize=7)
-                ylims[1] = np.max([ylims[1], R_series_crit * scale * 1.1])
+                ylims[1] = np.max([ylims[1], R_series_crit * scale * 1.3])
             elif k in ['saturation_current_ref']:
                 plt.yscale('log')
+            elif k in ['diode_factor']:
+                ylims[0] = np.nanmin([0.7, ylims[0]])
+                ylims[1] = np.nanmax([1.5, ylims[1]])
             #     plt.plot()
             # date_form = matplotlib.dates.DateFormatter("%Y")
             # plt.gca().xaxis.set_major_formatter(date_form)
 
+            if k in ['saturation_current_ref']:
+                ylims = ylims * np.array([0.5, 1.5])
+            else:
+                ylims = ylims + 0.1 * np.array([-1, 1]) * (ylims[1] - ylims[0])
 
-
-            ylims = ylims + 0.1 * np.array([-1, 1]) * (ylims.max() - ylims.min())
-            # plt.ylim(ylims)
+            plt.ylim(ylims)
 
             if k not in ['residual'] and yoy_result is not None:
-                t_smooth = np.linspace(pfit['t_years'].min(), pfit['t_years'].max(),
-                                       2)
+                t_smooth = np.linspace(pfit['t_years'].min(),
+                                       pfit['t_years'].max(),
+                                       20)
                 t_mean = np.mean(pfit['t_years'])
 
                 plt.plot(t_smooth,
@@ -173,14 +185,18 @@ def plot_results_timeseries(pfit, yoy_result=None,
                          backgroundcolor=[1, 1, 1, 0.6],
                          fontsize=8)
 
-            plt.xticks(fontsize=8,rotation=90)
+            plt.xticks(fontsize=8, rotation=90)
             plt.yticks(fontsize=8)
             plt.ylabel(ylabel[k], fontsize=8)
 
             if n == 2:
                 plt.legend(loc=[0, 1.2])
 
+            if n not in [9, 10]:
+                plt.gca().set_xticklabels([])
+
             n = n + 1
+
 
 def plot_scatter(x, y, c, boolean_mask=None, figure_number=None,
                  vmin=0,
@@ -256,6 +272,7 @@ def plot_scatter(x, y, c, boolean_mask=None, figure_number=None,
 def plot_Vmp_Imp_scatter(voltage, current, poa, temperature_cell,
                          operating_cls,
                          boolean_mask=None,
+                         p_plot=None,
                          vmin=0,
                          vmax=70,
                          plot_imp_max=8,
@@ -287,11 +304,6 @@ def plot_Vmp_Imp_scatter(voltage, current, poa, temperature_cell,
     # plt.clf()
     # ax = plt.axes()
 
-
-
-    # df = self.get_df_for_iteration(iteration,
-    #                                use_clear_times=use_clear_times)
-
     if boolean_mask is None:
         boolean_mask = operating_cls == 0
     else:
@@ -312,7 +324,71 @@ def plot_Vmp_Imp_scatter(voltage, current, poa, temperature_cell,
         ylabel=ylabel
     )
 
+    temp_limits = np.linspace(vmin, vmax, 8)
+
+    if p_plot is not None:
+        # # Plot one sun
+        # one_sun_points = np.logical_and.reduce((
+        #     df['operating_cls'] == 0,
+        #     df[self.irradiance_poa_key] > 995,
+        #     df[self.irradiance_poa_key] < 1005,
+        # ))
+        # if len(one_sun_points) > 0:
+        #     # print('number one sun points: ', len(one_sun_points))
+        #     plt.scatter(df.loc[
+        #                     one_sun_points, self.voltage_key] / self.modules_per_string,
+        #                 df.loc[
+        #                     one_sun_points, self.current_key] / self.parallel_strings,
+        #                 c=df.loc[one_sun_points, 'temperature_cell'],
+        #                 edgecolors='k',
+        #                 s=0.2)
+
+        # Plot temperature scan
+        temperature_smooth = np.linspace(vmin, vmax, 20)
+
+        for effective_irradiance in [100, 1000]:
+            out = pvlib_single_diode(
+                effective_irradiance=np.array([effective_irradiance]),
+                temperature_cell=temperature_smooth,
+                **p_plot)
+
+            voltage_plot = out['v_mp']
+            current_plot = out['i_mp']
+            plt.plot(voltage_plot, current_plot, 'k:')
+
+            plt.text(voltage_plot[-1] - 0.5, current_plot[-1],
+                     '{:.1g} sun'.format(effective_irradiance / 1000),
+                     horizontalalignment='right',
+                     verticalalignment='center',
+                     fontsize=8)
+
+        # Plot irradiance scan
+        for j in np.flip(np.arange(len(temp_limits))):
+            temp_curr = temp_limits[j]
+            irrad_smooth = np.linspace(1, 1000, 500)
+
+            out = pvlib_single_diode(
+                effective_irradiance=irrad_smooth,
+                temperature_cell=temp_curr + np.zeros_like(irrad_smooth),
+                **p_plot)
+
+            voltage_plot = out['v_mp']
+            current_plot = out['i_mp']
+
+            # find the right color to plot.
+            norm_temp = (temp_curr - vmin) / (vmax - vmin)
+            line_color = np.array(h_sc.cmap(norm_temp))
+
+            line_color[3] = 0.3
+
+            plt.plot(voltage_plot, current_plot,
+                     label='Fit {:2.0f} C'.format(temp_curr),
+                     color=line_color,
+                     )
+
+
     return h_sc
+
 
 def plot_poa_Imp_scatter(current, poa, temperature_cell,
                          operating_cls,
