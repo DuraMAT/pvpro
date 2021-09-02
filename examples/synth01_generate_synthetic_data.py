@@ -13,7 +13,7 @@ from pvpro.singlediode import calculate_temperature_coeffs, pvlib_single_diode
 from pvlib.temperature import sapm_module, sapm_cell
 
 # Load weather data
-data = np.load('123796_37.89_-122.26_search-point_37.876_-122.247.npz')
+data = np.load('../pvpro/data/NSRDB_data_compressed_123796_37.89_-122.26.npz')
 # tmy3 = pvlib.iotools.tmy.read_tmy3(datafile)
 
 df = pd.DataFrame({'dni': data['dni'],
@@ -30,7 +30,7 @@ df = pd.DataFrame({'dni': data['dni'],
 df.index = pd.to_datetime(df[['year', 'month', 'day', 'hour', 'minute']])
 
 # Clip shorter
-df = df[:'2002-01-01']
+# df = df[:'2002-01-01']
 
 # 15 minute interpolation
 df = df.resample('15T').interpolate('linear')
@@ -90,7 +90,7 @@ def step_change(start_val, end_val, t_years, t_step=2):
 # make up a parameter set for the De Soto model
 df['cells_in_series'] = 60
 df['alpha_sc'] = 0.001
-df['diode_factor'] = 1.1 - 0.01 * t_years
+df['diode_factor'] = 1.6 - 0.02 * t_years
 df['nNsVth_ref'] = df['diode_factor'] * df['cells_in_series'] * kb / q * (
         273.15 + 25)
 df['photocurrent_ref'] = 6.0 - (0.1 * t_years - 0.05 * np.sin(2 * np.pi * t_years))
@@ -103,7 +103,7 @@ df['conductance_shunt_extra'] = 0.000 + 0.0003 * t_years
 # df['resistance_series_ref'] = 0.2 +  0.4 * t_years
 df['resistance_series_ref'] = 0.3 + 0.05 * t_years
 df['resistance_series_ref'] = step_change(0.35, 0.7, t_years)
-df['EgRef'] = 1.121
+df['band_gap_ref'] = 1.121
 df['dEgdT'] = -0.0002677
 
 # Calculate module operation over time.
@@ -117,7 +117,7 @@ out = pvlib_single_diode(
     alpha_isc=df['alpha_sc'],
     photocurrent_ref=df['photocurrent_ref'],
     saturation_current_ref=df['saturation_current_ref'],
-    Eg_ref=df['EgRef'],
+    Eg_ref=df['band_gap_ref'],
     dEgdT=df['dEgdT'],
     conductance_shunt_extra=df['conductance_shunt_extra'],
     singlediode_method='newton',
@@ -139,7 +139,7 @@ out_ref = pvlib_single_diode(
     alpha_isc=df['alpha_sc'],
     photocurrent_ref=df['photocurrent_ref'],
     saturation_current_ref=df['saturation_current_ref'],
-    Eg_ref=df['EgRef'],
+    Eg_ref=df['band_gap_ref'],
     dEgdT=df['dEgdT'],
     conductance_shunt_extra=df['conductance_shunt_extra'],
     singlediode_method='newton',
@@ -158,7 +158,7 @@ tempco = calculate_temperature_coeffs(
     alpha_isc=df['alpha_sc'],
     photocurrent_ref=df['photocurrent_ref'],
     saturation_current_ref=df['saturation_current_ref'],
-    band_gap_ref=df['EgRef'],
+    band_gap_ref=df['band_gap_ref'],
     dEgdT=df['dEgdT'],
     conductance_shunt_extra=df['conductance_shunt_extra'],
 )
