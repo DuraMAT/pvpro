@@ -6,15 +6,6 @@
 
 import numpy as np
 import pandas as pd
-from pandas.plotting import register_matplotlib_converters
-
-register_matplotlib_converters()
-
-import matplotlib
-
-matplotlib.use('TkAgg')
-import matplotlib.pyplot as plt
-
 from pvpro.fit import production_data_curve_fit
 from pvpro.classify import classify_operating_mode
 
@@ -38,7 +29,7 @@ df['operating_cls'] = classify_operating_mode(voltage=df['v_dc'],
 df = df[:5000]
 
 # Run the fit
-pfit, residual, ret = production_data_curve_fit(
+ret = production_data_curve_fit(
     temperature_cell=df['temperature_cell_meas'],
     effective_irradiance=df['poa_meas'],
     operating_cls=df['operating_cls'],
@@ -49,9 +40,13 @@ pfit, residual, ret = production_data_curve_fit(
     p0=None,
     cells_in_series=60,
     band_gap_ref=1.121,
-    verbose=True,
-    solver='nelder-mead',
+    verbose=False,
+    solver='L-BFGS-B',
     singlediode_method='newton',
+    # diode_factor=1.0,
+    # saturation_current_ref=1e-9,
+    # saturation_current_multistart=[1],
+    # resistance_series_ref=0.4,
     method='minimize',
     use_mpp_points=True,
     use_voc_points=False,
@@ -59,8 +54,8 @@ pfit, residual, ret = production_data_curve_fit(
 )
 
 # Make best fit comparison
-pfit_compare = pd.DataFrame(pfit, index=['Best Fit'])
-for k in pfit.keys():
+pfit_compare = pd.DataFrame(ret['p'], index=['Best Fit'])
+for k in ret['p'].keys():
     pfit_compare.loc['True',k] = df[k].mean()
 print('Best fit:')
 print(pfit_compare.transpose())
