@@ -55,8 +55,9 @@ def plot_results_timeseries(pfit, yoy_result=None,
                         'saturation_current_ref', 'p_mp_ref',
                         'resistance_series_ref',
                         'v_oc_ref',
-                        'conductance_shunt_extra',
-                        'residual',
+                        'i_sc_ref',
+                        'resistance_shunt_ref',
+                        
                         ]
 
     for k in keys_to_plot:
@@ -156,7 +157,7 @@ def plot_results_timeseries(pfit, yoy_result=None,
 
             plt.ylim(ylims)
 
-            if k not in ['residual'] and yoy_result is not None:
+            if k not in ['residual','resistance_shunt_ref' ] and yoy_result is not None:
                 t_smooth = np.linspace(pfit['t_years'].min(),
                                        pfit['t_years'].max(),
                                        20)
@@ -197,6 +198,217 @@ def plot_results_timeseries(pfit, yoy_result=None,
 
             n = n + 1
 
+def plot_results_timeseries_new(pfit, df = None, yoy_result=None,
+                            compare=None,
+                            compare_label='True value',
+                            compare_plot_style='.',
+                            extra_text='',
+                            nrows=5,
+                            ncols=2,
+                            wspace=0.4,
+                            hspace=0.1,
+                            keys_to_plot=None,
+                            plot_est=True,
+                            yoy_plot = False,
+                            linestyle = '.',
+                            figsize = (8, 9),
+                            legendloc = [0.3, -1.7],
+                            ncol = 3,
+                            cal_error_synthetic = False,
+                            cal_error_real = False,
+                            plot_addi = False,
+                            xticks = None,
+                            nylim = None):
+    n = 1
+    figure = plt.figure(21, figsize=figsize)
+    # plt.clf()
+
+    figure.subplots(nrows=nrows, ncols=ncols, sharex=True)
+    plt.subplots_adjust(wspace=wspace, hspace=hspace)
+
+    ylabel = {'diode_factor': 'Diode factor',
+              'photocurrent_ref': 'Iph (A)',
+              'saturation_current_ref': 'I0 (A)',
+              'resistance_series_ref': 'Rs (Ω)',
+              'resistance_shunt_ref': 'Rsh (Ω)',
+              'conductance_shunt_ref': 'G shunt ref (1/Ω)',
+              'conductance_shunt_extra': 'G shunt extra (1/kΩ)',
+              'i_sc_ref': 'Isc (A)',
+              'v_oc_ref': 'Voc (V)',
+              'i_mp_ref': 'Imp (A)',
+              'p_mp_ref': 'Pmp (W)',
+              'i_x_ref': 'I x ref (A)',
+              'v_mp_ref': 'Vmp (V)',
+              'residual': 'Residual (AU)',
+              }
+
+    if keys_to_plot is None:
+        keys_to_plot = ['i_mp_ref', 'photocurrent_ref',
+                        'v_mp_ref', 'saturation_current_ref',
+                        'i_sc_ref', 'diode_factor',
+                        'v_oc_ref', 'resistance_series_ref',
+                        'p_mp_ref', 'resistance_shunt_ref'
+                        ]
+
+    for k in keys_to_plot:
+        if k in pfit:
+            ax = plt.subplot(nrows, 2, n)
+
+            if k == 'saturation_current_ref':
+                scale = 1e0
+            elif k == 'residual':
+                scale = 1e3
+            elif k == 'conductance_shunt_extra':
+                scale = 1e3
+
+            else:
+                scale = 1
+
+            # if k not in ['resistance_series_ref']:
+            #     linestyle = '-'
+
+            x_show = pfit['t_years']- pfit['t_years'][0]
+            plt.plot(x_show, pfit[k] * scale, linestyle,
+                     color=np.array([6,86,178])/256,
+                     label='PVPRO')
+
+            ylims = scale * np.array(
+                [np.nanmin(pfit[k]), np.nanmax(pfit[k])]
+            )
+            if compare is not None:
+                x_real_show = compare['t_years']-compare['t_years'][0]
+                if k in compare:
+                    plt.plot(x_real_show, compare[k] * scale,
+                             linestyle,
+                            #  color=np.array([9,212,84])/256,
+                            color = 'deepskyblue',
+                             label=compare_label,
+                             )
+
+                    ylims[0] = np.min([ylims[0], np.nanmin(compare[k]) * scale])
+                    ylims[1] = np.max([ylims[1], np.nanmax(compare[k]) * scale])
+
+            # plt.gca().fmt_xdata = matplotlib.dates.DateFormatter('%Y-%m-%d')
+
+            #     if (pfit[k].max() - pfit[k].min())/pfit[k].mean() < 1.2:
+            #         plt.ylim(pfit[k].mean() * np.array([0.9, 1.1]))
+
+            v_mp_med = np.median(pfit['v_mp_ref'])
+            i_mp_med = np.median(pfit['i_mp_ref'])
+            p_mp_med = np.median(pfit['p_mp_ref'])
+
+            if k in ['conductance_shunt_extra']:
+                #         1% power loss
+                G_shunt_crit = 0.01 * p_mp_med / v_mp_med ** 2
+                plt.plot(pfit['t_years'],
+                         np.zeros(len(pfit['t_years'])) + G_shunt_crit * scale,
+                         '--')
+                plt.text(pfit['t_years'][0], G_shunt_crit * scale * 1.05,
+                         '1% power loss', fontsize=7)
+                ylims[1] = np.max([ylims[1], G_shunt_crit * scale * 1.1])
+            
+            # elif k in ['saturation_current_ref']:
+                # plt.yscale('log')
+            elif k in ['diode_factor']:
+                ylims[0] = np.nanmin([1.08, ylims[0]])
+                ylims[1] = np.nanmax([1.11, ylims[1]])
+                if nylim:
+                    ylims[0] = nylim[0]
+                    ylims[1] = nylim[1]
+            #     plt.plot()
+            # date_form = matplotlib.dates.DateFormatter("%Y")
+            # plt.gca().xaxis.set_major_formatter(date_form)
+
+            if k in ['saturation_current_ref']:
+                ylims = ylims * np.array([0.5, 1.5])
+            else:
+                ylims = ylims + 0.1 * np.array([-1, 1]) * (ylims[1] - ylims[0])
+
+            plt.ylim(ylims)
+
+            # calculate error 
+            from pvpro.postprocess import calculate_error_synthetic
+            from pvpro.postprocess import calculate_error_real
+            Nrolling = 5
+            error_df = np.NaN
+            if cal_error_synthetic:
+                rms_error, error_df = calculate_error_synthetic(pfit,df,Nrolling)
+                error_df.loc['diode_factor', 'corr_coef'] = 1
+            
+            if cal_error_real:
+                error_df = calculate_error_real(pfit, compare)
+                error_df.loc['diode_factor', 'corr_coef'] = 0
+
+            if k not in ['residual' ] and yoy_result is not None and yoy_plot:
+                t_smooth = np.linspace(x_show.min(),
+                                       x_show.max(),
+                                       20)
+                t_mean = np.mean(x_show)
+                if plot_addi:
+                    plt.plot(t_smooth,
+                            scale * pfit[k].median() * (1 + (t_smooth - t_mean) * (
+                                    yoy_result[k]['percent_per_year_CI'][
+                                        0] * 1e-2)),
+                            color=[1, 0.5, 0, 0.3])
+                    plt.plot(t_smooth,
+                            scale * pfit[k].median() * (1 + (t_smooth - t_mean) * (
+                                    yoy_result[k]['percent_per_year_CI'][
+                                        1] * 1e-2)),
+                            color=[1, 0.5, 0, 0.3])
+                plt.plot(t_smooth,
+                         scale * pfit[k].median() * (1 + (t_smooth - t_mean) * (
+                                 yoy_result[k]['percent_per_year'] * 1e-2)),'--',
+                        linewidth = 2,
+                         color='darkorange', 
+                         label='YOY trend of PVPRO')
+                hori = 'left'
+                posi = [0.02,0.04]
+                # if k in ['resistance_series_ref', 'saturation_current_ref'] :
+                #     hori = 'right'
+                #     posi = [1.53,0.04]
+                if cal_error_synthetic | cal_error_real:
+                    plt.text(posi[0], posi[1], 'RMSE: {:.2f}%\
+                                        \nCorr_coef: {:.2f}\
+                                        \nRate: {:.2f}%/yr\
+                                        '.\
+                            format(
+                                error_df['rms_rela'][k]*100,
+                                error_df['corr_coef'][k],
+                            yoy_result[k]['percent_per_year'],
+                            ),
+                            transform=plt.gca().transAxes,
+                            backgroundcolor=[1, 1, 1, 0],
+                            fontsize=9,
+                            horizontalalignment = hori)
+                else:
+                    plt.text(posi[0], posi[1], 'Rate: {:.2f}%/yr'.\
+                            format(
+                            yoy_result[k]['percent_per_year'],
+                            ),
+                            transform=plt.gca().transAxes,
+                            backgroundcolor=[1, 1, 1, 0],
+                            fontsize=9,
+                            horizontalalignment = hori)
+            if xticks:
+                plt.xticks(np.arange(4), labels= xticks, fontsize=10, rotation=45)
+            else:
+                plt.xticks(fontsize=10, rotation=0) , 
+                if n in [nrows*2-1, nrows*2]:   
+                    plt.xlabel('Year', fontsize=10)
+
+            plt.yticks(fontsize=10)
+            plt.ylabel(ylabel[k], fontsize=10, fontweight='bold')
+
+            if n == nrows*2-1:
+                # plt.legend(loc=[0.3, -0.8], ncol =3, fontsize=10)
+                plt.legend(loc=legendloc, ncol = ncol, fontsize=10)
+
+            # if n not in [7, 8]:
+            #     plt.gca().set_xticklabels([])
+            
+
+            n = n + 1
+    return error_df
 
 def plot_scatter(x, y, c, boolean_mask=None, figure_number=None,
                  vmin=0,
