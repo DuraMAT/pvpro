@@ -16,7 +16,7 @@ def calcparams_pvpro(effective_irradiance, temperature_cell,
                      saturation_current_ref,
                      resistance_shunt_ref, resistance_series_ref,
                      conductance_shunt_extra,
-                     Eg_ref=1.121, dEgdT=-0.0002677,
+                     Eg_ref=None, dEgdT=None, # Remove default value
                      irradiance_ref=1000, temperature_ref=25):
     """
     Similar to pvlib calcparams_desoto, except an extra shunt conductance is
@@ -57,9 +57,6 @@ def calcparams_pvpro(effective_irradiance, temperature_cell,
         temp_ref=temperature_ref
     )
 
-    # Increase shunt resistance by the extra shunt conductance, avoid divide by zero error.
-    rsh = 1 / (np.abs(1 / rsh) + np.abs(conductance_shunt_extra) + 1e-100)
-
     return iph, io, rs, rsh, nNsVth
 
 
@@ -98,8 +95,8 @@ def pvlib_single_diode(
         alpha_isc,
         photocurrent_ref,
         saturation_current_ref,
-        Eg_ref=1.121,
-        dEgdT=-0.0002677,
+        Eg_ref=None, # Remove default value
+        dEgdT=None,
         conductance_shunt_extra=0,
         irradiance_ref=1000,
         temperature_ref=25,
@@ -195,7 +192,8 @@ def pvlib_single_diode(
                                                 Eg_ref=Eg_ref, dEgdT=dEgdT,
                                                 irradiance_ref=irradiance_ref,
                                                 temperature_ref=temperature_ref)
-    iph[iph <= 0] = 0
+    if len(iph)>1: 
+        iph[iph <= 0] = 0 
 
     if singlediode_method == 'fast':
         out = singlediode_fast(iph,
@@ -259,8 +257,8 @@ def calculate_temperature_coeffs(
         conductance_shunt_extra=0,
         effective_irradiance=1000,
         temperature_cell=25,
-        band_gap_ref=1.121,
-        dEgdT=-0.0002677,
+        band_gap_ref=None, # Remove default value
+        dEgdT=None,
         singlediode_method='newton',
         irradiance_ref=1000,
         temperature_ref=25
@@ -361,8 +359,8 @@ def singlediode_closest_point(
         alpha_isc,
         photocurrent_ref,
         saturation_current_ref,
-        Eg_ref=1.121,
-        dEgdT=-0.0002677,
+        Eg_ref=None, # Remove default value
+        dEgdT=None,
         reference_irradiance=1000,
         reference_temperature=25,
         method='newton',
@@ -450,8 +448,8 @@ def singlediode_v_from_i(
         alpha_isc,
         photocurrent_ref,
         saturation_current_ref,
-        Eg_ref=1.121,
-        dEgdT=-0.0002677,
+        Eg_ref=None, # Remove default value
+        dEgdT=None,
         reference_irradiance=1000,
         reference_temperature=25,
         method='newton',
@@ -515,8 +513,8 @@ def singlediode_i_from_v(
         alpha_isc,
         photocurrent_ref,
         saturation_current_ref,
-        Eg_ref=1.121,
-        dEgdT=-0.0002677,
+        Eg_ref=None, # Remove default value
+        dEgdT=None,
         reference_irradiance=1000,
         reference_temperature=25,
         method='newton',
@@ -583,8 +581,8 @@ def pv_system_single_diode_model(
         alpha_isc,
         voltage_operation=None,
         current_operation=None,
-        band_gap_ref=1.121,
-        dEgdT=-0.0002677,
+        band_gap_ref = None, # Remove default value
+        dEgdT = None, 
         singlediode_method='fast',
         **kwargs
 ):
