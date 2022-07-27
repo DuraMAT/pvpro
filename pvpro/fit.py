@@ -1,3 +1,4 @@
+
 import numpy as np
 import pandas as pd
 
@@ -24,7 +25,7 @@ def _fit_singlediode_linear(voltage, current, temperature_cell, poa,
                             saturation_current_ref_max=1e-3,
                             resistance_shunt_ref_min=1e-5,
                             resistance_shunt_ref_max=1e5,
-                            Eg_ref=1.121, dEgdT=-0.0002677,
+                            Eg_ref=None, dEgdT=None, # No default value
                             temperature_ref=25, irrad_ref=1000,
                             solver='lsq_linear',
                             model='pvpro',
@@ -272,7 +273,7 @@ def fit_singlediode_model(voltage, current, temperature_cell, poa,
                           resistance_shunt_ref_min=1e-5,
                           resistance_shunt_ref_max=1e5,
                           tol=1e-12,
-                          Eg_ref=1.121, dEgdT=-0.0002677,
+                          Eg_ref=None, dEgdT=None, #No default value
                           temperature_ref=25, irrad_ref=1000,
                           model='desoto',
                           linear_solver='lsq_linear',
@@ -485,7 +486,7 @@ def fit_singlediode_model(voltage, current, temperature_cell, poa,
 
 def fit_singlediode_brute(voltage, current, temperature_cell, poa,
                           cells_in_series,
-                          alpha_sc, Eg_ref=1.121, dEgdT=-0.0002677,
+                          alpha_sc, Eg_ref=None, dEgdT=None, #No default value
                           temperature_ref=25, irrad_ref=1000,
                           resistance_series_list=None,
                           diode_factor_list=None):
@@ -562,15 +563,24 @@ def _x_to_p(x, key):
 
     """
     if key == 'saturation_current_ref':
-        return np.exp(x - 23)
+        return np.exp(x-23)
+    
+    elif key == 'saturation_current':
+        return np.exp(x-23)
     elif key == 'resistance_shunt_ref':
         return np.exp(2 * (x - 1))
-    elif key == 'saturation_current':
-        return np.exp(x - 23)
     elif key == 'resistance_shunt':
         return np.exp(2 * (x - 1))
     elif key == 'alpha_isc':
         return x * 1e-3
+    # elif key == 'resistance_shunt_ref':
+    #     return x*1220
+    # elif key == 'resistance_shunt':
+    #     return x*1220
+    elif key == 'resistance_series_ref':
+        return x/2.2
+    elif key == 'resistance_series':
+        return x/2.2
     else:
         return x
 
@@ -604,8 +614,16 @@ def _p_to_x(p, key):
         return np.log(p) / 2 + 1
     elif key == 'resistance_shunt':
         return np.log(p) / 2 + 1
+    # elif key == 'resistance_shunt_ref':
+    #     return  p/1220
+    # elif key == 'resistance_shunt':
+    #     return p/1220
+    elif key == 'resistance_series_ref':
+        return p*2.2
+    elif key == 'resistance_series':
+        return p*2.2
     elif key == 'saturation_current':
-        return np.log(p) + 23
+        return np.log(p)+23
     elif key == 'alpha_isc':
         return p * 1e3
     else:
@@ -678,9 +696,9 @@ def _pvpro_L1_loss(x, sdm, voltage, current, voltage_scale, current_scale,
 
 
 def _pvpro_L2_loss(x, sdm, voltage, current, voltage_scale, current_scale,
-                   weights, fit_params):
+                   weights, fit_params, Rsh_ratio):
     voltage_fit, current_fit = sdm(
-        **{param: _x_to_p(x[n], param) for n, param in
+        **{param: _x_to_p(x[n], param, Rsh_ratio) for n, param in
            zip(range(len(x)), fit_params)}
     )
 
@@ -695,8 +713,9 @@ def production_data_curve_fit(
         operating_cls,
         voltage,
         current,
-        cells_in_series=72,
-        band_gap_ref=1.121,
+        cells_in_series=60,
+        band_gap_ref = None, ##No default value
+        dEgdT = None, ##No default value
         p0=None,
         lower_bounds=None,
         upper_bounds=None,
@@ -716,8 +735,7 @@ def production_data_curve_fit(
         use_clip_points=True,
         # fit_params=None,
         saturation_current_multistart=None,
-        brute_number_grid_points=2,
-
+        brute_number_grid_points=2
 ):
     """
     Use curve fitting to find best-fit single-diode-model paramters given the
@@ -834,7 +852,7 @@ def production_data_curve_fit(
             resistance_series_ref=0.2,
             conductance_shunt_extra=0.001,
             alpha_isc=0.002,
-            band_gap_ref=1.121,
+            
         )
 
     # if fit_params is None:
@@ -938,10 +956,14 @@ def production_data_curve_fit(
         fixed_params['resistance_shunt_ref'] = resistance_shunt_ref
     if not alpha_isc == None:
         fixed_params['alpha_isc'] = alpha_isc
+    
     if not conductance_shunt_extra == None:
         fixed_params['conductance_shunt_extra'] = conductance_shunt_extra
     if not band_gap_ref == None:
         fixed_params['band_gap_ref'] = band_gap_ref
+    if not dEgdT == None: # dEgdT fixed parameter
+        fixed_params['dEgdT'] = dEgdT
+
 
     # If no points left after removing unused classes, function returns.
     if len(effective_irradiance) == 0 or len(
@@ -969,6 +991,7 @@ def production_data_curve_fit(
     # Set scale factor for current and voltage:
     current_median = np.median(current)
     voltage_median = np.median(voltage)
+
 
     sdm = partial(pv_system_single_diode_model, **model_kwargs, **fixed_params)
 
@@ -1043,9 +1066,9 @@ def production_data_curve_fit(
                            bounds=bounds,
                            method=solver,
                            options=dict(
-                               # maxiter=100,
+                            #    maxiter=100,
                                disp=False,
-                               # ftol=0.001,
+                            #    ftol=0.001,
                            ),
                            )
 
