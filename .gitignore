@@ -1,3 +1,10 @@
+# pvpro meta data
+pvpro/data
+pvpro/example/data/nist01_onemin-Ground.pkl
+**/examples
+
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -203,3 +210,4 @@ fabric.properties
 # Android studio 3.1+ serialized cache file
 .idea/caches/build_file_checksums.ser
 
+**/.DS_Store

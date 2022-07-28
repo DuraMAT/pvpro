@@ -11,17 +11,17 @@ import pandas as pd
 import numpy as np
 from pvlib.ivtools.sde import fit_sandia_simple
 from pvlib.temperature import sapm_cell_from_module
-
+from pvlib.pvsystem import singlediode
 
 import matplotlib
+
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
-
 # Filenames.
-iv_filename = os.path.join('data','ivcurves-Ground-108-2015-07-01.csv')
-ws1_filename = os.path.join('data','onemin-WS_1-2015-07-01.csv')
-ws2_filename = os.path.join('data','onemin-WS_2-2015-07-01.csv')
+iv_filename = os.path.join('data', 'ivcurves-Ground-108-2015-07-01.csv')
+ws1_filename = os.path.join('data', 'onemin-WS_1-2015-07-01.csv')
+ws2_filename = os.path.join('data', 'onemin-WS_2-2015-07-01.csv')
 
 # Load files
 df = pd.read_csv(iv_filename)
@@ -34,7 +34,7 @@ voltage = np.array(list(df.keys())[1:]).astype('float')
 # Choose fields for sensors.
 irradiance_poa_key = 'RefCell5_Wm2_Avg'
 temperature_module_key = 'RTD_C_Avg_13'
-deltaT=3
+deltaT = 3
 specs = {'cells_in_series': 60,
          'alpha_sc': 0.053 * 1e-2 * 8.6,
          'beta_voc': -0.351 * 1e-2 * 37.0}
@@ -47,7 +47,7 @@ tc = sapm_cell_from_module(tm, poa, deltaT)
 # Initialize
 ivcurves = {}
 for key in ['i', 'v', 'tc', 'tm', 'ee', 'i_sc', 'v_oc', 'i_mp', 'v_mp',
-            'timestamp','idx']:
+            'timestamp', 'idx']:
     ivcurves[key] = []
 
 n = 0
@@ -68,20 +68,33 @@ for k in range(len(df)):
 
         # Plot IV curve.
         plt.plot(voltage, current)
-        plt.plot(0, i_sc,'r.')
-        plt.plot(v_oc,0,'r.')
+        plt.plot(0, i_sc, 'r.')
+        plt.plot(v_oc, 0, 'r.')
+        plt.plot(voltage[mpp_idx], current[mpp_idx], 'rx')
         plt.show()
 
         v_mp_i_mp = (voltage[mpp_idx], current[mpp_idx])
 
-        out = fit_sandia_simple(voltage=voltage, current=current,
-                                v_mp_i_mp=v_mp_i_mp,
-                                v_oc=v_oc,
-                                i_sc=i_sc)
+        # drop nans
+        v_is_nan = np.isnan(voltage)
+        i_is_nan = np.isnan(current)
+        v = voltage[~v_is_nan & ~i_is_nan]
+        i = current[~v_is_nan & ~i_is_nan]
 
+        iph, io, rs, rsh, nNsVth = fit_sandia_simple(voltage=v, current=i,
+                                                     v_mp_i_mp=v_mp_i_mp,
+                                                     v_oc=v_oc,
+                                                     i_sc=i_sc)
 
-
+        out = singlediode(photocurrent=iph, saturation_current=io,
+                          resistance_series=rs,
+                          resistance_shunt=rsh, nNsVth=nNsVth, ivcurve_pnts=200,
+                          method='lambertw')
+        plt.plot(voltage, current)
+        plt.plot(out['v'], out['i'])
         break
+
+pd.DataFrame(dict(voltage=voltage, current=current))
 
 """
 Traceback (most recent call last):

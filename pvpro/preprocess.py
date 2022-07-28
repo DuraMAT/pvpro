@@ -283,13 +283,14 @@ class Preprocessor():
                  modules_per_string=None,
                  parallel_strings=None,
                  freq='15min',
+                 solver="MOSEK"
                  ):
 
         # Initialize datahandler object.
 
         self.dh = DataHandler(df)
 
-        # self.df = df
+        #self.df = df
         self.system_name = system_name
         # self.use_clear_times = use_clear_times
 
@@ -304,6 +305,8 @@ class Preprocessor():
         self._ran_sdt = False
 
         self.freq = freq
+
+        self.solver = solver
 
 
         keys = [self.voltage_dc_key,
@@ -377,6 +380,8 @@ class Preprocessor():
         print("Cell temperature assigned to '{}'".format(temperature_cell_key))
 
     def find_clipped_times_pva(self):
+        # use PVanalytics method to find clipped time.
+        # used in PVPro-fast
 
 
         # Make normalized power column.
@@ -397,7 +402,7 @@ class Preprocessor():
                        max_val=None,
                        verbose=True):
         """
-        Perform "time-consuming" preprocessing steps
+        Perform "time-consuming" preprocessing steps, using solarDataTool
 
 
 
@@ -434,9 +439,10 @@ class Preprocessor():
                                          self.irradiance_poa_key,
                                          self.voltage_dc_key,
                                          self.current_dc_key],
-                             verbose=False,
+                             verbose=verbose,
                              fix_shifts=fix_shifts,
-                             max_val=max_val)
+                             max_val=max_val,
+                             solver=self.solver)
         self._ran_sdt = True
 
     def classify_points_sdt(self):

@@ -79,3 +79,7 @@ for key in ['tc', 'ee', 'i_sc', 'v_oc', 'i_mp', 'v_mp']:
 desoto = fit_desoto_sandia(ivcurves, specs)
 
 print(desoto.keys())
+
+print(desoto)
+
+
