@@ -48,16 +48,11 @@ def plot_results_timeseries(pfit, yoy_result=None,
               }
 
     if keys_to_plot is None:
-        keys_to_plot = ['photocurrent_ref',
-                        'i_mp_ref',
-                        'diode_factor',
-                        'v_mp_ref',
-                        'saturation_current_ref', 'p_mp_ref',
-                        'resistance_series_ref',
-                        'v_oc_ref',
-                        'i_sc_ref',
-                        'resistance_shunt_ref',
-                        
+        keys_to_plot = ['i_mp_ref', 'photocurrent_ref',
+                        'v_mp_ref', 'saturation_current_ref',
+                        'i_sc_ref', 'diode_factor',
+                        'v_oc_ref', 'resistance_series_ref',
+                        'p_mp_ref', 'resistance_shunt_ref'
                         ]
 
     for k in keys_to_plot:
@@ -104,15 +99,6 @@ def plot_results_timeseries(pfit, yoy_result=None,
             #                  label=True)
             #         ylims[0] = np.min([ylims[0], df[k].min() * scale])
             #         ylims[1] = np.max([ylims[1], df[k].max() * scale])
-
-            if plot_est and k in ['i_mp_ref', 'v_mp_ref', 'p_mp_ref']:
-                plt.plot(pfit['t_years'], pfit[k + '_est'], '.',
-                         color=[0, 0.8, 0.8, 0.7],
-                         label='pvpro-fast')
-                ylims[0] = np.min(
-                    [ylims[0], np.nanmin(pfit[k + '_est']) * scale])
-                ylims[1] = np.max(
-                    [ylims[1], np.nanmax(pfit[k + '_est']) * scale])
 
             # plt.gca().fmt_xdata = matplotlib.dates.DateFormatter('%Y-%m-%d')
 
@@ -186,19 +172,19 @@ def plot_results_timeseries(pfit, yoy_result=None,
                          backgroundcolor=[1, 1, 1, 0.6],
                          fontsize=8)
 
-            plt.xticks(fontsize=8, rotation=90)
+            plt.xticks(fontsize=8, rotation=45)
             plt.yticks(fontsize=8)
             plt.ylabel(ylabel[k], fontsize=8)
 
             if n == 2:
                 plt.legend(loc=[0, 1.2])
 
-            if n not in [9, 10]:
-                plt.gca().set_xticklabels([])
+            # if n not in [9, 10]:
+            #     ax.set_xticklabels([])
 
             n = n + 1
 
-def plot_results_timeseries_new(pfit, df = None, yoy_result=None,
+def plot_results_timeseries_error(pfit, df = None, yoy_result=None,
                             compare=None,
                             compare_label='True value',
                             compare_plot_style='.',
@@ -221,7 +207,8 @@ def plot_results_timeseries_new(pfit, df = None, yoy_result=None,
                             nylim = None):
     n = 1
     figure = plt.figure(21, figsize=figsize)
-    # plt.clf()
+
+    warnings.filterwarnings("ignore")
 
     figure.subplots(nrows=nrows, ncols=ncols, sharex=True)
     plt.subplots_adjust(wspace=wspace, hspace=hspace)
@@ -332,7 +319,7 @@ def plot_results_timeseries_new(pfit, df = None, yoy_result=None,
             Nrolling = 5
             error_df = np.NaN
             if cal_error_synthetic:
-                rms_error, error_df = calculate_error_synthetic(pfit,df,Nrolling)
+                error_df = calculate_error_synthetic(pfit,df,Nrolling)
                 error_df.loc['diode_factor', 'corr_coef'] = 1
             
             if cal_error_real:
