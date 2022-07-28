@@ -143,7 +143,7 @@ def plot_results_timeseries(pfit, yoy_result=None,
 
             plt.ylim(ylims)
 
-            if k not in ['residual','resistance_shunt_ref' ] and yoy_result is not None:
+            if k not in ['residual' ] and yoy_result is not None:
                 t_smooth = np.linspace(pfit['t_years'].min(),
                                        pfit['t_years'].max(),
                                        20)
