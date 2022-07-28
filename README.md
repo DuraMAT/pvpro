@@ -8,7 +8,7 @@ Fortunately, in a typical PV dataset, more information is stored than just the D
 
 This package, pvpro, automates the analysis of PV production data to extract the rate of change of these parameters. 
 
-**The package is still under active development so don't expect it to work perfectly yet!**
+**The package is still under active development. If there is any problem, please feel free to contact us!**
 
 # Methods
 
