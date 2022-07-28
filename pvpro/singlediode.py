@@ -42,6 +42,7 @@ def calcparams_pvpro(effective_irradiance, temperature_cell,
     -------
 
     """
+
     iph, io, rs, rsh, nNsVth = calcparams_desoto(
         effective_irradiance,
         temperature_cell,
@@ -56,6 +57,7 @@ def calcparams_pvpro(effective_irradiance, temperature_cell,
         irrad_ref=irradiance_ref,
         temp_ref=temperature_ref
     )
+    
 
     return iph, io, rs, rsh, nNsVth
 
