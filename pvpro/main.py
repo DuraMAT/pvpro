@@ -901,13 +901,14 @@ class PvProHandler:
                              operating_cls,
                              params,
                              ):
+
         voltage, current = pv_system_single_diode_model(
             effective_irradiance=effective_irradiance,
             temperature_cell=temperature_cell,
             operating_cls=operating_cls,
             cells_in_series=self.cells_in_series,
             alpha_isc=self.alpha_isc,
-            resistance_shunt_ref=self.resistance_shunt_ref,
+            resistance_shunt_ref=params['resistance_shunt_ref'],
             diode_factor=params['diode_factor'],
             photocurrent_ref=params['photocurrent_ref'],
             saturation_current_ref=params['saturation_current_ref'],
@@ -916,6 +917,7 @@ class PvProHandler:
             band_gap_ref = self.df['band_gap_ref'][0],
             dEgdT = self.df['dEgdT'][0]
         )
+
         return voltage, current
 
     def build_plot_text_str(self, df, p_plot=None):
@@ -1507,12 +1509,15 @@ class PvProHandler:
                     operating_cls=np.zeros_like(irrad_smooth) + 0,
                     cells_in_series=self.cells_in_series,
                     alpha_isc=self.alpha_isc,
-                    resistance_shunt_ref=self.resistance_shunt_ref,
+                    resistance_shunt_ref=p_plot['resistance_shunt_ref'],
                     diode_factor=p_plot['diode_factor'],
                     photocurrent_ref=p_plot['photocurrent_ref'],
                     saturation_current_ref=p_plot['saturation_current_ref'],
                     resistance_series_ref=p_plot['resistance_series_ref'],
-                    conductance_shunt_extra=p_plot['conductance_shunt_extra']
+                    conductance_shunt_extra=p_plot['conductance_shunt_extra'],
+                    band_gap_ref = df['band_gap_ref'][0],
+                    dEgdT = df['dEgdT'][0]
+
                 )
 
                 # out = pvlib_fit_fun( np.transpose(np.array(
