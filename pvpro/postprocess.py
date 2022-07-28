@@ -70,7 +70,6 @@ def calculate_error_synthetic(pfit, df,zero_mean=False):
         for key in dfcurr_mean.keys():
             dft.loc[pfit['t_start'].iloc[k], key] = dfcurr_mean[key]
 
-    # lbj added
     all_error_df = pd.DataFrame(index=keys, columns=['rms', 'rms_rela', 'corr_coef'])
     
     for k in keys:
@@ -79,9 +78,9 @@ def calculate_error_synthetic(pfit, df,zero_mean=False):
         p2 = pfit[k]
         mask = ~np.isnan(p1) & ~np.isnan(p2)# remove nan value for corrcoef calculation
         
-        all_error_df['rms'][k] = np.sqrt(np.mean((p1[mask]-p2[mask]) ** 2))
-        all_error_df['rms_rela'][k] = np.sqrt(np.nanmean(((p1[mask]-p2[mask])/p1[mask]) ** 2))
-        all_error_df['corr_coef'][k] = np.corrcoef(p1[mask], 
+        all_error_df.loc[k, 'rms'] = np.sqrt(np.mean((p1[mask]-p2[mask]) ** 2))
+        all_error_df.loc[k,'rms_rela'] = np.sqrt(np.nanmean(((p1[mask]-p2[mask])/p1[mask]) ** 2))
+        all_error_df.loc[k, 'corr_coef'] = np.corrcoef(p1[mask], 
                                                   p2[mask])[0,1]
 
 
