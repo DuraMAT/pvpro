@@ -76,7 +76,7 @@ PVPRO analysis fits a single diode model to the data at each timestep in the ana
 
 The trend of these parameters over time can be used to interpret what is degrading in the system. This analysis is only sensitive to module degradation (excepting drift in sensors) and not inverter degradation or downtime. Below, the PVPRO results for this system show which parameters cause the observed power loss.
 
-![Image of PVPRO parameter trend](https://github.com/DuraMAT/pvpro/blob/PVPRO_lbj/doc_img_/nist-ground-parameter-trend.png)
+![Image of PVPRO parameter trend](https://github.com/DuraMAT/pvpro/blob/PVPRO_lbj/doc_img/nist-ground-parameter-trend.png)
 
 For this dataset, the estimated power degradation rate is -1.7%/yr. Inspecting the first panel, photocurrent loss is estimated to cause a -0.8%/yr loss in power, making photocurrent loss responsible for 47% of the observed power loss. This system also appears to show an increase in series resistance over time. 
 
