@@ -696,9 +696,9 @@ def _pvpro_L1_loss(x, sdm, voltage, current, voltage_scale, current_scale,
 
 
 def _pvpro_L2_loss(x, sdm, voltage, current, voltage_scale, current_scale,
-                   weights, fit_params, Rsh_ratio):
+                   weights, fit_params):
     voltage_fit, current_fit = sdm(
-        **{param: _x_to_p(x[n], param, Rsh_ratio) for n, param in
+        **{param: _x_to_p(x[n], param) for n, param in
            zip(range(len(x)), fit_params)}
     )
 
