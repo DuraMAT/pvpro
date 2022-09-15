@@ -944,8 +944,10 @@ class PvProHandler:
                            p_plot['saturation_current_ref'] * 1e9) + \
                        'resistance_series: {:1.2f} Ohm\n'.format(
                            p_plot['resistance_series_ref']) + \
-                       'conductance shunt extra: {:1.4f} 1/Ω\n\n'.format(
-                           p_plot['conductance_shunt_extra'])
+                        'resistance_shunt: {:1.2f} Ω\n\n'.format(
+                           p_plot['resistance_shunt_ref'])
+                    #    'conductance shunt: {:1.4f} 1/Ω\n\n'.format(
+                    #        p_plot['conductance_shunt_extra'])
         else:
             text_str = system_info_str
 
