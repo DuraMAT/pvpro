@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 import matplotlib.pyplot as plt
 from pvpro.singlediode import pvlib_single_diode
+from sklearn.linear_model import LinearRegression
 
 
 def plot_results_timeseries(pfit, yoy_result=None,
@@ -23,27 +24,27 @@ def plot_results_timeseries(pfit, yoy_result=None,
                             wspace=0.4,
                             hspace=0.1,
                             keys_to_plot=None,
+                            yoy_CI = False,
                             plot_est=True):
     n = 1
     figure = plt.figure(21, figsize=(7, 6))
-    # plt.clf()
 
     figure.subplots(nrows=nrows, ncols=ncols, sharex=True)
     plt.subplots_adjust(wspace=wspace, hspace=hspace)
 
     ylabel = {'diode_factor': 'Diode factor',
-              'photocurrent_ref': 'Photocurrent ref (A)',
-              'saturation_current_ref': 'I sat ref (A)',
-              'resistance_series_ref': 'R series ref (Ω)',
-              'resistance_shunt_ref': 'R shunt ref (Ω)',
+              'photocurrent_ref': 'Iph (A)',
+              'saturation_current_ref': 'I0 (A)',
+              'resistance_series_ref': 'Rs (Ω)',
+              'resistance_shunt_ref': 'Rsh (Ω)',
               'conductance_shunt_ref': 'G shunt ref (1/Ω)',
               'conductance_shunt_extra': 'G shunt extra (1/kΩ)',
-              'i_sc_ref': 'I sc ref (A)',
-              'v_oc_ref': 'V oc ref (V)',
-              'i_mp_ref': 'I mp ref (A)',
-              'p_mp_ref': 'P mp ref (W)',
+              'i_sc_ref': 'Isc (A)',
+              'v_oc_ref': 'Voc (V)',
+              'i_mp_ref': 'Imp (A)',
+              'p_mp_ref': 'Pmp (W)',
               'i_x_ref': 'I x ref (A)',
-              'v_mp_ref': 'V mp ref (V)',
+              'v_mp_ref': 'Vmp (V)',
               'residual': 'Residual (AU)',
               }
 
@@ -93,48 +94,13 @@ def plot_results_timeseries(pfit, yoy_result=None,
                     ylims[0] = np.min([ylims[0], np.nanmin(compare[k]) * scale])
                     ylims[1] = np.max([ylims[1], np.nanmax(compare[k]) * scale])
 
-            #     if k in df.keys():
-            #         plt.plot(df.index, df[k] * scale, '--',
-            #                  color=[1, 0.2, 0.2],
-            #                  label=True)
-            #         ylims[0] = np.min([ylims[0], df[k].min() * scale])
-            #         ylims[1] = np.max([ylims[1], df[k].max() * scale])
-
-            # plt.gca().fmt_xdata = matplotlib.dates.DateFormatter('%Y-%m-%d')
-
-            #     if (pfit[k].max() - pfit[k].min())/pfit[k].mean() < 1.2:
-            #         plt.ylim(pfit[k].mean() * np.array([0.9, 1.1]))
-
             v_mp_med = np.median(pfit['v_mp_ref'])
             i_mp_med = np.median(pfit['i_mp_ref'])
             p_mp_med = np.median(pfit['p_mp_ref'])
 
-            if k in ['conductance_shunt_extra']:
-                #         1% power loss
-                G_shunt_crit = 0.01 * p_mp_med / v_mp_med ** 2
-                plt.plot(pfit['t_years'],
-                         np.zeros(len(pfit['t_years'])) + G_shunt_crit * scale,
-                         '--')
-                plt.text(pfit['t_years'][0], G_shunt_crit * scale * 1.05,
-                         '1% power loss', fontsize=7)
-                ylims[1] = np.max([ylims[1], G_shunt_crit * scale * 1.1])
-            elif k in ['resistance_series_ref']:
-                R_series_crit = 0.10 * v_mp_med / i_mp_med
-                plt.plot(pfit['t_years'],
-                         np.zeros(len(pfit['t_years'])) + R_series_crit * scale,
-                         '--')
-                print(R_series_crit)
-                plt.text(pfit['t_years'][0], R_series_crit * scale * 1.05,
-                         '10% power loss', fontsize=7)
-                ylims[1] = np.max([ylims[1], R_series_crit * scale * 1.3])
-            elif k in ['saturation_current_ref']:
-                plt.yscale('log')
-            elif k in ['diode_factor']:
+            if k in ['diode_factor']:
                 ylims[0] = np.nanmin([0.7, ylims[0]])
                 ylims[1] = np.nanmax([1.5, ylims[1]])
-            #     plt.plot()
-            # date_form = matplotlib.dates.DateFormatter("%Y")
-            # plt.gca().xaxis.set_major_formatter(date_form)
 
             if k in ['saturation_current_ref']:
                 ylims = ylims * np.array([0.5, 1.5])
@@ -149,38 +115,55 @@ def plot_results_timeseries(pfit, yoy_result=None,
                                        20)
                 t_mean = np.mean(pfit['t_years'])
 
-                plt.plot(t_smooth,
-                         scale * pfit[k].median() * (1 + (t_smooth - t_mean) * (
-                                 yoy_result[k]['percent_per_year_CI'][
-                                     0] * 1e-2)),
-                         color=[1, 0.5, 0, 0.3])
-                plt.plot(t_smooth,
-                         scale * pfit[k].median() * (1 + (t_smooth - t_mean) * (
-                                 yoy_result[k]['percent_per_year_CI'][
-                                     1] * 1e-2)),
-                         color=[1, 0.5, 0, 0.3])
+                # linear fitted yoy trend
+                x = pfit['t_years'].to_numpy().reshape(-1,1)
+                y = pfit[k].to_numpy().reshape(-1,1)
+                inx = ~np.isnan(y)
+                x = x[inx].reshape(-1,1)
+                y = y[inx].reshape(-1,1)
+                reg = LinearRegression().fit(x ,y)
+                rate_esti = reg.coef_[0][0]/y[0]*100
+                yoy_result[k]['percent_per_year'] = rate_esti[0]
+
+                
                 plt.plot(t_smooth,
                          scale * pfit[k].median() * (1 + (t_smooth - t_mean) * (
                                  yoy_result[k]['percent_per_year'] * 1e-2)),
                          color=[1, 0.5, 0, 0.8],
                          label='YOY trend')
-                plt.text(0.5, 0.1, '{:.2f}%/yr\n{:.2f} to {:.2f}%/yr'.format(
+                
+                if yoy_CI:
+                    plt.plot(t_smooth,
+                            scale * pfit[k].median() * (1 + (t_smooth - t_mean) * (
+                                    yoy_result[k]['percent_per_year_CI'][
+                                        0] * 1e-2)),
+                            color=[1, 0.5, 0, 0.3])
+                    plt.plot(t_smooth,
+                            scale * pfit[k].median() * (1 + (t_smooth - t_mean) * (
+                                    yoy_result[k]['percent_per_year_CI'][
+                                        1] * 1e-2)),
+                            color=[1, 0.5, 0, 0.3])
+
+                    plt.text(0.5, 0.1, '{:.2f}%/yr\n{:.2f} to {:.2f}%/yr'.format(
                     yoy_result[k]['percent_per_year'],
                     yoy_result[k]['percent_per_year_CI'][0],
                     yoy_result[k]['percent_per_year_CI'][1]),
                          transform=plt.gca().transAxes,
                          backgroundcolor=[1, 1, 1, 0.6],
                          fontsize=8)
+                else:
+                    plt.text(0.1, 0.1, 'Rate: {:.2f}%/yr'.format(
+                    yoy_result[k]['percent_per_year']),
+                         transform=plt.gca().transAxes,
+                         backgroundcolor=[1, 1, 1, 0.6],
+                         fontsize=8)
 
             plt.xticks(fontsize=8, rotation=45)
             plt.yticks(fontsize=8)
-            plt.ylabel(ylabel[k], fontsize=8)
+            plt.ylabel(ylabel[k], fontsize=8, fontweight = 'bold')
 
             if n == 2:
                 plt.legend(loc=[0, 1.2])
-
-            # if n not in [9, 10]:
-            #     ax.set_xticklabels([])
 
             n = n + 1
 
@@ -202,7 +185,6 @@ def plot_results_timeseries_error(pfit, df = None, yoy_result=None,
                             ncol = 3,
                             cal_error_synthetic = False,
                             cal_error_real = False,
-                            plot_addi = False,
                             xticks = None,
                             nylim = None):
     n = 1
@@ -251,9 +233,6 @@ def plot_results_timeseries_error(pfit, df = None, yoy_result=None,
             else:
                 scale = 1
 
-            # if k not in ['resistance_series_ref']:
-            #     linestyle = '-'
-
             x_show = pfit['t_years']- pfit['t_years'][0]
             plt.plot(x_show, pfit[k] * scale, linestyle,
                      color=np.array([6,86,178])/256,
@@ -267,7 +246,6 @@ def plot_results_timeseries_error(pfit, df = None, yoy_result=None,
                 if k in compare:
                     plt.plot(x_real_show, compare[k] * scale,
                              linestyle,
-                            #  color=np.array([9,212,84])/256,
                             color = 'deepskyblue',
                              label=compare_label,
                              )
@@ -275,36 +253,16 @@ def plot_results_timeseries_error(pfit, df = None, yoy_result=None,
                     ylims[0] = np.min([ylims[0], np.nanmin(compare[k]) * scale])
                     ylims[1] = np.max([ylims[1], np.nanmax(compare[k]) * scale])
 
-            # plt.gca().fmt_xdata = matplotlib.dates.DateFormatter('%Y-%m-%d')
-
-            #     if (pfit[k].max() - pfit[k].min())/pfit[k].mean() < 1.2:
-            #         plt.ylim(pfit[k].mean() * np.array([0.9, 1.1]))
-
             v_mp_med = np.median(pfit['v_mp_ref'])
             i_mp_med = np.median(pfit['i_mp_ref'])
             p_mp_med = np.median(pfit['p_mp_ref'])
 
-            if k in ['conductance_shunt_extra']:
-                #         1% power loss
-                G_shunt_crit = 0.01 * p_mp_med / v_mp_med ** 2
-                plt.plot(pfit['t_years'],
-                         np.zeros(len(pfit['t_years'])) + G_shunt_crit * scale,
-                         '--')
-                plt.text(pfit['t_years'][0], G_shunt_crit * scale * 1.05,
-                         '1% power loss', fontsize=7)
-                ylims[1] = np.max([ylims[1], G_shunt_crit * scale * 1.1])
-            
-            # elif k in ['saturation_current_ref']:
-                # plt.yscale('log')
-            elif k in ['diode_factor']:
+            if k in ['diode_factor']:
                 ylims[0] = np.nanmin([1.08, ylims[0]])
                 ylims[1] = np.nanmax([1.11, ylims[1]])
                 if nylim:
                     ylims[0] = nylim[0]
                     ylims[1] = nylim[1]
-            #     plt.plot()
-            # date_form = matplotlib.dates.DateFormatter("%Y")
-            # plt.gca().xaxis.set_major_formatter(date_form)
 
             if k in ['saturation_current_ref']:
                 ylims = ylims * np.array([0.5, 1.5])
@@ -316,6 +274,7 @@ def plot_results_timeseries_error(pfit, df = None, yoy_result=None,
             # calculate error 
             from pvpro.postprocess import calculate_error_synthetic
             from pvpro.postprocess import calculate_error_real
+
             Nrolling = 5
             error_df = np.NaN
             if cal_error_synthetic:
@@ -331,17 +290,6 @@ def plot_results_timeseries_error(pfit, df = None, yoy_result=None,
                                        x_show.max(),
                                        20)
                 t_mean = np.mean(x_show)
-                if plot_addi:
-                    plt.plot(t_smooth,
-                            scale * pfit[k].median() * (1 + (t_smooth - t_mean) * (
-                                    yoy_result[k]['percent_per_year_CI'][
-                                        0] * 1e-2)),
-                            color=[1, 0.5, 0, 0.3])
-                    plt.plot(t_smooth,
-                            scale * pfit[k].median() * (1 + (t_smooth - t_mean) * (
-                                    yoy_result[k]['percent_per_year_CI'][
-                                        1] * 1e-2)),
-                            color=[1, 0.5, 0, 0.3])
                 plt.plot(t_smooth,
                          scale * pfit[k].median() * (1 + (t_smooth - t_mean) * (
                                  yoy_result[k]['percent_per_year'] * 1e-2)),'--',
@@ -350,9 +298,7 @@ def plot_results_timeseries_error(pfit, df = None, yoy_result=None,
                          label='YOY trend of PVPRO')
                 hori = 'left'
                 posi = [0.02,0.04]
-                # if k in ['resistance_series_ref', 'saturation_current_ref'] :
-                #     hori = 'right'
-                #     posi = [1.53,0.04]
+
                 if cal_error_synthetic | cal_error_real:
                     plt.text(posi[0], posi[1], 'RMSE: {:.2f}%\
                                         \nCorr_coef: {:.2f}\
@@ -370,7 +316,7 @@ def plot_results_timeseries_error(pfit, df = None, yoy_result=None,
                 else:
                     plt.text(posi[0], posi[1], 'Rate: {:.2f}%/yr'.\
                             format(
-                            yoy_result[k]['percent_per_year'],
+                            yoy_result[k]['percent_per_year']
                             ),
                             transform=plt.gca().transAxes,
                             backgroundcolor=[1, 1, 1, 0],
@@ -387,12 +333,7 @@ def plot_results_timeseries_error(pfit, df = None, yoy_result=None,
             plt.ylabel(ylabel[k], fontsize=10, fontweight='bold')
 
             if n == nrows*2-1:
-                # plt.legend(loc=[0.3, -0.8], ncol =3, fontsize=10)
                 plt.legend(loc=legendloc, ncol = ncol, fontsize=10)
-
-            # if n not in [7, 8]:
-            #     plt.gca().set_xticklabels([])
-            
 
             n = n + 1
     return error_df
