@@ -1,12 +1,6 @@
 # pvpro meta data
-pvpro/data
-pvpro/example/data/nist01_onemin-Ground.pkl
+examples/data/nist01_onemin-Ground.pkl
  
-# @Baojie comment this line if you want to upload examples
-**/examples
-# @Baojie examples folder put tutorials and small data
-
-
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
