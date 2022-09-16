@@ -474,7 +474,6 @@ def fit_singlediode_model(voltage, current, temperature_cell, poa,
                    x0=x0,
                    bounds=bounds,
                    method=nonlinear_solver,
-                   # verbose=2
                    )
 
     # Get values at best fit.
@@ -573,10 +572,6 @@ def _x_to_p(x, key):
         return np.exp(2 * (x - 1))
     elif key == 'alpha_isc':
         return x * 1e-3
-    # elif key == 'resistance_shunt_ref':
-    #     return x*1220
-    # elif key == 'resistance_shunt':
-    #     return x*1220
     elif key == 'resistance_series_ref':
         return x/2.2
     elif key == 'resistance_series':
@@ -614,10 +609,6 @@ def _p_to_x(p, key):
         return np.log(p) / 2 + 1
     elif key == 'resistance_shunt':
         return np.log(p) / 2 + 1
-    # elif key == 'resistance_shunt_ref':
-    #     return  p/1220
-    # elif key == 'resistance_shunt':
-    #     return p/1220
     elif key == 'resistance_series_ref':
         return p*2.2
     elif key == 'resistance_series':
@@ -628,58 +619,6 @@ def _p_to_x(p, key):
         return p * 1e3
     else:
         return p
-
-
-#
-# def fit_singlediode_linear_lsq(voltage, current, temperature_cell, poa,
-#                                resistance_series, diode_factor, cells_in_series,
-#                                alpha_sc, Eg_ref=1.121, dEgdT=-0.0002677,
-#                                temperature_ref=25, irrad_ref=1000):
-#     Tcell_K = temperature_cell + 273.15
-#     Tref_K = temperature_ref + 273.15
-#
-#     # Boltzmann constant in eV/K
-#     k = 8.617332478e-05
-#     q = 1.602e-19
-#
-#     Eg = Eg_ref * (1 + dEgdT * (Tcell_K - Tref_K))
-#
-#     nNsVth = diode_factor * cells_in_series * k * Tcell_K
-#
-#     sat_current_multiplier = (((Tcell_K / Tref_K) ** 3) *
-#                               (np.exp(Eg_ref / (k * (Tref_K)) - (
-#                                       Eg / (k * (Tcell_K))))))
-#
-#     scale = 1e-9
-#     X = np.zeros(shape=(len(temperature_cell), 3))
-#     X[:, 0] = poa / irrad_ref
-#     X[:, 1] = -1 * scale * sat_current_multiplier * (
-#             np.exp((voltage + current * resistance_series) / nNsVth) - 1)
-#     X[:, 2] = -(voltage + current * resistance_series) / (poa / irrad_ref)
-#
-#     Y = current - poa / irrad_ref * alpha_sc * (
-#             temperature_cell - temperature_ref)
-#
-#     bounds = ([0, -np.inf, 0.0001], [1e5, np.inf, 1e5])
-#
-#     # Solve the problem
-#     soln = lsq_linear(X, Y, bounds=bounds)
-#     coeff = soln['x']
-#     #     coeff = np.dot(pinv(X), Y)
-#
-#     loss = np.mean(np.abs(np.dot(X, coeff) - Y))
-#     out = {
-#         'photocurrent_ref': coeff[0],
-#         'saturation_current_ref': coeff[1] * scale,
-#         'resistance_shunt_ref': 1 / coeff[2],
-#         'resistance_series_ref': resistance_series,
-#         'diode_factor': diode_factor,
-#         'nNsVth_ref': diode_factor * cells_in_series * k * Tref_K,
-#         'loss': loss,
-#         'solution': soln,
-#     }
-#
-#     return out
 
 
 def _pvpro_L1_loss(x, sdm, voltage, current, voltage_scale, current_scale,
@@ -927,10 +866,6 @@ def production_data_curve_fit(
     voltage = voltage[keepers]
     current = current[keepers]
 
-    # print('Effective irradiance: ')
-    # print(effective_irradiance)
-    #
-    # Weights (equally weighted currently)
     weights = np.zeros_like(operating_cls)
     weights[operating_cls == 0] = 1
     weights[operating_cls == 1] = 1
@@ -1021,10 +956,6 @@ def production_data_curve_fit(
                 print(k, p0[k])
             print('--')
 
-        # print('p0: ', p0)
-        # print('bounds:', bounds)
-
-        # print('Method: {}'.format(solver))
         if verbose:
             print('Performing minimization... ')
 
@@ -1080,11 +1011,6 @@ def production_data_curve_fit(
             p_fit[param] = _x_to_p(res.x[n], param)
             n = n + 1
 
-        # print('Best fit parameters (with scale included):')
-        # for p in x_fit:
-        #     print('{}: {}'.format(p, x_fit[p]))
-        # print('Final Residual: {}'.format(res['fun']))
-
         out = {'p': p_fit,
                'fixed_params': fixed_params,
                'residual': res['fun'],
@@ -1095,25 +1021,3 @@ def production_data_curve_fit(
             out[k] = res[k]
 
         return out
-
-    # elif method == 'basinhopping':
-    #     # lower_bounds_x = [p_to_x(lower_bounds[k], k) for k in fit_params]
-    #     # upper_bounds_x = [p_to_x(upper_bounds[k], k) for k in fit_params]
-    #     x0 = [_p_to_x(p0[k], k) for k in fit_params]
-    #
-    #     res = basinhopping(residual,
-    #                        x0=x0,
-    #                        niter=100,
-    #                        T=0.2,
-    #                        stepsize=0.1)
-    #     n = 0
-    #     p_fit = {}
-    #     for param in fit_params:
-    #         p_fit[param] = _x_to_p(res.x[n], param)
-    #         n = n + 1
-    #
-    #     # print('Best fit parameters (with scale included):')
-    #     # for p in x_fit:
-    #     #     print('{}: {}'.format(p, x_fit[p]))
-    #     # print('Final Residual: {}'.format(res['fun']))
-    #     return res
