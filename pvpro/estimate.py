@@ -877,7 +877,7 @@ def estimate_diode_factor(vmp_ref, beta_vmp, imp_ref,
                           resistance_series=0.35,
                           cells_in_series=60,
                           temperature_ref=25,
-                          technology='mono-Si'):
+                          technology=None):
 
     # Thermal temperature
     k = 1.381e-23
@@ -1186,13 +1186,14 @@ def estimate_cells_in_series(voc_ref, technology='mono-Si'):
     return int(voc_ref / voc_cell[technology])
 
 
-def estimate_voc_ref(vmp_ref, technology='mono-Si'):
+def estimate_voc_ref(vmp_ref, technology=None):
     voc_vmp_ratio = {'thin-film': 1.3069503474012514,
                      'multi-Si': 1.2365223483476515,
                      'cigs': 1.2583291018540534,
                      'mono-Si': 1.230866745147029,
                      'cdte': 1.2188176469944012}
     voc_ref = vmp_ref * voc_vmp_ratio[technology]
+    
 
     return voc_ref
 
@@ -1222,7 +1223,8 @@ def estimate_isc_ref(imp_ref, technology):
     isc_to_imp_ratio = {'multi-Si': 1.0699135787527263,
                         'mono-Si': 1.0671785412770871,
                         'thin-film': 1.158663685900219,
-                        'cigs': 1.1566217151572733, 'cdte': 1.0962996330688608}
+                        'cigs': 1.1566217151572733, 
+                        'cdte': 1.0962996330688608}
 
     isc_ref = imp_ref * isc_to_imp_ratio[technology]
 
@@ -1342,12 +1344,12 @@ def estimate_singlediode_params(poa,
                                 dEgdT=-0.0002677,
                                 alpha_isc=None,
                                 cells_in_series=None,
-                                technology='mono-Si',
+                                technology=None,
                                 convergence_test=0.0001,
                                 temperature_ref=25,
                                 irradiance_ref=1000,
                                 resistance_series_ref=None,
-                                resistance_shunt_ref=400,
+                                resistance_shunt_ref=600,
                                 figure=False,
                                 figure_number_start=20,
                                 imp_model='sandia',
@@ -1465,6 +1467,7 @@ def estimate_singlediode_params(poa,
 
     # diode_factor = get_average_diode_factor(technology)
 
+    # print(technology)
     voc_ref = estimate_voc_ref(vmp_ref, technology=technology)
     if cells_in_series == None:
         cells_in_series = estimate_cells_in_series(voc_ref,
@@ -1473,9 +1476,8 @@ def estimate_singlediode_params(poa,
     diode_factor = estimate_diode_factor(vmp_ref=vmp_ref,
                                          beta_vmp=beta_vmp,
                                          imp_ref=imp_ref,
+                                         technology=technology,
                                          cells_in_series=cells_in_series)
-
-
 
     kB = 1.381e-23
     q = 1.602e-19

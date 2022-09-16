@@ -52,7 +52,7 @@ class PvProHandler:
                  modules_per_string=None,
                  parallel_strings=None,
                  alpha_isc=None,
-                 resistance_shunt_ref=400,
+                 resistance_shunt_ref=600,
                  # delta_T=3,
                  # use_clear_times=True,
                  cells_in_series=None,
@@ -457,10 +457,11 @@ class PvProHandler:
                 photocurrent_ref=None,
                 saturation_current_ref=None,
                 resistance_series_ref=None,
-                conductance_shunt_extra=None,
+                resistance_shunt_ref=None, # Add Rsh to optimize
+                conductance_shunt_extra=0, # No optimize of Gshunt
                 verbose=False,
                 method='minimize',
-                solver='L-BFGS-B',
+                solver='nelder-mead',#'L-BFGS-B',
                 save_figs=True,
                 save_figs_directory='figures',
                 plot_imp_max=8,
@@ -470,6 +471,7 @@ class PvProHandler:
                 upper_bounds=None,
                 singlediode_method='fast',
                 saturation_current_multistart=None,
+                technology = None # PV tech information required
                 ):
         """
         Main PVPRO Method.
@@ -542,7 +544,9 @@ class PvProHandler:
         # Fit params taken from p0
         if fit_params == None:
             fit_params = ['photocurrent_ref', 'saturation_current_ref',
-                          'resistance_series_ref', 'conductance_shunt_extra',
+                          'resistance_series_ref', 
+                         'conductance_shunt_extra', 
+                         'resistance_shunt_ref', 
                           'diode_factor']
             # self.fit_params = fit_params
 
@@ -659,7 +663,7 @@ class PvProHandler:
                         df[self.current_key]) / self.parallel_strings,
                     cells_in_series=self.cells_in_series,
                     alpha_isc=self.alpha_isc,
-                    resistance_shunt_ref=self.resistance_shunt_ref,
+                    resistance_shunt_ref=resistance_shunt_ref, #add Rsh to optimize
                     lower_bounds=lower_bounds,
                     upper_bounds=upper_bounds,
                     p0=p0.loc[k, fit_params],
@@ -675,7 +679,9 @@ class PvProHandler:
                     use_voc_points=use_voc_points,
                     use_clip_points=use_clip_points,
                     singlediode_method=singlediode_method,
-                    saturation_current_multistart=saturation_current_multistart
+                    saturation_current_multistart=saturation_current_multistart,
+                    band_gap_ref = df['band_gap_ref'][0],
+                    dEgdT = df['dEgdT'][0]
                 )
                 pfit_iter = fit_result_iter['p']
                 pfixed_iter = fit_result_iter['fixed_params']
@@ -694,7 +700,10 @@ class PvProHandler:
                         imp=df.loc[cax, self.current_key] / self.parallel_strings,
                         vmp=df.loc[cax, self.voltage_key] / self.modules_per_string,
                         vmp_model='sandia1',
-                        imp_model='sandia')
+                        imp_model='sandia',
+                        cells_in_series = self.cells_in_series,
+                        technology = technology
+                        )
 
                     #
                     # vmp_out = estimate_vmp_ref(
@@ -811,8 +820,7 @@ class PvProHandler:
                     photocurrent=pfit.loc[k, 'photocurrent_ref'],
                     saturation_current=pfit.loc[k, 'saturation_current_ref'],
                     resistance_series=pfit.loc[k, 'resistance_series_ref'],
-                    resistance_shunt=1 / (1 / self.resistance_shunt_ref + pfit.loc[
-                        k, 'conductance_shunt_extra']),
+                    resistance_shunt = pfit.loc[k, 'resistance_shunt_ref'], # Get Rsh by estimation
                     nNsVth=pfit.loc[k, 'nNsVth_ref'])
 
                 for p in out.keys():
@@ -838,7 +846,7 @@ class PvProHandler:
     def estimate_p0(self,
                     verbose=False,
                     boolean_mask=None,
-                    technology='mono-Si'):
+                    technology=None):
         """
         Make a rough estimate of the startpoint for fitting the single diode
         model.
@@ -847,7 +855,7 @@ class PvProHandler:
         -------
 
         """
-
+        # print(technology)
         if boolean_mask is None:
             self.p0, result = estimate_singlediode_params(
                 poa=self.df[self.irradiance_poa_key],
@@ -873,7 +881,6 @@ class PvProHandler:
                 technology=technology,
                 verbose=verbose
             )
-
         #
         # imp_ref = estimate_imp_ref()
         # photocurrent_ref = self.estimate_photocurrent_ref(imp_ref)
@@ -894,19 +901,23 @@ class PvProHandler:
                              operating_cls,
                              params,
                              ):
+
         voltage, current = pv_system_single_diode_model(
             effective_irradiance=effective_irradiance,
             temperature_cell=temperature_cell,
             operating_cls=operating_cls,
             cells_in_series=self.cells_in_series,
             alpha_isc=self.alpha_isc,
-            resistance_shunt_ref=self.resistance_shunt_ref,
+            resistance_shunt_ref=params['resistance_shunt_ref'],
             diode_factor=params['diode_factor'],
             photocurrent_ref=params['photocurrent_ref'],
             saturation_current_ref=params['saturation_current_ref'],
             resistance_series_ref=params['resistance_series_ref'],
-            conductance_shunt_extra=params['conductance_shunt_extra']
+            conductance_shunt_extra=params['conductance_shunt_extra'],
+            band_gap_ref = self.df['band_gap_ref'][0],
+            dEgdT = self.df['dEgdT'][0]
         )
+
         return voltage, current
 
     def build_plot_text_str(self, df, p_plot=None):
@@ -933,8 +944,10 @@ class PvProHandler:
                            p_plot['saturation_current_ref'] * 1e9) + \
                        'resistance_series: {:1.2f} Ohm\n'.format(
                            p_plot['resistance_series_ref']) + \
-                       'conductance shunt extra: {:1.4f} 1/Ω\n\n'.format(
-                           p_plot['conductance_shunt_extra'])
+                        'resistance_shunt: {:1.2f} Ω\n\n'.format(
+                           p_plot['resistance_shunt_ref'])
+                    #    'conductance shunt: {:1.4f} 1/Ω\n\n'.format(
+                    #        p_plot['conductance_shunt_extra'])
         else:
             text_str = system_info_str
 
@@ -1498,12 +1511,15 @@ class PvProHandler:
                     operating_cls=np.zeros_like(irrad_smooth) + 0,
                     cells_in_series=self.cells_in_series,
                     alpha_isc=self.alpha_isc,
-                    resistance_shunt_ref=self.resistance_shunt_ref,
+                    resistance_shunt_ref=p_plot['resistance_shunt_ref'],
                     diode_factor=p_plot['diode_factor'],
                     photocurrent_ref=p_plot['photocurrent_ref'],
                     saturation_current_ref=p_plot['saturation_current_ref'],
                     resistance_series_ref=p_plot['resistance_series_ref'],
-                    conductance_shunt_extra=p_plot['conductance_shunt_extra']
+                    conductance_shunt_extra=p_plot['conductance_shunt_extra'],
+                    band_gap_ref = df['band_gap_ref'][0],
+                    dEgdT = df['dEgdT'][0]
+
                 )
 
                 # out = pvlib_fit_fun( np.transpose(np.array(

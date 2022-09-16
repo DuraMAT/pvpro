@@ -12,6 +12,7 @@ pvpro/example/data/nist01_onemin-Ground.pkl
 __pycache__/
 *.py[cod]
 *$py.class
+.DS_Store
 
 # C extensions
 *.so
