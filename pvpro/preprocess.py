@@ -81,15 +81,11 @@ def find_huber_outliers(x, y, sample_weight=None,
         print('Need more than two points for linear regression.')
         return [], []
 
-    # X = np.atleast_2d(x).transpose()
-    # y = np.array(y)
-
     huber = HuberRegressor(epsilon=epsilon,
                            fit_intercept=fit_intercept)
     huber.fit(np.atleast_2d(x[mask]).transpose(), y[mask],
               sample_weight=sample_weight[mask])
 
-    #     outliers = huber.outliers_
 
     def is_outlier(x, y):
         X = np.atleast_2d(x).transpose()
@@ -120,15 +116,6 @@ def find_linear_model_outliers_timeseries(x, y,
                                           epsilon=2.5,
                                           ):
     outliers = np.zeros_like(x).astype('bool')
-
-    #     poa = poa[boolean_mask]
-    #     current = current[boolean_mask]
-
-    #     lower_iter_idx = np.arange(0, len(x), points_per_iteration).astype('int')
-    #     upper_iter_idx = lower_iter_idx + points_per_iteration
-    #     if upper_iter_idx[-1] != len(x):
-    #         upper_iter_idx[-1] = len(x)
-    #         upper_iter_idx[-2] = len(x) - points_per_iteration
 
     isfinite = np.logical_and(np.isfinite(x), np.isfinite(y))
     lower_iter_idx = []
@@ -172,9 +159,6 @@ def find_linear_model_outliers_timeseries(x, y,
         )
 
         outliers_iter = np.logical_and(outliers_iter, boolean_mask[cax])
-        # inbounds_iter = np.logical_not(outliers_iter)
-        # outliers[cax] = huber_iter.is_outlier(x[cax],y[cax])
-        # inbounds[cax] = inbounds_iter
         outliers[cax] = outliers_iter
 
         huber.append(huber_iter)
@@ -573,11 +557,7 @@ class Preprocessor():
                                          epsilon=2.0,
                                          points_per_iteration=2000):
 
-        # filter = np.logical_and.reduce(
-        #     (np.logical_not(self.df['clipped_times']),
-        #      self.df['operating_cls'] == 0
-        #      ))
-        #
+
         filter = np.logical_and.reduce(
             (self.df['operating_cls'] == 0,
              self.df[self.irradiance_poa_key] > poa_lower_lim)
@@ -610,11 +590,6 @@ class Preprocessor():
                                          epsilon=2.0,
                                          points_per_iteration=2000):
 
-        # filter = np.logical_and.reduce(
-        #     (np.logical_not(self.df['clipped_times']),
-        #      self.df['operating_cls'] == 0
-        #      ))
-        #
         filter = np.logical_and.reduce(
             (self.df['operating_cls'] == 0,
              self.df[self.irradiance_poa_key] > poa_lower_lim,

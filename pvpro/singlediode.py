@@ -234,20 +234,6 @@ def pvlib_single_diode(
     return out
 
 
-#
-# def calculate_vmp_imp(photocurrent, saturation_current, resistance_series,
-#             resistance_shunt, nNsVth):
-#     args = (photocurrent, saturation_current, resistance_series,
-#             resistance_shunt, nNsVth)  # collect args
-#     # v_oc = _singlediode.bishop88_v_from_i(
-#     #     0.0, *args, method=method.lower()
-#     # )
-#     i_mp, v_mp, p_mp = _singlediode.bishop88_mpp(
-#         *args, method=method.lower()
-#     )
-#
-#     return v_mp, i_mp
-
 def calculate_temperature_coeffs(
         diode_factor,
         photocurrent_ref,
@@ -326,19 +312,6 @@ def calculate_temperature_coeffs(
                     'resistace_shunt': 'tempco_resistance_shunt',
                     'nNsVth': 'tempco_nNsVth'
                     }
-    # temp_co_name = {'i_sc': 'alpha_isc',
-    #                     'v_oc': 'beta_voc',
-    #                     'i_mp': 'alpha_imp',
-    #                     'v_mp': 'beta_vmp',
-    #                     'p_mp': 'gamma_pmp',
-    #                     'i_x': 'alpha_i_x',
-    #                     'i_xx': 'alpha_i_xx',
-    #                     'photocurrent': 'tempco_photocurrent',
-    #                     'saturation_current': 'tempco_saturation_current',
-    #                     'resistance_series': 'tempco_resistance_series',
-    #                     'resistace_shunt': 'tempco_resistance_shunt',
-    #                     'nNsVth': 'tempco_nNsVth'
-    #                     }
 
     temp_co = {}
 
@@ -415,10 +388,6 @@ def singlediode_closest_point(
         method=method,
         verbose=verbose,
     )
-
-    # point_error[k] = np.sqrt(np.min(
-    #     (out['v'] - dfc['v_operation'][k]) ** 2 / out['v_oc'] ** 2 + (
-    #             out['i'] - dfc['i_operation'][k]) ** 2 / out['i_sc'] ** 2))
 
     distance_to_curve_square = (out['v'] - voltage) ** 2 / out['v_oc'] ** 2 + \
                                (out['i'] - current) ** 2 / out['i_sc'] ** 2
@@ -638,7 +607,7 @@ def pv_system_single_diode_model(
         resistance_series_ref,
         diode_factor,
         cells_in_series,
-        alpha_isc,  # note alpha_isc is fixed.
+        alpha_isc,
         photocurrent_ref,
         saturation_current_ref,
         conductance_shunt_extra=conductance_shunt_extra,
@@ -697,47 +666,9 @@ def pv_system_single_diode_model(
 
         voltage_closest[voltage_closest < 0] = 0
 
-        # TODO: Compare perpindicular distance to midpoint distance.
-
-        #
-        # delta_V = voltage_operation[cax] - voltage_closest
-        # delta_I = current_operation[cax] - current_closest
-        #
-        # voltage_fit[cax] = voltage_closest + delta_V/(1 + (delta_I/delta_V)**2)
-        # current_fit[cax] = current_closest + delta_I/(1 + (delta_I/delta_V)**2)
 
         voltage_fit[cax] = 0.5 * (voltage_operation[cax] + voltage_closest)
         current_fit[cax] = 0.5 * (current_operation[cax] + current_closest)
-
-        # print('Clipped points fit:')
-        # print(pd.DataFrame({'Current Fit': current_fit[cax],
-        #               'Current Op': current_operation[cax],
-        #               'Voltage Fit': voltage_fit[cax],
-        #               'Voltage Op': voltage_operation[cax]}))
-
-    # for k in range(len(effective_irradiance)):
-    #     if operating_cls[k]==3:
-    #
-    #         out_iv = singlediode_closest_point(
-    #                           voltage=voltage_operation[k],
-    #                           current=current_operation[k],
-    #                           effective_irradiance=effective_irradiance[k],
-    #                           temperature_cell=temperature_cell[k],
-    #                           resistance_shunt_ref=resistance_shunt_ref,
-    #                           resistance_series_ref=resistance_series_ref,
-    #                           diode_factor=diode_factor,
-    #                           cells_in_series=cells_in_series,
-    #                           alpha_isc=alpha_isc,
-    #                           photocurrent_ref=photocurrent_ref,
-    #                           saturation_current_ref=saturation_current_ref,
-    #                           Eg_ref=band_gap_ref,
-    #                           dEgdT=dEgdT,
-    #                           ivcurve_pnts=10000,
-    #                           method=method
-    #                           )
-    #         voltage_fit[k] = out_iv['v_closest']
-    #         current_fit[k] = out_iv['i_closest']
-    #
 
     # If cls is 1, then system is at open-circuit voltage.
     cls1 = operating_cls == 1
