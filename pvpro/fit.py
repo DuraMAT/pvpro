@@ -1,4 +1,5 @@
 
+from array import array
 import numpy as np
 import pandas as pd
 
@@ -15,8 +16,12 @@ from sklearn.linear_model import LinearRegression
 from functools import partial
 
 
-def _fit_singlediode_linear(voltage, current, temperature_cell, poa,
-                            resistance_series, diode_factor, cells_in_series,
+def _fit_singlediode_linear(voltage : array, 
+                            current : array, 
+                            temperature_cell : array, 
+                            poa : array,
+                            resistance_series : array, 
+                            diode_factor, cells_in_series,
                             alpha_isc,
                             weights=None,
                             photocurrent_ref_min=0,

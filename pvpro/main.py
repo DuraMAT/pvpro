@@ -1,3 +1,4 @@
+from array import array
 import pvlib
 import numpy as np
 import pandas as pd
@@ -37,41 +38,37 @@ class PvProHandler:
     """
 
     def __init__(self,
-                 df,
-                 system_name='Unknown',
-                 voltage_key=None,
-                 current_key=None,
+                 df : 'dataframe',
+                 system_name : str ='Unknown',
+                 voltage_key : str =None,
+                 current_key : str =None,
                  # power_key=None,
-                 temperature_cell_key='temperature_cell',
-                 temperature_module_key=None,
-                 temperature_ambient_key=None,
-                 irradiance_poa_key=None,
-                 modules_per_string=None,
-                 parallel_strings=None,
-                 alpha_isc=None,
-                 resistance_shunt_ref=600,
+                 temperature_cell_key : str ='temperature_cell',
+                 temperature_module_key : str =None,
+                 temperature_ambient_key : str =None,
+                 irradiance_poa_key : str =None,
+                 modules_per_string : int =None,
+                 parallel_strings : int =None,
+                 alpha_isc : float =None,
+                 resistance_shunt_ref : float =600,
                  # delta_T=3,
-                 # use_clear_times=True,
-                 cells_in_series=None,
-                 technology='mono-Si',
+                 use_clear_times : bool =True,
+                 cells_in_series : int =None,
+                 technology : str =None,
                  ):
 
         # Initialize datahandler object.
 
         self.dh = DataHandler(df)
 
-        # self.df = df
+        self.df = df
         self.system_name = system_name
-        # self.delta_T = delta_T
-        # self.use_clear_times = use_clear_times
         self.cells_in_series = cells_in_series
-        # alpha_isc is in units of A/C.
-        self.alpha_isc = alpha_isc
+        
+        self.alpha_isc = alpha_isc # alpha_isc is in units of A/C.
         self.resistance_shunt_ref = resistance_shunt_ref
         self.voltage_key = voltage_key
         self.current_key = current_key
-        # self.power_key = power_key
-        # self.temperature_module_key = temperature_module_key
         self.temperature_cell_key = temperature_cell_key
         self.temperature_ambient_key = temperature_ambient_key
         self.irradiance_poa_key = irradiance_poa_key
@@ -86,6 +83,12 @@ class PvProHandler:
             resistance_series_ref=0.4,
             conductance_shunt_extra=0
         )
+
+        # Eg and dEgdT based on PV technology
+        # df['band_gap_ref'] = 1.121
+        # df['dEgdT'] = -0.0002677
+        self.band_gap_ref = 1.121
+        self.dEgdT = -0.0002677
 
         # self.solver = solver
 
@@ -140,11 +143,11 @@ class PvProHandler:
         return info_display
 
     def quick_parameter_extraction(self,
-                                   freq='W',
-                                   max_iter=np.inf,
-                                   verbose=False,
-                                   figure=True,
-                                   optimize_Rs_Io=True):
+                                   freq : str ='W',
+                                   max_iter : int =np.inf,
+                                   verbose : bool =False,
+                                   figure : bool =True,
+                                   optimize_Rs_Io : bool=True):
         """
         Run quick parameter estimation over data.
 
@@ -230,33 +233,33 @@ class PvProHandler:
         return out
 
     def execute(self,
-                iteration='all',
-                boolean_mask=None,
-                days_per_run=365.25,
-                iterations_per_year=10,
-                start_point_method='fixed',
-                use_mpp_points=True,
-                use_voc_points=True,
-                use_clip_points=True,
-                diode_factor=None,
-                photocurrent_ref=None,
-                saturation_current_ref=None,
-                resistance_series_ref=None,
-                resistance_shunt_ref=None,
-                conductance_shunt_extra=0,
-                verbose=False,
-                method='minimize',
-                solver='L-BFGS-B',
-                save_figs=True,
-                save_figs_directory='figures',
-                plot_imp_max=8,
-                plot_vmp_max=40,
-                fit_params=None,
-                lower_bounds=None,
-                upper_bounds=None,
-                singlediode_method='fast',
-                saturation_current_multistart=None,
-                technology = None 
+                iteration : str ='all',
+                boolean_mask : bool =None,
+                days_per_run : float =365.25,
+                iterations_per_year : int =10,
+                start_point_method : str ='fixed',
+                use_mpp_points : bool =True,
+                use_voc_points : bool =True,
+                use_clip_points : bool =True,
+                diode_factor : bool =None,
+                photocurrent_ref : bool =None,
+                saturation_current_ref : bool =None,
+                resistance_series_ref : bool =None,
+                resistance_shunt_ref : bool =None,
+                conductance_shunt_extra : float =0,
+                verbose : bool =False,
+                method : str ='minimize',
+                solver : str ='L-BFGS-B',
+                save_figs : bool =True,
+                save_figs_directory : str ='figures',
+                plot_imp_max : float =8,
+                plot_vmp_max : float =40,
+                fit_params : bool =None,
+                lower_bounds : bool =None,
+                upper_bounds : bool =None,
+                singlediode_method : str ='fast',
+                saturation_current_multistart : bool =None,
+                technology : bool = None 
                 ):
         """
         Main PVPRO Method.
@@ -592,9 +595,9 @@ class PvProHandler:
             'Elapsed time: {:.2f} min'.format((time.time() - start_time) / 60))
 
     def estimate_p0(self,
-                    verbose=False,
-                    boolean_mask=None,
-                    technology=None):
+                    verbose : bool =False,
+                    boolean_mask : bool =None,
+                    technology : bool =None):
         """
         Make a rough estimate of the startpoint for fitting the single diode
         model.
@@ -631,10 +634,10 @@ class PvProHandler:
             )
 
     def single_diode_predict(self,
-                             effective_irradiance,
-                             temperature_cell,
-                             operating_cls,
-                             params,
+                             effective_irradiance : array,
+                             temperature_cell : array,
+                             operating_cls : array,
+                             params : dict,
                              ):
 
         voltage, current = pv_system_single_diode_model(
@@ -655,7 +658,7 @@ class PvProHandler:
 
         return voltage, current
 
-    def build_plot_text_str(self, df, p_plot=None):
+    def build_plot_text_str(self, df : 'dataframe', p_plot : bool =None):
 
         if len(df) > 0:
             dates_str = 'Dates: {} to {}\n'.format(
@@ -689,17 +692,17 @@ class PvProHandler:
         return text_str
 
     def plot_Vmp_Imp_scatter(self,
-                             df,
-                             p_plot=None,
-                             figure_number=None,
-                             vmin=0,
-                             vmax=70,
-                             plot_imp_max=8,
-                             plot_vmp_max=40,
-                             figsize=(6.5, 3.5),
-                             cbar=True,
-                             ylabel='Current (A)',
-                             xlabel='Voltage (V)'):
+                             df : 'dataframe',
+                             p_plot : bool =None,
+                             figure_number : bool =None,
+                             vmin : float =0,
+                             vmax : float =70,
+                             plot_imp_max : float =8,
+                             plot_vmp_max : float =40,
+                             figsize : tuple =(6.5, 3.5),
+                             cbar : bool =True,
+                             ylabel : str ='Current (A)',
+                             xlabel : str ='Voltage (V)'):
         """
         Make Vmp, Imp scatter plot.
 
@@ -810,19 +813,19 @@ class PvProHandler:
         plt.ylabel(ylabel, fontsize=9)
 
     def plot_temperature_Vmp_scatter(self,
-                                     df,
-                                     p_plot=None,
-                                     figure_number=None,
-                                     vmin=0,
-                                     vmax=1200,
-                                     plot_imp_max=8,
-                                     plot_vmp_min=20,
-                                     plot_vmp_max=45,
-                                     plot_temperature_min=-10,
-                                     plot_temperature_max=70,
-                                     figsize=(6.5, 3.5),
-                                     cmap='viridis',
-                                     cbar=True):
+                                     df : 'dataframe',
+                                     p_plot : bool =None,
+                                     figure_number : bool =None,
+                                     vmin : float =0,
+                                     vmax : float =1200,
+                                     plot_imp_max : float =8,
+                                     plot_vmp_min : float =20,
+                                     plot_vmp_max : float =45,
+                                     plot_temperature_min : float =-10,
+                                     plot_temperature_max : float =70,
+                                     figsize : tuple =(6.5, 3.5),
+                                     cmap : str ='viridis',
+                                     cbar : bool =True):
         """
         Make Vmp, Imp scatter plot.
 
@@ -912,13 +915,13 @@ class PvProHandler:
         return fig
 
     def plot_suns_voc_scatter(self,
-                              df,
-                              p_plot,
-                              figure_number=2,
-                              vmin=0,
-                              vmax=70,
-                              plot_voc_max=45.,
-                              cbar=True):
+                              df : 'dataframe',
+                              p_plot : dict,
+                              figure_number : int =2,
+                              vmin : float =0,
+                              vmax : float =70,
+                              plot_voc_max : float =45.,
+                              cbar : bool =True):
         """
         Make Vmp, Imp scatter plot.
 
@@ -1005,13 +1008,13 @@ class PvProHandler:
         plt.ylabel('POA (W/m^2)', fontsize=9)
 
     def plot_current_irradiance_clipped_scatter(self,
-                                                df,
-                                                p_plot,
-                                                figure_number=1,
-                                                vmin=0,
-                                                vmax=70,
-                                                plot_imp_max=8,
-                                                cbar=True):
+                                                df : 'dataframe',
+                                                p_plot : dict,
+                                                figure_number : int =1,
+                                                vmin : float =0,
+                                                vmax : float =70,
+                                                plot_imp_max : float =8,
+                                                cbar : bool =True):
         """
         Make Vmp, Imp scatter plot.
 
@@ -1064,13 +1067,13 @@ class PvProHandler:
         plt.xlabel('POA (W/m^2)', fontsize=9)
 
     def plot_current_irradiance_mpp_scatter(self,
-                                            df,
-                                            p_plot=None,
-                                            figure_number=3,
-                                            vmin=0,
-                                            vmax=70,
-                                            plot_imp_max=8,
-                                            cbar=True):
+                                            df : 'dataframe',
+                                            p_plot : bool =None,
+                                            figure_number : int =3,
+                                            vmin : float =0,
+                                            vmax : float =70,
+                                            plot_imp_max : float =8,
+                                            cbar : bool =True):
         """
 
 
@@ -1161,13 +1164,13 @@ class PvProHandler:
 
 
     def plot_temperature_rise_irradiance_scatter(self,
-                                                 df,
-                                                 p_plot,
-                                                 figure_number=1,
-                                                 vmin=0,
-                                                 vmax=70,
-                                                 plot_imp_max=8,
-                                                 cbar=True):
+                                                 df : 'dataframe',
+                                                 p_plot : dict,
+                                                 figure_number : int =1,
+                                                 vmin : float =0,
+                                                 vmax : float =70,
+                                                 plot_imp_max : float =8,
+                                                 cbar : bool =True):
         """
 
 

@@ -1,3 +1,6 @@
+from array import array
+import string
+from xmlrpc.client import boolean
 import numpy as np
 import pandas as pd
 
@@ -15,18 +18,18 @@ from numpy.linalg import pinv
 from time import time
 from sklearn.linear_model import HuberRegressor
 
-def estimate_imp_ref(poa,
-                     temperature_cell,
-                     imp,
-                     poa_lower_limit=200,
-                     irradiance_ref=1000,
-                     temperature_ref=25,
-                     figure=False,
-                     figure_number=20,
-                     model='sandia',
-                     verbose=False,
-                     solver='huber',
-                     epsilon=1.5,
+def estimate_imp_ref(poa : array,
+                     temperature_cell : array,
+                     imp : array,
+                     poa_lower_limit : float =200,
+                     irradiance_ref : float =1000,
+                     temperature_ref : float =25,
+                     figure : bool =False,
+                     figure_number : int =20 ,
+                     model : string ='sandia',
+                     verbose : bool =False,
+                     solver : string ='huber',
+                     epsilon : float =1.5,
                      ):
     """
     Estimate imp_ref and beta_imp using operation data.
@@ -204,16 +207,16 @@ def estimate_imp_ref(poa,
 
     return out
 
-def estimate_vmp_ref(poa,
-                     temperature_cell,
-                     vmp,
-                     irradiance_ref=1000,
-                     temperature_ref=25,
-                     figure=False,
-                     figure_number=21,
-                     model='sandia1',
-                     solver='huber',
-                     epsilon=2.5
+def estimate_vmp_ref(poa : array,
+                     temperature_cell : array,
+                     vmp : array,
+                     irradiance_ref : float =1000,
+                     temperature_ref : float =25,
+                     figure : bool =False,
+                     figure_number : int =21,
+                     model: string ='sandia1',
+                     solver: string ='huber',
+                     epsilon : float =2.5
                      ):
     """
     Estimate vmp_ref using operation data. Function works for any size of
@@ -433,7 +436,7 @@ def estimate_vmp_ref(poa,
 
     return out
 
-def get_average_diode_factor(technology):
+def get_average_diode_factor(technology : string):
     diode_factor_all = {'multi-Si': 1.0229594245606348,
                         'mono-Si': 1.029537190437867,
                         'thin-film': 1.0891515236168812,
@@ -442,7 +445,7 @@ def get_average_diode_factor(technology):
 
     return diode_factor_all[technology]
 
-def estimate_beta_voc(beta_vmp, technology='mono-Si'):
+def estimate_beta_voc(beta_vmp : float, technology : string ='mono-Si'):
     beta_voc_beta_vmp_ratio = {
         'multi-Si': 0.978053067,
         'mono-Si': 0.977447359,
@@ -455,12 +458,12 @@ def estimate_beta_voc(beta_vmp, technology='mono-Si'):
     return beta_voc
 
 
-def estimate_diode_factor(vmp_ref, beta_vmp, imp_ref,
-                          alpha_isc_norm=0,
-                          resistance_series=0.35,
-                          cells_in_series=60,
-                          temperature_ref=25,
-                          technology=None):
+def estimate_diode_factor(vmp_ref : array, beta_vmp : float, imp_ref : array,
+                          alpha_isc_norm  : float =0,
+                          resistance_series : float =0.35,
+                          cells_in_series : int =60,
+                          temperature_ref : float =25,
+                          technology : string =None):
 
     # Thermal temperature
     k = 1.381e-23
@@ -487,7 +490,7 @@ def estimate_diode_factor(vmp_ref, beta_vmp, imp_ref,
     return diode_factor.real
 
 
-def estimate_photocurrent_ref_simple(imp_ref, technology='mono-Si'):
+def estimate_photocurrent_ref_simple(imp_ref: array, technology : string ='mono-Si'):
     photocurrent_imp_ratio = {'multi-Si': 1.0746167586063207,
                               'mono-Si': 1.0723051517913444,
                               'thin-film': 1.1813401654607967,
@@ -499,7 +502,7 @@ def estimate_photocurrent_ref_simple(imp_ref, technology='mono-Si'):
     return photocurrent_ref
 
 
-def estimate_saturation_current(isc, voc, nNsVth):
+def estimate_saturation_current(isc : array, voc : array, nNsVth : array):
     """
         .. [2] John A Dufﬁe, William A Beckman, "Solar Engineering of Thermal
        Processes", Wiley, 2013
@@ -517,19 +520,22 @@ def estimate_saturation_current(isc, voc, nNsVth):
     return isc * np.exp(-voc / nNsVth)
 
 
-def estimate_saturation_current_ref(i_mp, v_mp, photocurrent_ref,
-                                    temperature_cell, poa,
-                                    diode_factor=1.10,
-                                    cells_in_series=60,
-                                    temperature_ref=25,
-                                    irradiance_ref=1000,
-                                    resistance_series=0.4,
-                                    resistance_shunt_ref=400,
-                                    EgRef=1.121,
-                                    dEgdT=-0.0002677,
-                                    alpha_isc=0.001,
-                                    figure=False,
-                                    figure_number=24):
+def estimate_saturation_current_ref(i_mp : array, 
+                                    v_mp : array, 
+                                    photocurrent_ref : array,
+                                    temperature_cell : array, 
+                                    poa : array,
+                                    diode_factor : float =1.10,
+                                    cells_in_series : int =60,
+                                    temperature_ref : float =25,
+                                    irradiance_ref : float =1000,
+                                    resistance_series : float =0.4,
+                                    resistance_shunt_ref : float =400,
+                                    EgRef : float =1.121,
+                                    dEgdT : float =-0.0002677,
+                                    alpha_isc : float =0.001,
+                                    figure : bool =False,
+                                    figure_number : int =24):
     cax = np.logical_and.reduce((
         i_mp * v_mp > np.nanpercentile(i_mp * v_mp, 1),
         np.isfinite(i_mp),
@@ -587,19 +593,22 @@ def estimate_saturation_current_ref(i_mp, v_mp, photocurrent_ref,
     return I0_ref.mean()
 
 
-def estimate_photocurrent_ref(current, voltage, saturation_current_ref,
-                              temperature_cell, poa,
-                              diode_factor=1.10,
-                              cells_in_series=60,
-                              temperature_ref=25,
-                              irradiance_ref=1000,
-                              resistance_series=0.4,
-                              resistance_shunt_ref=400,
-                              EgRef=1.121,
-                              dEgdT=-0.0002677,
-                              alpha_isc_norm=0.001 / 6,
-                              figure=False,
-                              figure_number=25):
+def estimate_photocurrent_ref(current : array, 
+                              voltage : array, 
+                              saturation_current_ref : array,
+                              temperature_cell : array, 
+                              poa : array,
+                              diode_factor : float =1.10,
+                              cells_in_series : int =60,
+                              temperature_ref : float =25,
+                              irradiance_ref : float =1000,
+                              resistance_series : float =0.4,
+                              resistance_shunt_ref : float =400,
+                              EgRef : float =1.121,
+                              dEgdT : float =-0.0002677,
+                              alpha_isc_norm : float =0.001 / 6,
+                              figure : bool =False,
+                              figure_number : int =25):
     cax = np.logical_and.reduce((
         current * voltage > np.nanpercentile(current * voltage, 1),
         np.isfinite(current),
@@ -656,7 +665,7 @@ def estimate_photocurrent_ref(current, voltage, saturation_current_ref,
     return IL_ref_mean
 
 
-def estimate_cells_in_series(voc_ref, technology='mono-Si'):
+def estimate_cells_in_series(voc_ref : array, technology : string ='mono-Si'):
     """
 
     Note: Could improve this by using the fact that most modules have one of
@@ -682,7 +691,7 @@ def estimate_cells_in_series(voc_ref, technology='mono-Si'):
     return int(voc_ref / voc_cell[technology])
 
 
-def estimate_voc_ref(vmp_ref, technology=None):
+def estimate_voc_ref(vmp_ref : array, technology : string =None):
     voc_vmp_ratio = {'thin-film': 1.3069503474012514,
                      'multi-Si': 1.2365223483476515,
                      'cigs': 1.2583291018540534,
@@ -694,7 +703,7 @@ def estimate_voc_ref(vmp_ref, technology=None):
     return voc_ref
 
 
-def estimate_beta_voc(beta_vmp, technology='mono-Si'):
+def estimate_beta_voc(beta_vmp : float, technology : string ='mono-Si'):
     beta_voc_to_beta_vmp_ratio = {'thin-film': 0.9594252453485964,
                                   'multi-Si': 0.9782579114165342,
                                   'cigs': 0.9757373267198366,
@@ -704,7 +713,7 @@ def estimate_beta_voc(beta_vmp, technology='mono-Si'):
     return beta_voc
 
 
-def estimate_alpha_isc(isc, technology):
+def estimate_alpha_isc(isc : array, technology : string):
     alpha_isc_to_isc_ratio = {'multi-Si': 0.0005864523754010862,
                               'mono-Si': 0.0005022410194560715,
                               'thin-film': 0.00039741211251133725,
@@ -715,7 +724,7 @@ def estimate_alpha_isc(isc, technology):
     return alpha_isc
 
 
-def estimate_isc_ref(imp_ref, technology):
+def estimate_isc_ref(imp_ref : array, technology: string):
     isc_to_imp_ratio = {'multi-Si': 1.0699135787527263,
                         'mono-Si': 1.0671785412770871,
                         'thin-film': 1.158663685900219,
@@ -727,32 +736,32 @@ def estimate_isc_ref(imp_ref, technology):
     return isc_ref
 
 
-def estimate_resistance_series_simple(vmp, imp,
-                                      saturation_current,
-                                      photocurrent,
-                                      nNsVth):
+def estimate_resistance_series_simple(vmp : array, imp : array,
+                                      saturation_current : array,
+                                      photocurrent : array,
+                                      nNsVth : array):
     Rs = (nNsVth * np.log1p(
         (photocurrent - imp) / saturation_current) - vmp) / imp
     return Rs
 
 
-def estimate_resistance_series(poa,
-                               temperature_cell,
-                               voltage,
-                               current,
-                               photocurrent_ref,
-                               saturation_current_ref,
-                               diode_factor,
-                               cells_in_series=60,
-                               temperature_ref=25,
-                               irradiance_ref=1000,
-                               resistance_shunt_ref=400,
-                               EgRef=1.121,
-                               dEgdT=-0.0002677,
-                               alpha_isc=0.001,
-                               figure=False,
-                               figure_number=26,
-                               verbose=False
+def estimate_resistance_series(poa : array,
+                               temperature_cell : array,
+                               voltage : array,
+                               current : array,
+                               photocurrent_ref : array,
+                               saturation_current_ref : array,
+                               diode_factor : array,
+                               cells_in_series : int =60,
+                               temperature_ref : float =25,
+                               irradiance_ref : float=1000,
+                               resistance_shunt_ref : float=400,
+                               EgRef : float =1.121,
+                               dEgdT : float =-0.0002677,
+                               alpha_isc : float =0.001,
+                               figure : bool =False,
+                               figure_number :int =26,
+                               verbose : bool =False
                                ):
     cax = np.logical_and.reduce((
         current * voltage > np.nanpercentile(current * voltage, 70),
@@ -808,28 +817,27 @@ def estimate_resistance_series(poa,
 
     return Rs_mean
 
-def estimate_singlediode_params(poa,
-                                temperature_cell,
-                                vmp,
-                                imp,
-                                # delta_T=3,
-                                band_gap_ref=1.121,
-                                dEgdT=-0.0002677,
-                                alpha_isc=None,
-                                cells_in_series=None,
-                                technology=None,
-                                convergence_test=0.0001,
-                                temperature_ref=25,
-                                irradiance_ref=1000,
-                                resistance_series_ref=None,
-                                resistance_shunt_ref=600,
-                                figure=False,
-                                figure_number_start=20,
-                                imp_model='sandia',
-                                vmp_model='sandia1',
-                                verbose=False,
-                                max_iter=10,
-                                optimize_Rs_Io=False,
+def estimate_singlediode_params(poa: array,
+                                temperature_cell : array,
+                                vmp : array,
+                                imp : array,
+                                band_gap_ref : float =1.121,
+                                dEgdT : float =-0.0002677,
+                                alpha_isc : float =None,
+                                cells_in_series : int =None,
+                                technology : string =None,
+                                convergence_test : float =0.0001,
+                                temperature_ref : float =25,
+                                irradiance_ref : float =1000,
+                                resistance_series_ref : float =None,
+                                resistance_shunt_ref : float =600,
+                                figure : bool =False,
+                                figure_number_start : int =20,
+                                imp_model : string ='sandia',
+                                vmp_model : string ='sandia1',
+                                verbose : bool =False,
+                                max_iter : int =10,
+                                optimize_Rs_Io : bool =False,
                                 ):
     """
 

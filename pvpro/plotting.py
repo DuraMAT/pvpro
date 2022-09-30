@@ -1,3 +1,4 @@
+from array import array
 import pvlib
 import numpy as np
 import pandas as pd
@@ -14,18 +15,18 @@ from pvpro.singlediode import pvlib_single_diode
 from sklearn.linear_model import LinearRegression
 
 
-def plot_results_timeseries(pfit, yoy_result=None,
-                            compare=None,
-                            compare_label='True Values',
-                            compare_plot_style='.',
-                            extra_text='',
-                            nrows=5,
-                            ncols=2,
-                            wspace=0.4,
-                            hspace=0.1,
-                            keys_to_plot=None,
-                            yoy_CI = False,
-                            plot_est=True):
+def plot_results_timeseries(pfit : 'dataframe', yoy_result : bool =None,
+                            compare : bool =None,
+                            compare_label : str ='True Values',
+                            compare_plot_style : str ='.',
+                            extra_text : str ='',
+                            nrows : int =5,
+                            ncols : int =2,
+                            wspace : float =0.4,
+                            hspace : float =0.1,
+                            keys_to_plot : bool =None,
+                            yoy_CI : bool = False,
+                            plot_est : bool =True):
     n = 1
     figure = plt.figure(21, figsize=(7, 6))
 
@@ -167,26 +168,27 @@ def plot_results_timeseries(pfit, yoy_result=None,
 
             n = n + 1
 
-def plot_results_timeseries_error(pfit, df = None, yoy_result=None,
-                            compare=None,
-                            compare_label='True value',
-                            compare_plot_style='.',
-                            extra_text='',
-                            nrows=5,
-                            ncols=2,
-                            wspace=0.4,
-                            hspace=0.1,
-                            keys_to_plot=None,
-                            plot_est=True,
-                            yoy_plot = False,
-                            linestyle = '.',
-                            figsize = (8, 9),
-                            legendloc = [0.3, -1.7],
-                            ncol = 3,
-                            cal_error_synthetic = False,
-                            cal_error_real = False,
-                            xticks = None,
-                            nylim = None):
+def plot_results_timeseries_error(pfit : 'dataframe', 
+                            df : 'dataframe' = None, 
+                            yoy_result : bool =None,
+                            compare : bool =None,
+                            compare_label : str ='True value',
+                            compare_plot_style : str ='.',
+                            extra_text : str ='',
+                            nrows : int =5,
+                            ncols : int =2,
+                            wspace : float =0.4,
+                            hspace : float =0.1,
+                            keys_to_plot : bool =None,
+                            yoy_plot : bool  = False,
+                            linestyle : str = '.',
+                            figsize : tuple = (8, 9),
+                            legendloc : tuple = [0.3, -1.7],
+                            ncol : int = 3,
+                            cal_error_synthetic : bool = False,
+                            cal_error_real : bool = False,
+                            xticks : bool = None,
+                            nylim : bool = None):
     n = 1
     figure = plt.figure(21, figsize=figsize)
 
@@ -338,20 +340,22 @@ def plot_results_timeseries_error(pfit, df = None, yoy_result=None,
             n = n + 1
     return error_df
 
-def plot_scatter(x, y, c, boolean_mask=None, figure_number=None,
-                 vmin=0,
-                 vmax=70,
-                 plot_x_min=0,
-                 plot_x_max=40,
-                 plot_y_min=0,
-                 plot_y_max=10,
-                 figsize=(6.5, 3.5),
-                 text_str='',
-                 cbar=True,
-                 cmap='jet',
-                 ylabel='',
-                 xlabel='',
-                 clabel=''):
+def plot_scatter(x : array, y : array, c : array, 
+                 boolean_mask : bool =None, 
+                 figure_number : int =None,
+                 vmin : float =0,
+                 vmax : float =70,
+                 plot_x_min : float =0,
+                 plot_x_max : float =40,
+                 plot_y_min : float =0,
+                 plot_y_max : float =10,
+                 figsize : tuple =(6.5, 3.5),
+                 text_str : str ='',
+                 cbar : bool =True,
+                 cmap : str ='jet',
+                 ylabel : str ='',
+                 xlabel : str ='',
+                 clabel : str =''):
     """
     Make Vmp, Imp scatter plot.
 
@@ -409,19 +413,19 @@ def plot_scatter(x, y, c, boolean_mask=None, figure_number=None,
     return h_sc
 
 
-def plot_Vmp_Imp_scatter(voltage, current, poa, temperature_cell,
-                         operating_cls,
-                         boolean_mask=None,
-                         p_plot=None,
-                         vmin=0,
-                         vmax=70,
-                         plot_imp_max=8,
-                         plot_vmp_max=40,
-                         figsize=(6.5, 3.5),
-                         cbar=True,
-                         text_str='',
-                         ylabel='Current (A)',
-                         xlabel='Voltage (V)'):
+def plot_Vmp_Imp_scatter(voltage : array, current : array, poa : array, temperature_cell : array,
+                         operating_cls : array,
+                         boolean_mask : bool =None,
+                         p_plot : 'dataframe' =None,
+                         vmin : float =0,
+                         vmax : float =70,
+                         plot_imp_max : float =8,
+                         plot_vmp_max : float =40,
+                         figsize : tuple =(6.5, 3.5),
+                         cbar : bool =True,
+                         text_str : str ='',
+                         ylabel : str ='Current (A)',
+                         xlabel : str ='Voltage (V)'):
     """
     Make Vmp, Imp scatter plot.
 
@@ -515,19 +519,19 @@ def plot_Vmp_Imp_scatter(voltage, current, poa, temperature_cell,
     return h_sc
 
 
-def plot_poa_Imp_scatter(current, poa, temperature_cell,
-                         operating_cls,
-                         voltage=None,
-                         boolean_mask=None,
-                         vmin=0,
-                         vmax=70,
-                         plot_poa_max=1200,
-                         plot_imp_max=10,
-                         figsize=(6.5, 3.5),
-                         cbar=True,
-                         text_str='',
-                         ylabel='Current (A)',
-                         xlabel='POA (W/m2^2)'):
+def plot_poa_Imp_scatter(current : array , poa : array , temperature_cell : array ,
+                         operating_cls : array ,
+                         voltage : array =None,
+                         boolean_mask : array =None,
+                         vmin : float =0,
+                         vmax : float =70,
+                         plot_poa_max : float =1200,
+                         plot_imp_max : float =10,
+                         figsize : tuple =(6.5, 3.5),
+                         cbar : bool =True,
+                         text_str : str ='',
+                         ylabel : str ='Current (A)',
+                         xlabel : str ='POA (W/m2^2)'):
     """
     Make Vmp, Imp scatter plot.
 

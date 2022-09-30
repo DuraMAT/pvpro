@@ -1,3 +1,4 @@
+from array import array
 import numpy as np
 from tqdm import tqdm
 import pandas as pd
@@ -27,7 +28,7 @@ import seaborn as sns
 
 from pvpro.classify import build_operating_cls
 
-def monotonic(y, fractional_rate_limit=0.05):
+def monotonic(y : array, fractional_rate_limit : float =0.05):
     """
     Find times when vector has a run of three increasing values,
     three decreasing values or is changing less than a fractional percent.
@@ -54,9 +55,9 @@ def monotonic(y, fractional_rate_limit=0.05):
     return boolean_mask
 
 
-def find_huber_outliers(x, y, sample_weight=None,
-                        fit_intercept=True,
-                        epsilon=2.5):
+def find_huber_outliers(x : array, y : array, sample_weight : bool =None,
+                        fit_intercept : bool =True,
+                        epsilon : float =2.5):
     """
     Identify outliers based on a linear fit of current at maximum power point
     to plane-of-array irradiance.
@@ -87,14 +88,14 @@ def find_huber_outliers(x, y, sample_weight=None,
               sample_weight=sample_weight[mask])
 
 
-    def is_outlier(x, y):
+    def is_outlier(x : array, y : array):
         X = np.atleast_2d(x).transpose()
         residual = np.abs(
             y - safe_sparse_dot(X, huber.coef_) - huber.intercept_)
         outliers = residual > huber.scale_ * huber.epsilon
         return outliers
 
-    def is_inbounds(x, y):
+    def is_inbounds(x : array, y : array):
         X = np.atleast_2d(x).transpose()
         residual = np.abs(
             y - safe_sparse_dot(X, huber.coef_) - huber.intercept_)
@@ -109,11 +110,11 @@ def find_huber_outliers(x, y, sample_weight=None,
     return outliers, huber
 
 
-def find_linear_model_outliers_timeseries(x, y,
-                                          boolean_mask=None,
-                                          fit_intercept=True,
-                                          points_per_iteration=20000,
-                                          epsilon=2.5,
+def find_linear_model_outliers_timeseries(x : array, y : array,
+                                          boolean_mask : bool =None,
+                                          fit_intercept : bool =True,
+                                          points_per_iteration : int =20000,
+                                          epsilon : float =2.5,
                                           ):
     outliers = np.zeros_like(x).astype('bool')
 
@@ -174,12 +175,12 @@ def find_linear_model_outliers_timeseries(x, y,
     return out
 
 
-def find_clearsky_poa(df, lat, lon,
-                      irradiance_poa_key='irradiance_poa_o_###',
-                      mounting='fixed',
-                      tilt=0,
-                      azimuth=180,
-                      altitude=0):
+def find_clearsky_poa(df : 'dataframe', lat : float, lon : float,
+                      irradiance_poa_key : str ='irradiance_poa_o_###',
+                      mounting : str ='fixed',
+                      tilt : float =0,
+                      azimuth : float =180,
+                      altitude : float =0):
     loc = Location(lat, lon, altitude=altitude)
 
     CS = loc.get_clearsky(df.index)
@@ -257,17 +258,17 @@ def find_clearsky_poa(df, lat, lon,
 class Preprocessor():
 
     def __init__(self,
-                 df,
-                 system_name='Unknown',
-                 voltage_dc_key=None,
-                 current_dc_key=None,
-                 temperature_module_key=None,
-                 temperature_ambient_key=None,
-                 irradiance_poa_key=None,
-                 modules_per_string=None,
-                 parallel_strings=None,
-                 freq='15min',
-                 solver="MOSEK"
+                 df : 'dataframe',
+                 system_name : str ='Unknown',
+                 voltage_dc_key : bool =None,
+                 current_dc_key : bool =None,
+                 temperature_module_key : bool =None,
+                 temperature_ambient_key : bool =None,
+                 irradiance_poa_key : bool =None,
+                 modules_per_string : bool =None,
+                 parallel_strings : bool =None,
+                 freq : str ='15min',
+                 solver : str ="MOSEK"
                  ):
 
         # Initialize datahandler object.
@@ -324,7 +325,7 @@ class Preprocessor():
         return self.dh.data_frame_raw
 
     @df.setter
-    def df(self, value):
+    def df(self, value : str):
         """
         Set Dataframe by setting the version inside datahandler.
 
@@ -346,8 +347,8 @@ class Preprocessor():
         self.freq = '{:.0f}min'.format(timedelta_minutes)
         print('Autodetected freq: {}'.format(self.freq))
 
-    def calculate_cell_temperature(self, delta_T=3,
-                                   temperature_cell_key='temperature_cell'):
+    def calculate_cell_temperature(self, delta_T : float =3,
+                                   temperature_cell_key : str ='temperature_cell'):
         """
         Set cell temeperature in dataframe.
 
@@ -379,12 +380,12 @@ class Preprocessor():
 
 
     def run_preprocess_sdt(self,
-                       correct_tz=False,
-                       data_sampling=None,
-                       correct_dst=False,
-                       fix_shifts=True,
-                       max_val=None,
-                       verbose=True):
+                       correct_tz : bool =False,
+                       data_sampling : bool =None,
+                       correct_dst : bool =False,
+                       fix_shifts : bool =True,
+                       max_val : bool =None,
+                       verbose : bool =True):
         """
         Perform "time-consuming" preprocessing steps, using solarDataTool
 
@@ -525,8 +526,8 @@ class Preprocessor():
 
 
     def find_clear_times_sdt(self,
-                         min_length=2,
-                         smoothness_hyperparam=5000):
+                         min_length : int =2,
+                         smoothness_hyperparam : int =5000):
         """
         Find clear times.
 
@@ -545,17 +546,17 @@ class Preprocessor():
         self.dh.augment_data_frame(self.dh.boolean_masks.clear_times,
                                    'clear_time')
 
-    def find_monotonic_times(self, fractional_rate_limit=0.05):
+    def find_monotonic_times(self, fractional_rate_limit : float =0.05):
         self.df['monotonic'] = monotonic(
             self.df[self.voltage_dc_key] * self.df[self.current_dc_key],
             fractional_rate_limit=fractional_rate_limit)
 
 
     def find_current_irradiance_outliers(self,
-                                         boolean_mask=None,
-                                         poa_lower_lim=10,
-                                         epsilon=2.0,
-                                         points_per_iteration=2000):
+                                         boolean_mask : bool =None,
+                                         poa_lower_lim : float =10,
+                                         epsilon : float =2.0,
+                                         points_per_iteration : int =2000):
 
 
         filter = np.logical_and.reduce(
@@ -584,11 +585,11 @@ class Preprocessor():
 
 
     def find_temperature_voltage_outliers(self,
-                                         boolean_mask=None,
-                                         poa_lower_lim=10,
-                                         voltage_lower_lim = 10,
-                                         epsilon=2.0,
-                                         points_per_iteration=2000):
+                                         boolean_mask : bool =None,
+                                         poa_lower_lim : float =10,
+                                         voltage_lower_lim : float = 10,
+                                         epsilon : float =2.0,
+                                         points_per_iteration : int =2000):
 
         filter = np.logical_and.reduce(
             (self.df['operating_cls'] == 0,
@@ -621,7 +622,7 @@ class Preprocessor():
         return voltage_temperature_filter
 
 
-    def plot_operating_cls(self, figsize=(12, 6)):
+    def plot_operating_cls(self, figsize : tuple =(12, 6)):
 
 
         if not 'operating_cls' in self.dh.extra_matrices:

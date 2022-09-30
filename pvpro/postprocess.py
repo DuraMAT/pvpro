@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 
 
-def analyze_yoy(pfit):
+def analyze_yoy(pfit : 'dataframe'):
     out = {}
 
     for k in ['photocurrent_ref', 'saturation_current_ref',
@@ -29,7 +29,7 @@ def analyze_yoy(pfit):
 
     return out
 
-def calculate_error_real(pfit, df_ref, nrolling = 1):
+def calculate_error_real(pfit : 'dataframe', df_ref : 'dataframe', nrolling : int = 1):
     keys = ['diode_factor',
             'photocurrent_ref', 'saturation_current_ref',
             'resistance_series_ref',
@@ -52,7 +52,7 @@ def calculate_error_real(pfit, df_ref, nrolling = 1):
 
     return all_error_df
 
-def calculate_error_synthetic(pfit, df,zero_mean=False):
+def calculate_error_synthetic(pfit : 'dataframe', df : 'dataframe', zero_mean : bool =False):
     dft = pd.DataFrame()
 
     keys = ['diode_factor',

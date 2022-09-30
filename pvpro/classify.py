@@ -1,8 +1,10 @@
+from array import array
+import string
 import numpy as np
 from pvanalytics.features import clipping
 import pandas as pd
 
-def classify_operating_mode(voltage, current,
+def classify_operating_mode(voltage: array, current: array,
                             power_clip=np.inf,
                             method='fraction',
                             clipped_times=None,
@@ -54,7 +56,7 @@ def classify_operating_mode(voltage, current,
     return cls
 
 
-def build_operating_cls(df):
+def build_operating_cls(df: 'dataframe or dict') -> array:
     """
     Build array of classifications of each time stamp based on boolean arrays
     provided.

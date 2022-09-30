@@ -1,4 +1,5 @@
 # import pvlib
+from array import array
 import numpy as np
 
 from pvlib.singlediode import _lambertw_i_from_v, _lambertw_v_from_i, \
@@ -6,18 +7,28 @@ from pvlib.singlediode import _lambertw_i_from_v, _lambertw_v_from_i, \
 from pvlib.pvsystem import calcparams_desoto, singlediode
 
 
-# from pvterms import rename
+def estimate_Eg_dEgdT(technology : str):
+    allEg = {'multi-Si': 1.121,
+                        'mono-Si': 1.121,
+                        'GaAs': 1.424,
+                        'CIGS': 1.15, 
+                        'CdTe':  1.475}
 
-# from pvpro.singlediode_interpolate import singlediode_fast
+    alldEgdT = {'multi-Si': -0.0002677,
+                        'mono-Si': -0.0002677,
+                        'GaAs': -0.000433,
+                        'CIGS': -0.00001, 
+                        'CdTe': -0.0003}
 
+    return allEg[technology], alldEgdT[technology]
 
-def calcparams_pvpro(effective_irradiance, temperature_cell,
-                     alpha_isc, nNsVth_ref, photocurrent_ref,
-                     saturation_current_ref,
-                     resistance_shunt_ref, resistance_series_ref,
-                     conductance_shunt_extra,
-                     Eg_ref=None, dEgdT=None, # Remove default value
-                     irradiance_ref=1000, temperature_ref=25):
+def calcparams_pvpro(effective_irradiance : array, temperature_cell : array,
+                     alpha_isc : array, nNsVth_ref : array, photocurrent_ref : array,
+                     saturation_current_ref : array,
+                     resistance_shunt_ref : array, resistance_series_ref : array,
+                     conductance_shunt_extra : array,
+                     Eg_ref : float =None, dEgdT : float =None,
+                     irradiance_ref : float =1000, temperature_ref : float =25):
     """
     Similar to pvlib calcparams_desoto, except an extra shunt conductance is
     added.
@@ -62,8 +73,10 @@ def calcparams_pvpro(effective_irradiance, temperature_cell,
     return iph, io, rs, rsh, nNsVth
 
 
-def singlediode_fast(photocurrent, saturation_current, resistance_series,
-                       resistance_shunt, nNsVth,calculate_voc=False):
+def singlediode_fast(photocurrent : array, 
+                    saturation_current : array, 
+                    resistance_series : array,
+                    resistance_shunt : array, nNsVth : array, calculate_voc : bool =False):
     # Calculate points on the IV curve using either 'newton' or 'brentq'
     # methods. Voltages are determined by first solving the single diode
     # equation for the diode voltage V_d then backing out voltage
@@ -88,24 +101,24 @@ def singlediode_fast(photocurrent, saturation_current, resistance_series,
 
 
 def pvlib_single_diode(
-        effective_irradiance,
-        temperature_cell,
-        resistance_shunt_ref,
-        resistance_series_ref,
-        diode_factor,
-        cells_in_series,
-        alpha_isc,
-        photocurrent_ref,
-        saturation_current_ref,
-        Eg_ref=None, # Remove default value
-        dEgdT=None,
-        conductance_shunt_extra=0,
-        irradiance_ref=1000,
-        temperature_ref=25,
-        ivcurve_pnts=None,
-        output_all_params=False,
-        singlediode_method='fast',
-        calculate_voc=False,
+        effective_irradiance : array,
+        temperature_cell : array,
+        resistance_shunt_ref : array,
+        resistance_series_ref : array,
+        diode_factor : array,
+        cells_in_series : int,
+        alpha_isc : float,
+        photocurrent_ref : array,
+        saturation_current_ref : array,
+        Eg_ref : float =None,
+        dEgdT : float =None,
+        conductance_shunt_extra : array =0,
+        irradiance_ref : float =1000,
+        temperature_ref : float =25,
+        ivcurve_pnts : int =None,
+        output_all_params : bool =False,
+        singlediode_method : str ='fast',
+        calculate_voc : bool =False,
 ):
     """
     Find points of interest on the IV curve given module parameters and
@@ -235,21 +248,21 @@ def pvlib_single_diode(
 
 
 def calculate_temperature_coeffs(
-        diode_factor,
-        photocurrent_ref,
-        saturation_current_ref,
-        resistance_series_ref,
-        resistance_shunt_ref,
-        cells_in_series,
-        alpha_isc,
-        conductance_shunt_extra=0,
-        effective_irradiance=1000,
-        temperature_cell=25,
-        band_gap_ref=None, # Remove default value
-        dEgdT=None,
-        singlediode_method='newton',
-        irradiance_ref=1000,
-        temperature_ref=25
+        diode_factor : array,
+        photocurrent_ref : array,
+        saturation_current_ref : array,
+        resistance_series_ref : array,
+        resistance_shunt_ref : array,
+        cells_in_series : int,
+        alpha_isc : float,
+        conductance_shunt_extra : array=0,
+        effective_irradiance : float =1000,
+        temperature_cell : float =25,
+        band_gap_ref : float = None,
+        dEgdT : float = None,
+        singlediode_method : str ='newton',
+        irradiance_ref : float =1000,
+        temperature_ref : float =25
 ):
     """
     Calculate temperature coefficients given single diode model parameters.
@@ -323,24 +336,24 @@ def calculate_temperature_coeffs(
 
 
 def singlediode_closest_point(
-        voltage,
-        current,
-        effective_irradiance,
-        temperature_cell,
-        resistance_shunt_ref,
-        resistance_series_ref,
-        diode_factor,
-        cells_in_series,
-        alpha_isc,
-        photocurrent_ref,
-        saturation_current_ref,
-        Eg_ref=None, # Remove default value
-        dEgdT=None,
-        reference_irradiance=1000,
-        reference_temperature=25,
-        method='newton',
-        verbose=False,
-        ivcurve_pnts=1000):
+        voltage : array,
+        current : array,
+        effective_irradiance : array,
+        temperature_cell : array,
+        resistance_shunt_ref : array,
+        resistance_series_ref : array,
+        diode_factor : array,
+        cells_in_series : int,
+        alpha_isc : float ,
+        photocurrent_ref : array,
+        saturation_current_ref : array,
+        Eg_ref : float = None, 
+        dEgdT : float = None,
+        reference_irradiance : float = 1000,
+        reference_temperature : float = 25,
+        method : str ='newton',
+        verbose : bool = False,
+        ivcurve_pnts : int = 1000):
     """
     Find the closest point on the IV curve, using brute force calculation.
 
@@ -409,22 +422,22 @@ def singlediode_closest_point(
 
 
 def singlediode_v_from_i(
-        current,
-        effective_irradiance,
-        temperature_cell,
-        resistance_shunt_ref,
-        resistance_series_ref,
-        diode_factor,
-        cells_in_series,
-        alpha_isc,
-        photocurrent_ref,
-        saturation_current_ref,
-        Eg_ref=None, # Remove default value
-        dEgdT=None,
-        reference_irradiance=1000,
-        reference_temperature=25,
-        method='newton',
-        verbose=False,
+        current : array,
+        effective_irradiance : array,
+        temperature_cell : array,
+        resistance_shunt_ref : array,
+        resistance_series_ref : array,
+        diode_factor : array,
+        cells_in_series : int,
+        alpha_isc : float,
+        photocurrent_ref : array,
+        saturation_current_ref : array,
+        Eg_ref : float =None, # Remove default value
+        dEgdT : float=None,
+        reference_irradiance : float=1000,
+        reference_temperature : float=25,
+        method : str ='newton',
+        verbose : bool =False,
 ):
     """
     Calculate voltage at a particular point on the IV curve.
@@ -474,22 +487,22 @@ def singlediode_v_from_i(
 
 
 def singlediode_i_from_v(
-        voltage,
-        effective_irradiance,
-        temperature_cell,
-        resistance_shunt_ref,
-        resistance_series_ref,
-        diode_factor,
-        cells_in_series,
-        alpha_isc,
-        photocurrent_ref,
-        saturation_current_ref,
-        Eg_ref=None, # Remove default value
-        dEgdT=None,
-        reference_irradiance=1000,
-        reference_temperature=25,
-        method='newton',
-        verbose=False,
+        voltage : array,
+        effective_irradiance : array,
+        temperature_cell : array,
+        resistance_shunt_ref : array,
+        resistance_series_ref : array,
+        diode_factor : array,
+        cells_in_series : int,
+        alpha_isc : float,
+        photocurrent_ref : array,
+        saturation_current_ref : array,
+        Eg_ref  : float =None,
+        dEgdT : float =None,
+        reference_irradiance : float =1000,
+        reference_temperature : float =25,
+        method : str ='newton',
+        verbose : bool =False,
 ):
     """
     Calculate current at a particular voltage on the IV curve.
@@ -539,22 +552,22 @@ def singlediode_i_from_v(
 
 
 def pv_system_single_diode_model(
-        effective_irradiance,
-        temperature_cell,
-        operating_cls,
-        diode_factor,
-        photocurrent_ref,
-        saturation_current_ref,
-        resistance_series_ref,
-        conductance_shunt_extra,
-        resistance_shunt_ref,
-        cells_in_series,
-        alpha_isc,
-        voltage_operation=None,
-        current_operation=None,
-        band_gap_ref = None, # Remove default value
-        dEgdT = None, 
-        singlediode_method='fast',
+        effective_irradiance : array,
+        temperature_cell : array,
+        operating_cls : array,
+        diode_factor : array,
+        photocurrent_ref : array,
+        saturation_current_ref : array,
+        resistance_series_ref : array,
+        conductance_shunt_extra : array,
+        resistance_shunt_ref : array,
+        cells_in_series : int,
+        alpha_isc : array,
+        voltage_operation : array = None,
+        current_operation : array = None,
+        band_gap_ref : float = None,
+        dEgdT : float = None, 
+        singlediode_method : str ='fast',
         **kwargs
 ):
     """
