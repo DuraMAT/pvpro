@@ -11,6 +11,7 @@ import time
 from tqdm import tqdm
 
 import matplotlib.pyplot as plt
+from pvpro.singlediode import estimate_Eg_dEgdT
 
 from solardatatools import DataHandler
 from pvlib.temperature import sapm_cell_from_module
@@ -85,10 +86,7 @@ class PvProHandler:
         )
 
         # Eg and dEgdT based on PV technology
-        # df['band_gap_ref'] = 1.121
-        # df['dEgdT'] = -0.0002677
-        self.band_gap_ref = 1.121
-        self.dEgdT = -0.0002677
+        self.Eg_ref, self.dEgdT = estimate_Eg_dEgdT(self.technology)
 
         # self.solver = solver
 
@@ -460,8 +458,8 @@ class PvProHandler:
                     use_clip_points=use_clip_points,
                     singlediode_method=singlediode_method,
                     saturation_current_multistart=saturation_current_multistart,
-                    band_gap_ref = df['band_gap_ref'][0],
-                    dEgdT = df['dEgdT'][0]
+                    band_gap_ref = self.Eg_ref,
+                    dEgdT = self.dEgdT
                 )
                 pfit_iter = fit_result_iter['p']
                 pfixed_iter = fit_result_iter['fixed_params']
@@ -652,8 +650,8 @@ class PvProHandler:
             saturation_current_ref=params['saturation_current_ref'],
             resistance_series_ref=params['resistance_series_ref'],
             conductance_shunt_extra=params['conductance_shunt_extra'],
-            band_gap_ref = self.df['band_gap_ref'][0],
-            dEgdT = self.df['dEgdT'][0]
+            band_gap_ref = self.Eg_ref,
+            dEgdT = self.dEgdT
         )
 
         return voltage, current
@@ -1126,8 +1124,8 @@ class PvProHandler:
                     saturation_current_ref=p_plot['saturation_current_ref'],
                     resistance_series_ref=p_plot['resistance_series_ref'],
                     conductance_shunt_extra=p_plot['conductance_shunt_extra'],
-                    band_gap_ref = df['band_gap_ref'][0],
-                    dEgdT = df['dEgdT'][0]
+                    band_gap_ref = self.Eg_ref,
+                    dEgdT = self.dEgdT
 
                 )
 

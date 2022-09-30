@@ -21,21 +21,24 @@ def _fit_singlediode_linear(voltage : array,
                             temperature_cell : array, 
                             poa : array,
                             resistance_series : array, 
-                            diode_factor, cells_in_series,
-                            alpha_isc,
-                            weights=None,
-                            photocurrent_ref_min=0,
-                            photocurrent_ref_max=100,
-                            saturation_current_ref_min=1e-15,
-                            saturation_current_ref_max=1e-3,
-                            resistance_shunt_ref_min=1e-5,
-                            resistance_shunt_ref_max=1e5,
-                            Eg_ref=None, dEgdT=None, # No default value
-                            temperature_ref=25, irrad_ref=1000,
-                            solver='lsq_linear',
-                            model='pvpro',
-                            tol=1e-8,
-                            verbose=False):
+                            diode_factor : array, 
+                            cells_in_series : int,
+                            alpha_isc : float,
+                            weights : float =None,
+                            photocurrent_ref_min : float =0,
+                            photocurrent_ref_max : float =100,
+                            saturation_current_ref_min : float =1e-15,
+                            saturation_current_ref_max : float =1e-3,
+                            resistance_shunt_ref_min : float =1e-5,
+                            resistance_shunt_ref_max : float =1e5,
+                            Eg_ref : float =None, 
+                            dEgdT : float =None,
+                            temperature_ref : float =25, 
+                            irrad_ref : float =1000,
+                            solver : str='lsq_linear',
+                            model : str='pvpro',
+                            tol : float =1e-8,
+                            verbose : bool =False):
     """
         Fit a set of voltage, current, temperature_cell and poa values to the
         Desoto single diode model at fixed values of series resistance and diode
@@ -98,7 +101,7 @@ def _fit_singlediode_linear(voltage : array,
 
             Minimum fit value of resistance_shunt_ref
 
-        Eg_ref : float, default=1.121
+        Band_gap_ref : float, default=1.121
 
             Reference band gap, eV
 
@@ -172,7 +175,6 @@ def _fit_singlediode_linear(voltage : array,
 
         """
 
-    # TODO: add different options for CEC and PVSYST models.
     Tcell_K = temperature_cell + 273.15
     Tref_K = temperature_ref + 273.15
 
@@ -262,28 +264,33 @@ def _fit_singlediode_linear(voltage : array,
     return out
 
 
-def fit_singlediode_model(voltage, current, temperature_cell, poa,
-                          cells_in_series,
-                          alpha_isc,
-                          resistance_series_start=0.35,
-                          diode_factor_start=1.0,
-                          resistance_series_min=0,
-                          resistance_series_max=2,
-                          diode_factor_min=0.5,
-                          diode_factor_max=1.5,
-                          photocurrent_ref_min=0,
-                          photocurrent_ref_max=100,
-                          saturation_current_ref_min=1e-15,
-                          saturation_current_ref_max=1e-3,
-                          resistance_shunt_ref_min=1e-5,
-                          resistance_shunt_ref_max=1e5,
-                          tol=1e-12,
-                          Eg_ref=None, dEgdT=None, #No default value
-                          temperature_ref=25, irrad_ref=1000,
-                          model='desoto',
-                          linear_solver='lsq_linear',
-                          nonlinear_solver='L-BFGS-B',
-                          verbose=False,
+def fit_singlediode_model(voltage : array, 
+                          current : array, 
+                          temperature_cell : array, 
+                          poa : array,
+                          cells_in_series : int,
+                          alpha_isc : float,
+                          resistance_series_start : float=0.35,
+                          diode_factor_start : float=1.0,
+                          resistance_series_min : float=0,
+                          resistance_series_max : float=2,
+                          diode_factor_min : float=0.5,
+                          diode_factor_max : float=1.5,
+                          photocurrent_ref_min : float=0,
+                          photocurrent_ref_max : float=100,
+                          saturation_current_ref_min : float=1e-15,
+                          saturation_current_ref_max : float=1e-3,
+                          resistance_shunt_ref_min : float=1e-5,
+                          resistance_shunt_ref_max : float=1e5,
+                          tol : float=1e-12,
+                          Eg_ref : float=None, 
+                          dEgdT : float=None,
+                          temperature_ref : float=25, 
+                          irrad_ref : float=1000,
+                          model : str ='desoto',
+                          linear_solver : str ='lsq_linear',
+                          nonlinear_solver : str ='L-BFGS-B',
+                          verbose : bool =False,
                           ):
     """
     Fit a set of voltage, current, temperature_cell and poa values to the
@@ -488,12 +495,18 @@ def fit_singlediode_model(voltage, current, temperature_cell, poa,
     return out
 
 
-def fit_singlediode_brute(voltage, current, temperature_cell, poa,
-                          cells_in_series,
-                          alpha_sc, Eg_ref=None, dEgdT=None, #No default value
-                          temperature_ref=25, irrad_ref=1000,
-                          resistance_series_list=None,
-                          diode_factor_list=None):
+def fit_singlediode_brute(voltage : array, 
+                          current : array, 
+                          temperature_cell : array, 
+                          poa : array,
+                          cells_in_series : int,
+                          alpha_sc : float, 
+                          Eg_ref : float =None, 
+                          dEgdT : float=None,
+                          temperature_ref : float=25, 
+                          irrad_ref : float=1000,
+                          resistance_series_list : array =None,
+                          diode_factor_list : array =None):
     if resistance_series_list is None:
         resistance_series_list = np.linspace(0.1, 0.9, 20)
     if diode_factor_list is None:
@@ -540,7 +553,7 @@ def fit_singlediode_brute(voltage, current, temperature_cell, poa,
     return out
 
 
-def _x_to_p(x, key):
+def _x_to_p(x : array, key : str):
     """
     Change from numerical fit value (x) to physical parameter (p). This
     transformation improves the numerical performance of the fitting algorithm.
@@ -585,7 +598,7 @@ def _x_to_p(x, key):
         return x
 
 
-def _p_to_x(p, key):
+def _p_to_x(p : array, key : str):
     """
     Change from physical parameter (p) to numerical fit value (x). This
     transformation improves the numerical performance of the fitting algorithm.
@@ -626,8 +639,8 @@ def _p_to_x(p, key):
         return p
 
 
-def _pvpro_L1_loss(x, sdm, voltage, current, voltage_scale, current_scale,
-                   weights, fit_params):
+def _pvpro_L1_loss(x : array, sdm : 'function', voltage : array, current : array, voltage_scale : float, current_scale : float,
+                   weights : float, fit_params : list):
     voltage_fit, current_fit = sdm(
         **{param: _x_to_p(x[n], param) for n, param in
            zip(range(len(x)), fit_params)}
@@ -639,8 +652,8 @@ def _pvpro_L1_loss(x, sdm, voltage, current, voltage_scale, current_scale,
         np.abs(current_fit - current) * weights / current_scale)
 
 
-def _pvpro_L2_loss(x, sdm, voltage, current, voltage_scale, current_scale,
-                   weights, fit_params):
+def _pvpro_L2_loss(x : array, sdm : 'function', voltage : array, current : array, voltage_scale : float, current_scale : float,
+                   weights : float, fit_params : list):
     voltage_fit, current_fit = sdm(
         **{param: _x_to_p(x[n], param) for n, param in
            zip(range(len(x)), fit_params)}
@@ -652,34 +665,34 @@ def _pvpro_L2_loss(x, sdm, voltage, current, voltage_scale, current_scale,
 
 
 def production_data_curve_fit(
-        temperature_cell,
-        effective_irradiance,
-        operating_cls,
-        voltage,
-        current,
-        cells_in_series=60,
-        band_gap_ref = None, ##No default value
-        dEgdT = None, ##No default value
-        p0=None,
-        lower_bounds=None,
-        upper_bounds=None,
-        alpha_isc=None,
-        diode_factor=None,
-        photocurrent_ref=None,
-        saturation_current_ref=None,
-        resistance_series_ref=None,
-        resistance_shunt_ref=None,
-        conductance_shunt_extra=None,
-        verbose=False,
-        solver='L-BFGS-B',
-        singlediode_method='fast',
-        method='minimize',
-        use_mpp_points=True,
-        use_voc_points=True,
-        use_clip_points=True,
+        temperature_cell : array,
+        effective_irradiance : array,
+        operating_cls : array,
+        voltage : array,
+        current : array,
+        cells_in_series : int =60,
+        band_gap_ref : float = None,
+        dEgdT : float = None,
+        p0 : dict =None,
+        lower_bounds : float =None,
+        upper_bounds : float =None,
+        alpha_isc : float =None,
+        diode_factor : array =None,
+        photocurrent_ref : array =None,
+        saturation_current_ref : array =None,
+        resistance_series_ref : array =None,
+        resistance_shunt_ref : array =None,
+        conductance_shunt_extra : array =None,
+        verbose : bool =False,
+        solver : str ='L-BFGS-B',
+        singlediode_method : str ='fast',
+        method : str ='minimize',
+        use_mpp_points : bool =True,
+        use_voc_points : bool =True,
+        use_clip_points : bool =True,
         # fit_params=None,
-        saturation_current_multistart=None,
-        brute_number_grid_points=2
+        saturation_current_multistart : array =None,
+        brute_number_grid_points : int =2
 ):
     """
     Use curve fitting to find best-fit single-diode-model paramters given the
@@ -896,12 +909,11 @@ def production_data_curve_fit(
         fixed_params['resistance_shunt_ref'] = resistance_shunt_ref
     if not alpha_isc == None:
         fixed_params['alpha_isc'] = alpha_isc
-    
     if not conductance_shunt_extra == None:
         fixed_params['conductance_shunt_extra'] = conductance_shunt_extra
     if not band_gap_ref == None:
         fixed_params['band_gap_ref'] = band_gap_ref
-    if not dEgdT == None: # dEgdT fixed parameter
+    if not dEgdT == None:
         fixed_params['dEgdT'] = dEgdT
 
 

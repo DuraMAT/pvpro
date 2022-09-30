@@ -27,7 +27,7 @@ def calcparams_pvpro(effective_irradiance : array, temperature_cell : array,
                      saturation_current_ref : array,
                      resistance_shunt_ref : array, resistance_series_ref : array,
                      conductance_shunt_extra : array,
-                     Eg_ref : float =None, dEgdT : float =None,
+                     band_gap_ref : float =None, dEgdT : float =None,
                      irradiance_ref : float =1000, temperature_ref : float =25):
     """
     Similar to pvlib calcparams_desoto, except an extra shunt conductance is
@@ -63,7 +63,7 @@ def calcparams_pvpro(effective_irradiance : array, temperature_cell : array,
         I_o_ref=saturation_current_ref,
         R_sh_ref=resistance_shunt_ref,
         R_s=resistance_series_ref,
-        EgRef=Eg_ref,
+        EgRef=band_gap_ref,
         dEgdT=dEgdT,
         irrad_ref=irradiance_ref,
         temp_ref=temperature_ref
@@ -110,8 +110,6 @@ def pvlib_single_diode(
         alpha_isc : float,
         photocurrent_ref : array,
         saturation_current_ref : array,
-        Eg_ref : float =None,
-        dEgdT : float =None,
         conductance_shunt_extra : array =0,
         irradiance_ref : float =1000,
         temperature_ref : float =25,
@@ -119,6 +117,9 @@ def pvlib_single_diode(
         output_all_params : bool =False,
         singlediode_method : str ='fast',
         calculate_voc : bool =False,
+        technology : str = None,
+        band_gap_ref : float = None,
+        dEgdT : float = None
 ):
     """
     Find points of interest on the IV curve given module parameters and
@@ -159,6 +160,9 @@ def pvlib_single_diode(
     reference_temperature : numeric
         reference temperature in C. Default is 25.
 
+    technology : string
+        PV technology
+
     verbose : bool
         Whether to print information.
 
@@ -189,6 +193,8 @@ def pvlib_single_diode(
         ivcurve_pnts is None.
 
     """
+    if band_gap_ref is None:
+        band_gap_ref, dEgdT = estimate_Eg_dEgdT(technology)
 
     kB = 1.381e-23
     q = 1.602e-19
@@ -204,7 +210,7 @@ def pvlib_single_diode(
                                                 resistance_shunt_ref,
                                                 resistance_series_ref,
                                                 conductance_shunt_extra,
-                                                Eg_ref=Eg_ref, dEgdT=dEgdT,
+                                                band_gap_ref=band_gap_ref, dEgdT=dEgdT,
                                                 irradiance_ref=irradiance_ref,
                                                 temperature_ref=temperature_ref)
     if len(iph)>1: 
@@ -301,7 +307,7 @@ def calculate_temperature_coeffs(
             alpha_isc=alpha_isc,
             photocurrent_ref=photocurrent_ref,
             saturation_current_ref=saturation_current_ref,
-            Eg_ref=band_gap_ref,
+            band_gap_ref=band_gap_ref,
             dEgdT=dEgdT,
             conductance_shunt_extra=conductance_shunt_extra,
             irradiance_ref=irradiance_ref,
@@ -347,8 +353,7 @@ def singlediode_closest_point(
         alpha_isc : float ,
         photocurrent_ref : array,
         saturation_current_ref : array,
-        Eg_ref : float = None, 
-        dEgdT : float = None,
+        technology : str = None,
         reference_irradiance : float = 1000,
         reference_temperature : float = 25,
         method : str ='newton',
@@ -370,8 +375,7 @@ def singlediode_closest_point(
     alpha_isc
     photocurrent_ref
     saturation_current_ref
-    Eg_ref
-    dEgdT
+    technology
     reference_irradiance
     reference_temperature
     method
@@ -393,8 +397,7 @@ def singlediode_closest_point(
         diode_factor=diode_factor,
         photocurrent_ref=photocurrent_ref,
         saturation_current_ref=saturation_current_ref,
-        Eg_ref=Eg_ref,
-        dEgdT=dEgdT,
+        technology=technology,
         reference_irradiance=reference_irradiance,
         reference_temperature=reference_temperature,
         calculate_all=True,
@@ -432,7 +435,7 @@ def singlediode_v_from_i(
         alpha_isc : float,
         photocurrent_ref : array,
         saturation_current_ref : array,
-        Eg_ref : float =None, # Remove default value
+        band_gap_ref : float =None, 
         dEgdT : float=None,
         reference_irradiance : float=1000,
         reference_temperature : float=25,
@@ -454,7 +457,7 @@ def singlediode_v_from_i(
     alpha_isc
     photocurrent_ref
     saturation_current_ref
-    Eg_ref
+    band_gap_ref
     dEgdT
     reference_irradiance
     reference_temperature
@@ -478,7 +481,7 @@ def singlediode_v_from_i(
         I_o_ref=saturation_current_ref,
         R_sh_ref=resistance_shunt_ref,
         R_s=resistance_series_ref,
-        EgRef=Eg_ref,
+        EgRef=band_gap_ref,
         dEgdT=dEgdT,
     )
     voltage = _lambertw_v_from_i(rsh, rs, nNsVth, current, io, iph)
@@ -497,7 +500,7 @@ def singlediode_i_from_v(
         alpha_isc : float,
         photocurrent_ref : array,
         saturation_current_ref : array,
-        Eg_ref  : float =None,
+        band_gap_ref  : float =None,
         dEgdT : float =None,
         reference_irradiance : float =1000,
         reference_temperature : float =25,
@@ -543,7 +546,7 @@ def singlediode_i_from_v(
         I_o_ref=saturation_current_ref,
         R_sh_ref=resistance_shunt_ref,
         R_s=resistance_series_ref,
-        EgRef=Eg_ref,
+        EgRef=band_gap_ref,
         dEgdT=dEgdT,
     )
     current = _lambertw_i_from_v(rsh, rs, nNsVth, voltage, io, iph)
@@ -565,8 +568,9 @@ def pv_system_single_diode_model(
         alpha_isc : array,
         voltage_operation : array = None,
         current_operation : array = None,
+        technology : str = None,
         band_gap_ref : float = None,
-        dEgdT : float = None, 
+        dEgdT : float = None,
         singlediode_method : str ='fast',
         **kwargs
 ):
@@ -625,7 +629,8 @@ def pv_system_single_diode_model(
         saturation_current_ref,
         conductance_shunt_extra=conductance_shunt_extra,
         singlediode_method=singlediode_method,
-        Eg_ref=band_gap_ref,
+        technology=technology,
+        band_gap_ref=band_gap_ref,
         dEgdT=dEgdT,
         calculate_voc=np.any(operating_cls==1))
 
@@ -658,7 +663,7 @@ def pv_system_single_diode_model(
                                                alpha_isc=alpha_isc,
                                                photocurrent_ref=photocurrent_ref,
                                                saturation_current_ref=saturation_current_ref,
-                                               Eg_ref=band_gap_ref,
+                                               band_gap_ref=band_gap_ref,
                                                dEgdT=dEgdT,
                                                )
 
@@ -673,7 +678,7 @@ def pv_system_single_diode_model(
             alpha_isc=alpha_isc,
             photocurrent_ref=photocurrent_ref,
             saturation_current_ref=saturation_current_ref,
-            Eg_ref=band_gap_ref,
+            band_gap_ref=band_gap_ref,
             dEgdT=dEgdT,
         )
 
