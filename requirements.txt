@@ -6,7 +6,7 @@ dill
 ecos==2.0.7.post1
 future==0.18.2
 idna==2.10
-joblib==0.16.0
+joblib==1.2.0
 kiwisolver==1.2.0
 matplotlib==3.3.2
 Mosek
