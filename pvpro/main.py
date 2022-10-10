@@ -18,18 +18,15 @@ from pvlib.temperature import sapm_cell_from_module
 
 from pvpro.singlediode import pv_system_single_diode_model
 from pvpro.fit import production_data_curve_fit
-from pvpro.classify import classify_operating_mode
 
 from pvpro.estimate import estimate_singlediode_params, estimate_imp_ref, \
     estimate_vmp_ref
 
 import shutil
-from pvpro.preprocess import monotonic
 from pvanalytics.features import clipping
 
 from matplotlib.colors import LinearSegmentedColormap
 import seaborn as sns
-from pvpro.preprocess import find_linear_model_outliers_timeseries
 
 
 class PvProHandler:
