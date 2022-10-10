@@ -9,264 +9,30 @@ from pvlib.irradiance import get_total_irradiance
 from pvlib.tracking import singleaxis
 from pvlib.clearsky import detect_clearsky
 from pvlib.temperature import sapm_cell_from_module
-import pandas as pd
 
 from sklearn.utils.extmath import safe_sparse_dot
 from sklearn.linear_model import HuberRegressor
 from solardatatools import DataHandler
 
-from pvpro.classify import classify_operating_mode
-
 import warnings
-
-
 import matplotlib.pyplot as plt
 
 from pvanalytics.features import clipping
 from matplotlib.colors import LinearSegmentedColormap
 import seaborn as sns
 
-from pvpro.classify import build_operating_cls
-
-def monotonic(y : array, fractional_rate_limit : float =0.05):
-    """
-    Find times when vector has a run of three increasing values,
-    three decreasing values or is changing less than a fractional percent.
-
-    Parameters
-    ----------
-    y : array
-
-    fractional_rate_limit : float
-
-    Returns
-    -------
-    boolean_mask
-        True if monotonic or rate of change is less than a fractional limit.
-
-    """
-    dP = np.diff(y)
-    dP = np.append(dP, dP[-1])
-    boolean_mask = np.logical_or.reduce((
-        np.logical_and(dP > 0, np.roll(dP, 1) > 0),
-        np.logical_and(dP < 0, np.roll(dP, 1) < 0),
-        np.abs(dP / y ) < fractional_rate_limit
-    ))
-    return boolean_mask
-
-
-def find_huber_outliers(x : array, y : array, sample_weight : bool =None,
-                        fit_intercept : bool =True,
-                        epsilon : float =2.5):
-    """
-    Identify outliers based on a linear fit of current at maximum power point
-    to plane-of-array irradiance.
-
-    Parameters
-    ----------
-    poa
-    current
-    sample_weight
-    epsilon
-
-    Returns
-    -------
-
-    """
-    if sample_weight is None:
-        sample_weight = np.ones_like(x)
-
-    mask = np.logical_and(np.isfinite(x), np.isfinite(y))
-
-    if np.sum(mask) <= 2:
-        print('Need more than two points for linear regression.')
-        return [], []
-
-    huber = HuberRegressor(epsilon=epsilon,
-                           fit_intercept=fit_intercept)
-    huber.fit(np.atleast_2d(x[mask]).transpose(), y[mask],
-              sample_weight=sample_weight[mask])
-
-
-    def is_outlier(x : array, y : array):
-        X = np.atleast_2d(x).transpose()
-        residual = np.abs(
-            y - safe_sparse_dot(X, huber.coef_) - huber.intercept_)
-        outliers = residual > huber.scale_ * huber.epsilon
-        return outliers
-
-    def is_inbounds(x : array, y : array):
-        X = np.atleast_2d(x).transpose()
-        residual = np.abs(
-            y - safe_sparse_dot(X, huber.coef_) - huber.intercept_)
-        outliers = residual <= huber.scale_ * huber.epsilon
-        return outliers
-
-    outliers = is_outlier(x, y)
-
-    huber.is_outlier = is_outlier
-    huber.is_inbounds = is_inbounds
-
-    return outliers, huber
-
-
-def find_linear_model_outliers_timeseries(x : array, y : array,
-                                          boolean_mask : bool =None,
-                                          fit_intercept : bool =True,
-                                          points_per_iteration : int =20000,
-                                          epsilon : float =2.5,
-                                          ):
-    outliers = np.zeros_like(x).astype('bool')
-
-    isfinite = np.logical_and(np.isfinite(x), np.isfinite(y))
-    lower_iter_idx = []
-    upper_iter_idx = []
-
-    lenx = len(x)
-    n = 0
-    isfinite_count = np.cumsum(isfinite)
-    while True:
-        if n == 0:
-            lower_lim = 0
-        else:
-            lower_lim = upper_iter_idx[-1]
-
-        upper_lim_finder = isfinite_count == int((n + 1) * points_per_iteration)
-
-        if np.sum(upper_lim_finder) >= 1:
-            upper_lim = np.where(upper_lim_finder)[0][0]
-        else:
-            upper_lim = np.nan
-
-        if lower_lim < lenx and upper_lim < lenx:
-            lower_iter_idx.append(lower_lim)
-            upper_iter_idx.append(upper_lim)
-        else:
-            break
-
-        n = n + 1
-    num_iterations = len(lower_iter_idx)
-
-    huber = []
-    for k in range(num_iterations):
-        cax = np.arange(lower_iter_idx[k], upper_iter_idx[k]).astype('int')
-        # Filter
-        outliers_iter, huber_iter = find_huber_outliers(
-            x=x[cax],
-            y=y[cax],
-            sample_weight=boolean_mask[cax],
-            fit_intercept=fit_intercept,
-            epsilon=epsilon
-        )
-
-        outliers_iter = np.logical_and(outliers_iter, boolean_mask[cax])
-        outliers[cax] = outliers_iter
-
-        huber.append(huber_iter)
-
-    out = {
-        'outliers': outliers,
-        # 'inbounds': inbounds,
-        'lower_iter_idx': lower_iter_idx,
-        'upper_iter_idx': upper_iter_idx,
-        'huber': huber,
-        'boolean_mask': boolean_mask
-    }
-    return out
-
-
-def find_clearsky_poa(df : 'dataframe', lat : float, lon : float,
-                      irradiance_poa_key : str ='irradiance_poa_o_###',
-                      mounting : str ='fixed',
-                      tilt : float =0,
-                      azimuth : float =180,
-                      altitude : float =0):
-    loc = Location(lat, lon, altitude=altitude)
-
-    CS = loc.get_clearsky(df.index)
-
-    df['csghi'] = CS.ghi
-    df['csdhi'] = CS.dhi
-    df['csdni'] = CS.dni
-
-    if mounting.lower() == "fixed":
-        sun = get_solarposition(df.index, lat, lon)
-
-        fixedpoa = get_total_irradiance(tilt, azimuth, sun.zenith,
-                                        sun.azimuth,
-                                        CS.dni, CS.ghi, CS.dhi)
-
-        df['cspoa'] = fixedpoa.poa_global
-
-    if mounting.lower() == "tracking":
-        sun = get_solarposition(df.index, lat, lon)
-
-        # default to axis_tilt=0 and axis_azimuth=180
-
-        tracker_data = singleaxis(sun.apparent_zenith,
-                                  sun.azimuth,
-                                  axis_tilt=tilt,
-                                  axis_azimuth=azimuth,
-                                  max_angle=50,
-                                  backtrack=True,
-                                  gcr=0.35)
-
-        track = get_total_irradiance(
-            tracker_data['surface_tilt'],
-            tracker_data['surface_azimuth'],
-            sun.zenith, sun.azimuth,
-            CS.dni, CS.ghi, CS.dhi)
-
-        df['cspoa'] = track.poa_global
-
-    # the following code is assuming clear sky poa has been generated per pvlib, aligned in the same
-    # datetime index, and daylight savings or any time shifts were previously corrected
-    # the inputs below were tuned for POA at a 15 minute frequency
-    # note that detect_clearsky has a scaling factor but I still got slightly different results when I scaled measured poa first
-
-    df['poa'] = df[irradiance_poa_key] / df[irradiance_poa_key].quantile(
-        0.98) * df.cspoa.quantile(0.98)
-
-    # inputs for detect_clearsky
-
-    measured = df.poa.copy()
-    clear = df.cspoa.copy()
-    dur = 60
-    lower_line_length = -41.416
-    upper_line_length = 77.789
-    var_diff = .00745
-    mean_diff = 80
-    max_diff = 90
-    slope_dev = 3
-
-    is_clear_results = detect_clearsky(measured.values,
-                                       clear.values, df.index,
-                                       dur,
-                                       mean_diff, max_diff,
-                                       lower_line_length,
-                                       upper_line_length,
-                                       var_diff, slope_dev,
-                                       return_components=True)
-
-    clearSeries = pd.Series(index=df.index, data=is_clear_results[0])
-
-    clearSeries = clearSeries.reindex(index=df.index, method='ffill', limit=3)
-
-    return clearSeries
-
-
 class Preprocessor():
 
     def __init__(self,
                  df : 'dataframe',
                  system_name : str ='Unknown',
-                 voltage_dc_key : bool =None,
-                 current_dc_key : bool =None,
-                 temperature_module_key : bool =None,
-                 temperature_ambient_key : bool =None,
-                 irradiance_poa_key : bool =None,
-                 modules_per_string : bool =None,
-                 parallel_strings : bool =None,
+                 voltage_dc_key : str =None,
+                 current_dc_key : str =None,
+                 temperature_module_key : str =None,
+                 temperature_ambient_key : str =None,
+                 irradiance_poa_key : str =None,
+                 modules_per_string : int =None,
+                 parallel_strings : int =None,
                  freq : str ='15min',
                  solver : str ="MOSEK"
                  ):
@@ -430,6 +196,123 @@ class Preprocessor():
                              solver=self.solver)
         self._ran_sdt = True
 
+
+    def classify_operating_mode(self, voltage: array, current: array,
+                            power_clip=np.inf,
+                            method='fraction',
+                            clipped_times=None,
+                            freq='15min'):
+        """
+
+        Parameters
+        ----------
+        voltage
+        currente
+        method
+
+        Returns
+        -------
+        operating_cls : array
+
+            Array of classifications of each time stamp.
+
+            0: System at maximum power point.
+            1: System at open circuit conditions.
+            2: Clipped or curtailed. DC operating point is not necessarily at MPP.
+            -1: No power/inverter off
+            -2: Other
+        """
+
+        cls = np.zeros(np.shape(voltage)) - 1
+
+        # Inverter on
+        cls[np.logical_and(
+            voltage > voltage.max() * 0.01,
+            current > current.max() * 0.01,
+        )] = 0
+
+        # Nighttime, low voltage and irradiance (inverter off)
+        cls[voltage < voltage.max() * 0.01] = -1
+
+        # Open circuit condition
+        cls[np.logical_and(current < current.max() * 0.01,
+                        voltage > voltage.max() * 0.01)] = 1
+
+        if clipped_times is None:
+            clipped_times = clipping.geometric(
+                ac_power=voltage * current,
+                freq=freq)
+
+        # Clipped data.
+        cls[clipped_times] = 2
+
+        return cls
+
+
+    def build_operating_classification(self, df: 'dataframe or dict'):
+        """
+        Build array of classifications of each time stamp based on boolean arrays
+        provided.
+
+
+        Parameters
+        ----------
+        df : dataframe or dict
+            Needs to have fields:
+
+            - 'high_v':
+
+            - 'daytime':
+
+            - 'low_p':
+
+            - 'clipped_times':
+
+            - 'missing_data':
+
+            - 'no_errors':
+
+        Returns
+        -------
+
+        operating_cls : array
+
+            integer array of operating_cls
+
+                0: System at maximum power point.
+                1: System at open circuit conditions.
+                2: Clipped or curtailed. DC operating point is not necessarily at MPP.
+                -1: No power/inverter off
+                -2: Other
+
+
+        """
+        if isinstance(df, pd.DataFrame):
+            operating_cls = np.zeros(len(df), dtype='int')
+        else:
+            operating_cls = np.zeros(df['high_v'].shape,dtype='int')
+
+        # df.loc[:, 'operating_cls'] = 0
+        operating_cls[np.logical_and(
+            np.logical_not(df['high_v']),
+            np.logical_not(df['daytime']))] = -1
+
+        operating_cls[
+            np.logical_and(
+                df['high_v'],
+                np.logical_or(np.logical_not(df['daytime']), df['low_p'])
+            )] = 1
+
+        operating_cls[df['clipped_times']] = 2
+
+        operating_cls[
+            np.logical_or(
+                df['missing_data'],
+                np.logical_not(df['no_errors'])
+            )] = -2
+
+        return operating_cls
+
     def classify_points_sdt(self):
 
         self.dh.find_clipped_times()
@@ -512,16 +395,15 @@ class Preprocessor():
         """
 
 
-
         if self._ran_sdt:
             for df in [self.dh.data_frame_raw, self.dh.data_frame]:
-                df.loc[:,'operating_cls'] = build_operating_cls(df)
+                df.loc[:,'operating_cls'] = self.build_operating_classification(df)
 
             self.dh.generate_extra_matrix('operating_cls',
                           new_index=self.dh.data_frame.index)
         else:
             for df in [self.dh.data_frame_raw]:
-                df.loc[:, 'operating_cls'] = build_operating_cls(df)
+                df.loc[:, 'operating_cls'] = self.build_operating_classification(df)
 
 
 
@@ -546,10 +428,235 @@ class Preprocessor():
         self.dh.augment_data_frame(self.dh.boolean_masks.clear_times,
                                    'clear_time')
 
+    def monotonic(self, y : array, fractional_rate_limit : float =0.05):
+        """
+        Find times when vector has a run of three increasing values,
+        three decreasing values or is changing less than a fractional percent.
+
+        Parameters
+        ----------
+        y : array
+
+        fractional_rate_limit : float
+
+        Returns
+        -------
+        boolean_mask
+            True if monotonic or rate of change is less than a fractional limit.
+
+        """
+        dP = np.diff(y)
+        dP = np.append(dP, dP[-1])
+        boolean_mask = np.logical_or.reduce((
+            np.logical_and(dP > 0, np.roll(dP, 1) > 0),
+            np.logical_and(dP < 0, np.roll(dP, 1) < 0),
+            np.abs(dP / y ) < fractional_rate_limit
+        ))
+        return boolean_mask
+
     def find_monotonic_times(self, fractional_rate_limit : float =0.05):
         self.df['monotonic'] = monotonic(
             self.df[self.voltage_dc_key] * self.df[self.current_dc_key],
             fractional_rate_limit=fractional_rate_limit)
+
+    def find_huber_outliers(x : array, y : array, sample_weight : bool =None,
+                        fit_intercept : bool =True,
+                        epsilon : float =2.5):
+        """
+        Identify outliers based on a linear fit of current at maximum power point
+        to plane-of-array irradiance.
+
+        Parameters
+        ----------
+        poa
+        current
+        sample_weight
+        epsilon
+
+        Returns
+        -------
+
+        """
+        if sample_weight is None:
+            sample_weight = np.ones_like(x)
+
+        mask = np.logical_and(np.isfinite(x), np.isfinite(y))
+
+        if np.sum(mask) <= 2:
+            print('Need more than two points for linear regression.')
+            return [], []
+
+        huber = HuberRegressor(epsilon=epsilon,
+                            fit_intercept=fit_intercept)
+        huber.fit(np.atleast_2d(x[mask]).transpose(), y[mask],
+                sample_weight=sample_weight[mask])
+
+
+        def is_outlier(x : array, y : array):
+            X = np.atleast_2d(x).transpose()
+            residual = np.abs(
+                y - safe_sparse_dot(X, huber.coef_) - huber.intercept_)
+            outliers = residual > huber.scale_ * huber.epsilon
+            return outliers
+
+        def is_inbounds(x : array, y : array):
+            X = np.atleast_2d(x).transpose()
+            residual = np.abs(
+                y - safe_sparse_dot(X, huber.coef_) - huber.intercept_)
+            outliers = residual <= huber.scale_ * huber.epsilon
+            return outliers
+
+        outliers = is_outlier(x, y)
+
+        huber.is_outlier = is_outlier
+        huber.is_inbounds = is_inbounds
+
+        return outliers, huber
+
+
+    def find_linear_model_outliers_timeseries(x : array, y : array,
+                                            boolean_mask : bool =None,
+                                            fit_intercept : bool =True,
+                                            points_per_iteration : int =20000,
+                                            epsilon : float =2.5,
+                                            ):
+        outliers = np.zeros_like(x).astype('bool')
+
+        isfinite = np.logical_and(np.isfinite(x), np.isfinite(y))
+        lower_iter_idx = []
+        upper_iter_idx = []
+
+        lenx = len(x)
+        n = 0
+        isfinite_count = np.cumsum(isfinite)
+        while True:
+            if n == 0:
+                lower_lim = 0
+            else:
+                lower_lim = upper_iter_idx[-1]
+
+            upper_lim_finder = isfinite_count == int((n + 1) * points_per_iteration)
+
+            if np.sum(upper_lim_finder) >= 1:
+                upper_lim = np.where(upper_lim_finder)[0][0]
+            else:
+                upper_lim = np.nan
+
+            if lower_lim < lenx and upper_lim < lenx:
+                lower_iter_idx.append(lower_lim)
+                upper_iter_idx.append(upper_lim)
+            else:
+                break
+
+            n = n + 1
+        num_iterations = len(lower_iter_idx)
+
+        huber = []
+        for k in range(num_iterations):
+            cax = np.arange(lower_iter_idx[k], upper_iter_idx[k]).astype('int')
+            # Filter
+            outliers_iter, huber_iter = find_huber_outliers(
+                x=x[cax],
+                y=y[cax],
+                sample_weight=boolean_mask[cax],
+                fit_intercept=fit_intercept,
+                epsilon=epsilon
+            )
+
+            outliers_iter = np.logical_and(outliers_iter, boolean_mask[cax])
+            outliers[cax] = outliers_iter
+
+            huber.append(huber_iter)
+
+        out = {
+            'outliers': outliers,
+            # 'inbounds': inbounds,
+            'lower_iter_idx': lower_iter_idx,
+            'upper_iter_idx': upper_iter_idx,
+            'huber': huber,
+            'boolean_mask': boolean_mask
+        }
+        return out
+
+
+    def find_clearsky_poa(df : 'dataframe', lat : float, lon : float,
+                        irradiance_poa_key : str ='irradiance_poa_o_###',
+                        mounting : str ='fixed',
+                        tilt : float =0,
+                        azimuth : float =180,
+                        altitude : float =0):
+        loc = Location(lat, lon, altitude=altitude)
+
+        CS = loc.get_clearsky(df.index)
+
+        df['csghi'] = CS.ghi
+        df['csdhi'] = CS.dhi
+        df['csdni'] = CS.dni
+
+        if mounting.lower() == "fixed":
+            sun = get_solarposition(df.index, lat, lon)
+
+            fixedpoa = get_total_irradiance(tilt, azimuth, sun.zenith,
+                                            sun.azimuth,
+                                            CS.dni, CS.ghi, CS.dhi)
+
+            df['cspoa'] = fixedpoa.poa_global
+
+        if mounting.lower() == "tracking":
+            sun = get_solarposition(df.index, lat, lon)
+
+            # default to axis_tilt=0 and axis_azimuth=180
+
+            tracker_data = singleaxis(sun.apparent_zenith,
+                                    sun.azimuth,
+                                    axis_tilt=tilt,
+                                    axis_azimuth=azimuth,
+                                    max_angle=50,
+                                    backtrack=True,
+                                    gcr=0.35)
+
+            track = get_total_irradiance(
+                tracker_data['surface_tilt'],
+                tracker_data['surface_azimuth'],
+                sun.zenith, sun.azimuth,
+                CS.dni, CS.ghi, CS.dhi)
+
+            df['cspoa'] = track.poa_global
+
+        # the following code is assuming clear sky poa has been generated per pvlib, aligned in the same
+        # datetime index, and daylight savings or any time shifts were previously corrected
+        # the inputs below were tuned for POA at a 15 minute frequency
+        # note that detect_clearsky has a scaling factor but I still got slightly different results when I scaled measured poa first
+
+        df['poa'] = df[irradiance_poa_key] / df[irradiance_poa_key].quantile(
+            0.98) * df.cspoa.quantile(0.98)
+
+        # inputs for detect_clearsky
+
+        measured = df.poa.copy()
+        clear = df.cspoa.copy()
+        dur = 60
+        lower_line_length = -41.416
+        upper_line_length = 77.789
+        var_diff = .00745
+        mean_diff = 80
+        max_diff = 90
+        slope_dev = 3
+
+        is_clear_results = detect_clearsky(measured.values,
+                                        clear.values, df.index,
+                                        dur,
+                                        mean_diff, max_diff,
+                                        lower_line_length,
+                                        upper_line_length,
+                                        var_diff, slope_dev,
+                                        return_components=True)
+
+        clearSeries = pd.Series(index=df.index, data=is_clear_results[0])
+
+        clearSeries = clearSeries.reindex(index=df.index, method='ffill', limit=3)
+
+        return clearSeries
 
 
     def find_current_irradiance_outliers(self,
