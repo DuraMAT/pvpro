@@ -1,6 +1,7 @@
 # import pvlib
 from array import array
 import numpy as np
+from pandas import Series
 
 from pvlib.singlediode import _lambertw_i_from_v, _lambertw_v_from_i, \
     bishop88_mpp, bishop88_v_from_i
@@ -101,19 +102,19 @@ def singlediode_fast(photocurrent : array,
 
 
 def pvlib_single_diode(
-        effective_irradiance : array,
-        temperature_cell : array,
-        resistance_shunt_ref : array,
-        resistance_series_ref : array,
-        diode_factor : array,
-        cells_in_series : int,
-        alpha_isc : float,
-        photocurrent_ref : array,
-        saturation_current_ref : array,
-        conductance_shunt_extra : array =0,
+        effective_irradiance : float,
+        temperature_cell : float,
+        resistance_shunt_ref : Series,
+        resistance_series_ref : Series,
+        diode_factor : Series,
+        cells_in_series : Series,
+        alpha_isc : Series,
+        photocurrent_ref : Series,
+        saturation_current_ref : Series,
+        conductance_shunt_extra : Series =0,
         irradiance_ref : float =1000,
         temperature_ref : float =25,
-        ivcurve_pnts : int =None,
+        ivcurve_pnts : bool =None,
         output_all_params : bool =False,
         singlediode_method : str ='fast',
         calculate_voc : bool =False,
