@@ -3,10 +3,6 @@ import string
 from xmlrpc.client import boolean
 import numpy as np
 import pandas as pd
-
-# import matplotlib
-#
-# matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 from pvlib.temperature import sapm_cell_from_module
@@ -457,7 +453,6 @@ def estimate_beta_voc(beta_vmp : float, technology : string ='mono-Si'):
 
     return beta_voc
 
-
 def estimate_diode_factor(vmp_ref : array, beta_vmp : float, imp_ref : array,
                           alpha_isc_norm  : float =0,
                           resistance_series : float =0.35,
@@ -489,7 +484,6 @@ def estimate_diode_factor(vmp_ref : array, beta_vmp : float, imp_ref : array,
 
     return diode_factor.real
 
-
 def estimate_photocurrent_ref_simple(imp_ref: array, technology : string ='mono-Si'):
     photocurrent_imp_ratio = {'multi-Si': 1.0746167586063207,
                               'mono-Si': 1.0723051517913444,
@@ -500,7 +494,6 @@ def estimate_photocurrent_ref_simple(imp_ref: array, technology : string ='mono-
     photocurrent_ref = imp_ref * photocurrent_imp_ratio[technology]
 
     return photocurrent_ref
-
 
 def estimate_saturation_current(isc : array, voc : array, nNsVth : array):
     """
@@ -518,7 +511,6 @@ def estimate_saturation_current(isc : array, voc : array, nNsVth : array):
 
     """
     return isc * np.exp(-voc / nNsVth)
-
 
 def estimate_saturation_current_ref(i_mp : array, 
                                     v_mp : array, 
@@ -592,7 +584,6 @@ def estimate_saturation_current_ref(i_mp : array,
 
     return I0_ref.mean()
 
-
 def estimate_photocurrent_ref(current : array, 
                               voltage : array, 
                               saturation_current_ref : array,
@@ -664,7 +655,6 @@ def estimate_photocurrent_ref(current : array,
 
     return IL_ref_mean
 
-
 def estimate_cells_in_series(voc_ref : array, technology : string ='mono-Si'):
     """
 
@@ -690,7 +680,6 @@ def estimate_cells_in_series(voc_ref : array, technology : string ='mono-Si'):
 
     return int(voc_ref / voc_cell[technology])
 
-
 def estimate_voc_ref(vmp_ref : array, technology : string =None):
     voc_vmp_ratio = {'thin-film': 1.3069503474012514,
                      'multi-Si': 1.2365223483476515,
@@ -702,7 +691,6 @@ def estimate_voc_ref(vmp_ref : array, technology : string =None):
 
     return voc_ref
 
-
 def estimate_beta_voc(beta_vmp : float, technology : string ='mono-Si'):
     beta_voc_to_beta_vmp_ratio = {'thin-film': 0.9594252453485964,
                                   'multi-Si': 0.9782579114165342,
@@ -711,7 +699,6 @@ def estimate_beta_voc(beta_vmp : float, technology : string ='mono-Si'):
                                   'cdte': 0.9797816054754396}
     beta_voc = beta_vmp * beta_voc_to_beta_vmp_ratio[technology]
     return beta_voc
-
 
 def estimate_alpha_isc(isc : array, technology : string):
     alpha_isc_to_isc_ratio = {'multi-Si': 0.0005864523754010862,
@@ -722,7 +709,6 @@ def estimate_alpha_isc(isc : array, technology : string):
 
     alpha_isc = isc * alpha_isc_to_isc_ratio[technology]
     return alpha_isc
-
 
 def estimate_isc_ref(imp_ref : array, technology: string):
     isc_to_imp_ratio = {'multi-Si': 1.0699135787527263,
@@ -735,7 +721,6 @@ def estimate_isc_ref(imp_ref : array, technology: string):
 
     return isc_ref
 
-
 def estimate_resistance_series_simple(vmp : array, imp : array,
                                       saturation_current : array,
                                       photocurrent : array,
@@ -743,7 +728,6 @@ def estimate_resistance_series_simple(vmp : array, imp : array,
     Rs = (nNsVth * np.log1p(
         (photocurrent - imp) / saturation_current) - vmp) / imp
     return Rs
-
 
 def estimate_resistance_series(poa : array,
                                temperature_cell : array,
@@ -990,120 +974,7 @@ def estimate_singlediode_params(poa: array,
 
     results = {}
     num_iter = max_iter
-    """
-    # More complex optimization not working so well on real data.
-    if optimize_Rs_Io:
-        results = pd.DataFrame(columns=['saturation_current_ref'])
-        results.loc[0, 'saturation_current_ref'] = saturation_current_ref
-        results.loc[0, 'diode_factor'] = diode_factor
-        results.loc[0, 'resistance_series_ref'] = resistance_series_ref
-        results.loc[0, 'photocurrent_ref'] = photocurrent_ref
-
-        # print('Time to point a: {}'.format(time() - start_time))
-        last_iteration = False
-        for k in range(num_iter):
-            # if verbose:
-                # print(k)
-
-            draw_figure_this_iteration = np.logical_and(figure, last_iteration)
-
-            # Update saturation current with better estimate.
-            saturation_current_ref = estimate_saturation_current_ref(
-                i_mp=imp,
-                v_mp=vmp,
-                photocurrent_ref=photocurrent_ref,
-                temperature_cell=temperature_cell,
-                diode_factor=diode_factor,
-                poa=poa,
-                cells_in_series=cells_in_series,
-                resistance_series=resistance_series_ref,
-                resistance_shunt_ref=resistance_shunt_ref,
-                EgRef=band_gap_ref,
-                dEgdT=dEgdT,
-                alpha_isc=alpha_isc,
-                figure=draw_figure_this_iteration,
-                figure_number=figure_number)
-
-            if draw_figure_this_iteration:
-                figure_number+=1
-
-            if verbose:
-                print('Inputs')
-                print(poa)
-                print(temperature_cell)
-                print(photocurrent_ref)
-                print('saturation_current_ref:', saturation_current_ref)
-                print('ndiode: ', diode_factor)
-
-            # Important to have a good estimate of saturation current first.
-            resistance_series_ref = estimate_resistance_series(
-                poa=poa,
-                temperature_cell=temperature_cell,
-                voltage=vmp,
-                current=imp,
-                photocurrent_ref=photocurrent_ref,
-                saturation_current_ref=saturation_current_ref,
-                diode_factor=diode_factor,
-                cells_in_series=cells_in_series,
-                temperature_ref=temperature_ref,
-                irradiance_ref=irradiance_ref,
-                resistance_shunt_ref=resistance_shunt_ref,
-                EgRef=band_gap_ref,
-                dEgdT=dEgdT,
-                alpha_isc=alpha_isc,
-                figure=draw_figure_this_iteration,
-                figure_number=figure_number
-            )
-            if draw_figure_this_iteration:
-                figure_number+=1
-
-            results.loc[k + 1, 'saturation_current_ref'] = saturation_current_ref
-            results.loc[k + 1, 'resistance_series_ref'] = resistance_series_ref
-            results.loc[k + 1, 'diode_factor'] = diode_factor
-            results.loc[k + 1, 'photocurrent_ref'] = photocurrent_ref
-
-            if verbose:
-                print('resistance_series_ref: {}'.format(resistance_series_ref))
-                print('saturation_current_ref: {}'.format(saturation_current_ref))
-            if draw_figure_this_iteration:
-                break
-
-            if np.abs(results.loc[k + 1, 'resistance_series_ref'] - \
-                      results.loc[k, 'resistance_series_ref']) / results.loc[
-                k, 'resistance_series_ref'] < convergence_test:
-                if verbose:
-                    print('optimization stopped at iteration {}'.format(k))
-
-                #     Draw figures then break loop
-                last_iteration=True
-    else:
-        results = {}
-
-        # print('Time to point b: {}'.format(time() - start_time))
-
-        # Update diode factor
-        diode_factor = estimate_diode_factor(
-            i_mp=imp, v_mp=vmp,
-            photocurrent_ref=photocurrent_ref,
-            saturation_current_ref=saturation_current_ref,
-            temperature_cell=temperature_cell,
-            poa=poa,
-            cells_in_series=cells_in_series,
-            resistance_series=resistance_series_ref,
-            resistance_shunt_ref=resistance_shunt_ref,
-            EgRef=band_gap_ref,
-            dEgdT=dEgdT,
-            alpha_isc=alpha_isc,
-            temperature_ref=temperature_ref,
-            irradiance_ref=irradiance_ref,
-            figure=figure,
-            figure_number=figure_number)
-        if np.isnan(diode_factor):
-            print('TODO: fix diode factor nan reason')
-            diode_factor = get_average_diode_factor(technology)
-        # print('Diode factor: {:.3f}'.format(diode_factor))
-        figure_number+=1
-    """
+   
 
     # Output parameters
     params = dict(
