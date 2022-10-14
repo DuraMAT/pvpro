@@ -663,3 +663,391 @@ class Preprocessor():
                    vmin=-2.5, vmax=2.5)
         plt.colorbar()
         return fig
+
+    """
+    off-MPP functions
+
+    """
+    def detect_off_MPP(pvp, boolean_mask = None):
+
+        """
+        detect off-MPP based on Pmp error
+
+        return
+        ------
+        off-MPP bool array
+        
+        """
+        if boolean_mask:
+            df=pvp.df[boolean_mask]
+        else:
+            df=pvp.df
+
+        p_plot=pvp.p0
+
+        mask = np.array(df['operating_cls'] == 0)
+        vmp = np.array(df.loc[mask, pvp.voltage_key]) / pvp.modules_per_string
+        imp = np.array(df.loc[mask, pvp.current_key]) / pvp.parallel_strings
+
+        # calculate error
+        v_esti, i_esti = pvp.single_diode_predict(
+            effective_irradiance=df[pvp.irradiance_poa_key][mask],
+            temperature_cell=df[pvp.temperature_cell_key][mask],
+            operating_cls=np.zeros_like(df[pvp.irradiance_poa_key][mask]),
+            params=p_plot)
+        rmse_vmp = mean_squared_error(v_esti, vmp)/37
+        rmse_imp = mean_squared_error(i_esti, imp)/8.6
+
+        # Pmp error
+        pmp_error = abs(vmp*imp - v_esti*i_esti)
+        vmp_error = abs(vmp-v_esti)
+        imp_error = abs(imp-i_esti)
+
+        # detect off-mpp and calculate off-mpp percentage
+        offmpp = pmp_error>np.nanmean(pmp_error)+np.std(pmp_error)
+        offmpp_ratio = offmpp.sum()/pmp_error.size*100  
+
+        return offmpp
+  
+    def plot_Pmp_error_vs_time(pvp, boolean_mask, points_show = None, figsize=[4,3], show_only_offmpp = False, 
+                                sys_name = None, date_show = None):
+
+        """
+        Plot Pmp error vs time, where the at-MPP and off-MPP points are highlighted
+        
+        """
+        if points_show:
+            points_show_bool = np.full(boolean_mask.sum(), False)
+            points_show_bool[points_show] = True
+            df=pvp.df[boolean_mask][points_show_bool]
+        else:
+            df=pvp.df[boolean_mask]
+
+        p_plot=pvp.p0
+
+        fig, ax = plt.subplots(figsize=figsize)
+
+        mask = np.array(df['operating_cls'] == 0)
+        vmp = np.array(df.loc[mask, pvp.voltage_key]) / pvp.modules_per_string
+        imp = np.array(df.loc[mask, pvp.current_key]) / pvp.parallel_strings
+
+        # calculate error
+        v_esti, i_esti = pvp.single_diode_predict(
+            effective_irradiance=df[pvp.irradiance_poa_key][mask],
+            temperature_cell=df[pvp.temperature_cell_key][mask],
+            operating_cls=np.zeros_like(df[pvp.irradiance_poa_key][mask]),
+            params=p_plot)
+        rmse_vmp = mean_squared_error(v_esti, vmp)/37
+        rmse_imp = mean_squared_error(i_esti, imp)/8.6
+
+        # Pmp error
+        pmp_error = abs(vmp*imp - v_esti*i_esti)
+        vmp_error = abs(vmp-v_esti)
+        imp_error = abs(imp-i_esti)
+
+        # Plot At-MPP points
+        ax.scatter(df.index[mask], pmp_error, s =1, color ='#8ACCF8', label = 'At-MPP')
+
+        # detect off-mpp and calculate off-mpp percentage
+        offmpp = pmp_error>np.nanmean(pmp_error)+np.std(pmp_error)
+        offmpp_ratio = offmpp.sum()/pmp_error.size*100  
+        plt.text(df.index[0], 240, 'Off-MPP ratio:\
+                        \n{}%'.format(round(offmpp_ratio,2)),
+                    fontsize=12)
+        
+        # Plot off-MPP points
+        ax.scatter(df.index[mask][offmpp], pmp_error[offmpp], s =1, color ='#FFA222', label = 'Off-MPP')
+
+        # plot mean Pmp error line
+        ax.plot([df.index[mask][0], df.index[mask][-1]], [np.nanmean(pmp_error)]*2, 
+                    '--', linewidth = 1, color='#0070C0', label = 'Mean Pmp error')
+
+        import matplotlib.dates as mdates
+        # h_fmt = mdates.DateFormatter('%y-%m')
+        h_fmt = mdates.DateFormatter('%Y')
+        xloc = mdates.YearLocator(1)
+        ax.xaxis.set_major_locator(xloc)
+        ax.xaxis.set_major_formatter(h_fmt)
+
+        # fig.autofmt_xdate()
+        plt.ylim([0, 300])
+        plt.xticks(fontsize=12)
+        plt.yticks(fontsize=12)
+
+        plt.ylabel('Pmp error (W)', fontsize=12, fontweight = 'bold')
+        lgnd = plt.legend()
+        lgnd.legendHandles[0]._sizes = [20]
+        lgnd.legendHandles[1]._sizes = [20]
+        plt.title(sys_name, fontsize=13, fontweight = 'bold')
+
+        plt.gcf().set_dpi(150)
+        plt.show()
+
+    def deconvolve_Pmp_error_on_V_I (pvp, boolean_mask, points_show = None, figsize=[4.5,3], 
+                                sys_name = None, date_text = None):
+
+        points_show_bool = np.full(boolean_mask.sum(), False)
+        points_show_bool[points_show] = True
+        df=pvp.df[boolean_mask][points_show_bool]
+        
+        mask = np.array(df['operating_cls'] == 0)
+        vmp = np.array(df.loc[mask, pvp.voltage_key]) / pvp.modules_per_string
+        imp = np.array(df.loc[mask, pvp.current_key]) / pvp.parallel_strings
+        G = df[pvp.irradiance_poa_key][mask]
+        Tm = df[pvp.temperature_cell_key][mask]
+
+        # estimate
+        v_esti, i_esti = pvp.single_diode_predict(
+            effective_irradiance=G,
+            temperature_cell=Tm,
+            operating_cls=np.zeros_like(df[pvp.irradiance_poa_key][mask]),
+            params=p_plot)
+
+        # error
+        pmp_error = abs(vmp*imp - v_esti*i_esti) 
+        vmp_error = abs(vmp-v_esti)
+        imp_error = abs(imp-i_esti)
+        pmp_error = pmp_error + vmp_error*imp_error
+
+        # contribution
+        con_V = vmp_error*i_esti/pmp_error*100
+        con_I = imp_error*v_esti/pmp_error*100
+
+        fig, ax = plt.subplots(figsize=figsize)
+        xtime = df.index[mask]
+
+        # ax.fill_between(xtime, np.ones_like(con_V)*100, 0, alpha=1, color='#0070C0', edgecolor = 'white', linewidth = 2, label = 'Error of Vmp')
+        ax.fill_between(xtime, con_I+con_V, 0, alpha=1, color='#0070C0', edgecolor = 'white', linewidth = 2, label = 'Error of Vmp')
+        ax.fill_between(xtime, con_I, 0, alpha=1, color='#92D050', edgecolor = 'white', linewidth = 2, label = 'Error of Imp')
+
+        import matplotlib.dates as mdates
+        hours = mdates.HourLocator(interval = 1)
+        h_fmt = mdates.DateFormatter('%Hh')
+        ax.xaxis.set_major_locator(hours)
+        ax.xaxis.set_major_formatter(h_fmt)
+
+        # text
+        if not date_text:
+            datetext = df.index[mask][0].strftime("%Y-%m-%d")
+        text_show = sys_name + '\n' + datetext
+        ax.text(xtime[1], 10, text_show)
+
+        ax.tick_params(labelsize=13)
+        ax.tick_params(labelsize=13)
+        ax.set_xlabel('Time', fontsize=13)
+        ax.set_ylabel('Deconvolution\n of Pmp error (%)', fontsize=13, fontweight = 'bold')
+        plt.ylim([0,100])
+        plt.legend(loc=7)
+        plt.gcf().set_dpi(120)
+        plt.show()
+
+    def plot_Vmp_Imp_scatters_Pmp_error(pvp, boolean_mask, points_show = None, figsize=[4,3], show_only_offmpp = False, 
+                                sys_name = None, date_show = None):
+
+        """
+        Plot relative error (RE) of Vmp vs RE of Imp as scatters.
+        The color of scatters corresponds to the RE of Pmp.
+        
+        """
+        if points_show:
+            points_show_bool = np.full(boolean_mask.sum(), False)
+            points_show_bool[points_show] = True
+            df=pvp.df[boolean_mask][points_show_bool]
+        else:
+            df=pvp.df[boolean_mask]
+        p_plot=pvp.p0
+        
+        mask = np.array(df['operating_cls'] == 0)
+        vmp = np.array(df.loc[mask, pvp.voltage_key]) / pvp.modules_per_string
+        imp = np.array(df.loc[mask, pvp.current_key]) / pvp.parallel_strings
+
+        # calculate error
+        v_esti, i_esti = pvp.single_diode_predict(
+            effective_irradiance=df[pvp.irradiance_poa_key][mask],
+            temperature_cell=df[pvp.temperature_cell_key][mask],
+            operating_cls=np.zeros_like(df[pvp.irradiance_poa_key][mask]),
+            params=p_plot)
+        rmse_vmp = mean_squared_error(v_esti, vmp)/37
+        rmse_imp = mean_squared_error(i_esti, imp)/8.6
+
+        # Pmp error
+        pmp_error = abs(vmp*imp - v_esti*i_esti)
+        vmp_error = abs(vmp-v_esti)
+        imp_error = abs(imp-i_esti)
+
+        # calculate off-mpp percentage
+        msk = np.full(pmp_error.size, True)
+        if show_only_offmpp:
+            msk = (pmp_error>np.nanmean(pmp_error)+np.std(pmp_error) ) & (pmp_error<300)
+
+        # plot
+        fig, ax = plt.subplots(figsize=figsize)
+
+        h_sc = plt.scatter(vmp_error[msk]/37*100, imp_error[msk]/8.6*100, cmap='jet',
+                s=10,  alpha = 0.8, c=pmp_error[msk])
+                            
+        pcbar = plt.colorbar(h_sc)
+        pcbar.set_label('Pmp error (W)', fontsize = 13)
+
+        if not date_show:
+            date_show = df.index[mask][0].strftime("%Y-%m-%d")
+
+        text_show = sys_name + '\n' + date_show
+        plt.text (35,85, text_show)
+        plt.xticks(fontsize=13)
+        plt.yticks(fontsize=13)
+        plt.xlim([0,80])
+        plt.ylim([0,100])
+        plt.xlabel('RE of Vmp (%)', fontsize=13)
+        plt.ylabel('RE of Imp (%)', fontsize=13)
+        plt.title('Distribution of off-MPP points', fontweight = 'bold', fontsize=13)
+        plt.gcf().set_dpi(120)
+        plt.show()
+
+    def plot_Vmp_Tm_Imp_G_vs_time (pvp, boolean_mask, points_show = None, figsize=[5,6], 
+                                sys_name = None, date_text = None):
+
+        points_show_bool = np.full(boolean_mask.sum(), False)
+        points_show_bool[points_show] = True
+        df=pvp.df[boolean_mask][points_show_bool]
+
+        mask = np.array(df['operating_cls'] == 0)
+        vmp = np.array(df.loc[mask, pvp.voltage_key]) / pvp.modules_per_string
+        imp = np.array(df.loc[mask, pvp.current_key]) / pvp.parallel_strings
+
+        # calculate error
+        v_esti, i_esti = pvp.single_diode_predict(
+            effective_irradiance=df[pvp.irradiance_poa_key][mask],
+            temperature_cell=df[pvp.temperature_cell_key][mask],
+            operating_cls=np.zeros_like(df[pvp.irradiance_poa_key][mask]),
+            params=p_plot)
+        
+        fig, ax = plt.subplots(2,1,figsize=figsize, sharex = True)
+
+        """ plot Imp and G """
+
+        ax11 = ax[0]
+        ax12 = ax11.twinx()
+        
+        xtime = df.index[mask]
+
+        ## plot G in right
+        lns11 = ax11.fill_between(xtime, df[irradiance_poa_key][mask], 0, 
+                        alpha=0.3, color='#FF95C2',
+                        zorder = 2, label = 'G')
+        ax11.yaxis.tick_right()
+        ax11.yaxis.set_label_position("right")
+
+        ## plot Imp in left
+        lns12, = ax12.plot(xtime, imp, '-o', color = 'deepskyblue', zorder = 2.5, label = 'Measured Imp')
+        lns13, = ax12.plot(xtime, i_esti, '--o',zorder = 3,label = 'Estimated Imp')
+        ax12.yaxis.tick_left()
+        ax12.yaxis.set_label_position("left")
+
+        ax11.grid(linestyle = '--')
+        ax11.tick_params(labelsize=13)
+        ax12.tick_params(labelsize=13)
+        ax12.set_ylabel('Imp (A)', fontsize=13, color = np.array([24,116,205])/256, fontweight = 'bold')
+        ax11.set_ylabel('Irradiance (${W/m^2}$)', fontsize=13, color = '#C47398', fontweight = 'bold')
+        ax11.set_title(' Vmp and Imp on {}'.format(xtime[0].strftime('%Y-%m-%d')), 
+                    fontweight = 'bold', fontsize=13)
+
+        # combine legends
+
+        lns1 = (lns12, lns13, lns11)
+        labs1 = [l.get_label() for l in lns1]
+        ax12.legend(lns1, labs1, loc=1)
+
+        """ plot Vmp and Tm """
+
+        ax21 = ax[1]
+        ax22 = ax21.twinx()
+        
+        xtime = df.index[mask]
+        
+        ## plot Tm in right
+        lns21 = ax21.fill_between(xtime, df[temperature_module_key][mask], 0, 
+                        alpha=0.4, color='#FFC000', edgecolor = None,
+                        zorder = 2, label = 'Tm')
+        ax21.yaxis.tick_right()
+        ax21.yaxis.set_label_position("right")
+
+        ## plot Imp in left
+        lns22, = ax22.plot(xtime, vmp, '-o',zorder = 2.5, label = 'Measured Vmp', color = '#92D050')
+        lns23, = ax22.plot(xtime, v_esti, '--o', color= '#009847',zorder = 3,label = 'Estimated Vmp')
+        ax22.yaxis.tick_left()
+        ax22.yaxis.set_label_position("left")
+        
+        ax21.grid(linestyle = '--')
+        ax21.tick_params(labelsize=13)
+        ax22.tick_params(labelsize=13)
+        ax21.set_xlabel('Time', fontsize=13)
+        ax22.set_ylabel('Vmp (A)', fontsize=13, color = '#009847', fontweight = 'bold')
+        ax21.set_ylabel('Tm (℃)', fontsize=13, color = '#D8A402', fontweight = 'bold')
+        
+
+        import matplotlib.dates as mdates
+        hours = mdates.HourLocator(interval = 1)
+        h_fmt = mdates.DateFormatter('%Hh')
+        ax21.xaxis.set_major_locator(hours)
+        ax21.xaxis.set_major_formatter(h_fmt)
+
+        # combine legends
+        lns2 = (lns22, lns23, lns21)
+        labs2 = [l.get_label() for l in lns2]
+        ax22.legend(lns2, labs2, loc=7)
+
+
+        plt.gcf().set_dpi(120)
+        plt.show()
+
+    def plot_Vmp_vs_Tm_Imp_vs_G (pvp, boolean_mask, points_show = None, figsize=[4,6], 
+                                sys_name = None, date_text = None):
+
+        points_show_bool = np.full(boolean_mask.sum(), False)
+        points_show_bool[points_show] = True
+        df=pvp.df[boolean_mask][points_show_bool]
+
+        mask = np.array(df['operating_cls'] == 0)
+        vmp = np.array(df.loc[mask, pvp.voltage_key]) / pvp.modules_per_string
+        imp = np.array(df.loc[mask, pvp.current_key]) / pvp.parallel_strings
+        G = df[pvp.irradiance_poa_key][mask]
+        Tm = df[pvp.temperature_cell_key][mask]
+
+        # estimate
+        v_esti, i_esti = pvp.single_diode_predict(
+            effective_irradiance=G,
+            temperature_cell=Tm,
+            operating_cls=np.zeros_like(df[pvp.irradiance_poa_key][mask]),
+            params=p_plot)
+
+        # error
+        pmp_error = abs(vmp*imp - v_esti*i_esti)
+        RE_vmp = abs(vmp-v_esti)/37*100
+        RE_imp = abs(imp-i_esti)/8.6*100
+
+        fig, ax = plt.subplots(2,1,figsize=figsize)
+
+        ax1 = ax[0]
+        ax1.scatter(G, RE_imp)
+        ax1.grid(linestyle = '--')
+        ax1.tick_params(labelsize=13)
+        ax1.tick_params(labelsize=13)
+        ax1.set_ylabel('RE_Imp (%)', fontsize=13, fontweight = 'bold')
+        ax1.set_xlabel('G (${W/m^2}$)', fontsize=13, fontweight = 'bold')
+        ax1.set_title('RE_Imp vs G', fontweight = 'bold', fontsize=13)
+
+        ax2 = ax[1]
+        ax2.scatter(Tm, RE_vmp, color = '#009847')
+        ax2.grid(linestyle = '--')
+        ax2.tick_params(labelsize=13)
+        ax2.tick_params(labelsize=13)
+        ax2.set_ylabel('RE_Vmp (%)', fontsize=13, fontweight = 'bold')
+        ax2.set_xlabel('Tm (℃)', fontsize=13, fontweight = 'bold')
+        ax2.set_title(' RE_Vmp vs Tm', fontweight = 'bold', fontsize=13)
+
+        plt.gcf().set_dpi(120)
+        plt.tight_layout()
+        plt.show()
+
+
