@@ -60,7 +60,7 @@ def calculate_error_real(pfit : 'dataframe', df_ref : 'dataframe', nrolling : in
 
     return all_error_df
 
-def calculate_error_synthetic(pfit : 'dataframe', df : 'dataframe'):
+def calculate_error_synthetic(pfit : 'dataframe', df : 'dataframe', nrolling : int = 1):
     dft = pd.DataFrame()
 
     keys = ['diode_factor',
