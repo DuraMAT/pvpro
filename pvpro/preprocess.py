@@ -668,7 +668,7 @@ class Preprocessor():
     off-MPP functions
 
     """
-    def detect_off_MPP(pvp, boolean_mask = None):
+    def detect_off_MPP(self, pvp, boolean_mask : array = None):
 
         """
         detect off-MPP based on Pmp error
@@ -709,8 +709,8 @@ class Preprocessor():
 
         return offmpp
   
-    def plot_Pmp_error_vs_time(pvp, boolean_mask, points_show = None, figsize=[4,3], show_only_offmpp = False, 
-                                sys_name = None, date_show = None):
+    def plot_Pmp_error_vs_time(self, pvp, boolean_mask : array, points_show : array= None, figsize : tuple =[4,3], 
+                                 sys_name : str = None):
 
         """
         Plot Pmp error vs time, where the at-MPP and off-MPP points are highlighted
@@ -783,8 +783,8 @@ class Preprocessor():
         plt.gcf().set_dpi(150)
         plt.show()
 
-    def deconvolve_Pmp_error_on_V_I (pvp, boolean_mask, points_show = None, figsize=[4.5,3], 
-                                sys_name = None, date_text = None):
+    def deconvolve_Pmp_error_on_V_I (self, pvp, boolean_mask : array, points_show : array = None, figsize : tuple =[4.5,3], 
+                                sys_name : str = None, date_text : str = None):
 
         points_show_bool = np.full(boolean_mask.sum(), False)
         points_show_bool[points_show] = True
@@ -841,8 +841,8 @@ class Preprocessor():
         plt.gcf().set_dpi(120)
         plt.show()
 
-    def plot_Vmp_Imp_scatters_Pmp_error(pvp, boolean_mask, points_show = None, figsize=[4,3], show_only_offmpp = False, 
-                                sys_name = None, date_show = None):
+    def plot_Vmp_Imp_scatters_Pmp_error(self, pvp, boolean_mask : array, points_show : array = None, figsize : tuple =[4,3], show_only_offmpp : bool = False, 
+                                sys_name : str = None, date_show : str = None):
 
         """
         Plot relative error (RE) of Vmp vs RE of Imp as scatters.
@@ -904,8 +904,7 @@ class Preprocessor():
         plt.gcf().set_dpi(120)
         plt.show()
 
-    def plot_Vmp_Tm_Imp_G_vs_time (pvp, boolean_mask, points_show = None, figsize=[5,6], 
-                                sys_name = None, date_text = None):
+    def plot_Vmp_Tm_Imp_G_vs_time (self, pvp, boolean_mask : array, points_show : array = None, figsize : tuple =[5,6]):
 
         points_show_bool = np.full(boolean_mask.sum(), False)
         points_show_bool[points_show] = True
@@ -1001,8 +1000,7 @@ class Preprocessor():
         plt.gcf().set_dpi(120)
         plt.show()
 
-    def plot_Vmp_vs_Tm_Imp_vs_G (pvp, boolean_mask, points_show = None, figsize=[4,6], 
-                                sys_name = None, date_text = None):
+    def plot_Vmp_vs_Tm_Imp_vs_G (self, pvp, boolean_mask : array, points_show : array = None, figsize : tuple =[4,6]):
 
         points_show_bool = np.full(boolean_mask.sum(), False)
         points_show_bool[points_show] = True
