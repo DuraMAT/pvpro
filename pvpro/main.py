@@ -10,7 +10,7 @@ import time
 import scipy
 import shutil
 import string
-import seaborn as sns
+
 import matplotlib.pyplot as plt
 
 from scipy.optimize import minimize
@@ -18,10 +18,10 @@ from tqdm import tqdm
 from functools import partial
 from scipy.special import lambertw
 from numpy.linalg import pinv
-from xmlrpc.client import boolean
 from sklearn.linear_model import HuberRegressor
-from matplotlib.colors import LinearSegmentedColormap
+
 from solardatatools import DataHandler
+from rdtools.degradation import degradation_year_on_year
 from pvlib.pvsystem import calcparams_desoto, singlediode
 from pvlib.singlediode import _lambertw_i_from_v, _lambertw_v_from_i, \
     bishop88_mpp, bishop88_v_from_i
@@ -153,12 +153,12 @@ class PvProHandler:
                 save_figs_directory : str ='figures',
                 plot_imp_max : float =8,
                 plot_vmp_max : float =40,
-                fit_params : bool =None,
-                lower_bounds : bool =None,
-                upper_bounds : bool =None,
+                fit_params : list[str] =None,
+                lower_bounds : dict =None,
+                upper_bounds : dict =None,
                 singlediode_method : str ='fast',
                 saturation_current_multistart : bool =None,
-                technology : bool = None 
+                technology : str = None 
                 ):
         """
         Main PVPRO Method.
@@ -959,7 +959,7 @@ class PvProHandler:
     def estimate_p0(self,
                     verbose : bool =False,
                     boolean_mask : bool =None,
-                    technology : bool =None):
+                    technology : str =None):
         """
         Make a rough estimate of the startpoint for fitting the single diodemodel.
         """
@@ -1075,66 +1075,66 @@ class PvProHandler:
 
         return out
 
-    def calculate_error_real(self, pfit : 'dataframe', df_ref : 'dataframe', nrolling : int = 1):
-        keys = ['diode_factor',
-                'photocurrent_ref', 'saturation_current_ref',
-                'resistance_series_ref',
-                'resistance_shunt_ref',
-                'i_sc_ref', 'v_oc_ref',
-                'i_mp_ref', 'v_mp_ref', 'p_mp_ref']
+def calculate_error_real(pfit : 'dataframe', df_ref : 'dataframe', nrolling : int = 1):
+    keys = ['diode_factor',
+            'photocurrent_ref', 'saturation_current_ref',
+            'resistance_series_ref',
+            'resistance_shunt_ref',
+            'i_sc_ref', 'v_oc_ref',
+            'i_mp_ref', 'v_mp_ref', 'p_mp_ref']
 
-        all_error_df = pd.DataFrame(index=keys, columns=['rms', 'rms_rela', 'corr_coef'])
+    all_error_df = pd.DataFrame(index=keys, columns=['rms', 'rms_rela', 'corr_coef'])
 
-        for key in keys:
-            para_ref = df_ref[key].rolling(nrolling).mean()
-            para_pvpro = pfit[key].rolling(nrolling).mean()
+    for key in keys:
+        para_ref = df_ref[key].rolling(nrolling).mean()
+        para_pvpro = pfit[key].rolling(nrolling).mean()
 
-            mask = np.logical_and(~np.isnan(para_pvpro), ~np.isnan(para_ref))
-            corrcoef = np.corrcoef(para_pvpro[mask], para_ref[mask])
-            rela_rmse = np.sqrt(np.mean((para_pvpro[mask]-para_ref[mask]) ** 2))/np.mean(para_pvpro[mask])
+        mask = np.logical_and(~np.isnan(para_pvpro), ~np.isnan(para_ref))
+        corrcoef = np.corrcoef(para_pvpro[mask], para_ref[mask])
+        rela_rmse = np.sqrt(np.mean((para_pvpro[mask]-para_ref[mask]) ** 2))/np.mean(para_pvpro[mask])
 
-            all_error_df['rms_rela'][key] = rela_rmse
-            all_error_df['corr_coef'][key] = corrcoef[0,1]
+        all_error_df['rms_rela'][key] = rela_rmse
+        all_error_df['corr_coef'][key] = corrcoef[0,1]
 
-        return all_error_df
+    return all_error_df
 
-    def calculate_error_synthetic(self, pfit : 'dataframe', df : 'dataframe', nrolling : int = 1):
-        dft = pd.DataFrame()
+def calculate_error_synthetic(pfit : 'dataframe', df : 'dataframe', nrolling : int = 1):
+    dft = pd.DataFrame()
 
-        keys = ['diode_factor',
-                'photocurrent_ref', 'saturation_current_ref',
-                'resistance_series_ref',
-                'conductance_shunt_extra', 'resistance_shunt_ref',
-                'nNsVth_ref', 'i_sc_ref', 'v_oc_ref',
-                'i_mp_ref', 'v_mp_ref', 'p_mp_ref']
+    keys = ['diode_factor',
+            'photocurrent_ref', 'saturation_current_ref',
+            'resistance_series_ref',
+            'conductance_shunt_extra', 'resistance_shunt_ref',
+            'nNsVth_ref', 'i_sc_ref', 'v_oc_ref',
+            'i_mp_ref', 'v_mp_ref', 'p_mp_ref']
 
-        for k in range(len(pfit)):
-            cax = np.logical_and(df.index >= pfit['t_start'].iloc[k],
-                                df.index < pfit['t_end'].iloc[k])
-            dfcurr_mean = df[cax][keys].mean()
+    for k in range(len(pfit)):
+        cax = np.logical_and(df.index >= pfit['t_start'].iloc[k],
+                            df.index < pfit['t_end'].iloc[k])
+        dfcurr_mean = df[cax][keys].mean()
 
-            for key in dfcurr_mean.keys():
-                dft.loc[pfit['t_start'].iloc[k], key] = dfcurr_mean[key]
+        for key in dfcurr_mean.keys():
+            dft.loc[pfit['t_start'].iloc[k], key] = dfcurr_mean[key]
 
-        all_error_df = pd.DataFrame(index=keys, columns=['rms', 'rms_rela', 'corr_coef'])
+    all_error_df = pd.DataFrame(index=keys, columns=['rms', 'rms_rela', 'corr_coef'])
+    
+    for k in keys:
+    
+        p1 = dft[k]
+        p2 = pfit[k]
+        mask = ~np.isnan(p1) & ~np.isnan(p2)# remove nan value for corrcoef calculation
         
-        for k in keys:
-        
-            p1 = dft[k]
-            p2 = pfit[k]
-            mask = ~np.isnan(p1) & ~np.isnan(p2)# remove nan value for corrcoef calculation
-            
-            all_error_df.loc[k, 'rms'] = np.sqrt(np.mean((p1[mask]-p2[mask]) ** 2))
-            all_error_df.loc[k,'rms_rela'] = np.sqrt(np.nanmean(((p1[mask]-p2[mask])/p1[mask]) ** 2))
-            all_error_df.loc[k, 'corr_coef'] = np.corrcoef(p1[mask], 
-                                                    p2[mask])[0,1]
+        all_error_df.loc[k, 'rms'] = np.sqrt(np.mean((p1[mask]-p2[mask]) ** 2))
+        all_error_df.loc[k,'rms_rela'] = np.sqrt(np.nanmean(((p1[mask]-p2[mask])/p1[mask]) ** 2))
+        all_error_df.loc[k, 'corr_coef'] = np.corrcoef(p1[mask], 
+                                                p2[mask])[0,1]
 
-        return all_error_df
+    return all_error_df
 
 
-        """
-        Functions of plotting
-        """
+    """
+    Functions of plotting
+    """
 
 
 """
@@ -1974,16 +1974,16 @@ def singlediode_fast(photocurrent : array,
             'i_mp': i_mp}
 
 def pvlib_single_diode(
-        effective_irradiance : float,
-        temperature_cell : float,
-        resistance_shunt_ref : array,
-        resistance_series_ref : array,
-        diode_factor : array,
-        cells_in_series : array,
-        alpha_isc : array,
-        photocurrent_ref : array,
-        saturation_current_ref : array,
-        conductance_shunt_extra : array =0,
+        effective_irradiance : pd.Series or float,
+        temperature_cell : pd.Series or float,
+        resistance_shunt_ref : pd.Series,
+        resistance_series_ref : pd.Series,
+        diode_factor : pd.Series,
+        cells_in_series : pd.Series,
+        alpha_isc : pd.Series,
+        photocurrent_ref : pd.Series,
+        saturation_current_ref : pd.Series,
+        conductance_shunt_extra : pd.Series = 0,
         irradiance_ref : float =1000,
         temperature_ref : float =25,
         ivcurve_pnts : bool =None,
