@@ -273,14 +273,14 @@ class Preprocessor():
 
         return cls
 
-    def build_operating_classification(self, df: 'dataframe or dict'):
+    def build_operating_classification(self, df: pd.DataFrame):
         """
         Build array of classifications of each time stamp based on boolean arrays
         provided.
 
         Parameters
         ----------
-        df : dataframe or dict
+        df : dataframe 
             Needs to have fields:
 
             - 'high_v':
@@ -501,7 +501,7 @@ class Preprocessor():
         }
         return out
 
-    def find_clearsky_poa(df : 'dataframe', lat : float, lon : float,
+    def find_clearsky_poa(self, df : pd.DataFrame, lat : float, lon : float,
                         irradiance_poa_key : str ='irradiance_poa_o_###',
                         mounting : str ='fixed',
                         tilt : float =0,
@@ -687,7 +687,7 @@ class Preprocessor():
 
         return offmpp
 
-    def deconvolve_Pmp_error_on_V_I (self, pvp, boolean_mask : array, points_show : array = None, figsize : tuple =[4.5,3], 
+    def deconvolve_Pmp_error_on_V_I (self, pvp, boolean_mask : array, points_show : array = None, figsize : list =[4.5,3], 
                                 sys_name : str = None, date_text : str = None):
 
         points_show_bool = np.full(boolean_mask.sum(), False)

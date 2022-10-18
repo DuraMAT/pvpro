@@ -16,85 +16,164 @@ from pvpro.main import pvlib_single_diode, pv_system_single_diode_model
 from pvpro.main import calculate_error_real, calculate_error_synthetic
 
 
-
-def plot_Vmp_Imp_scatter(pvp,
-                            df : 'dataframe',
-                            p_plot : bool =None,
-                            vmin : float =0,
-                            vmax : float =70,
-                            plot_imp_max : float =8,
-                            plot_vmp_max : float =40,
-                            cbar : bool =True,
-                            ylabel : str ='Current (A)',
-                            xlabel : str ='Voltage (V)'):
+"""
+Functions to plot pre-processing results
+"""
+def plot_scatter(x : array, y : array, c : array, 
+                 boolean_mask : bool =None, 
+                 vmin : float =0,
+                 vmax : float =70,
+                 plot_x_min : float =0,
+                 plot_x_max : float =40,
+                 plot_y_min : float =0,
+                 plot_y_max : float =10,
+                 text_str : str ='',
+                 cbar : bool =True,
+                 cmap : str ='jet',
+                 ylabel : str ='',
+                 xlabel : str ='',
+                 clabel : str =''):
     """
     Make Vmp, Imp scatter plot.
 
+    Parameters
+    ----------
+    p_plot
+    figure_number
+    iteration
+    vmin
+    vmax
+
+    Returns
+    -------
+
     """
+
+    if boolean_mask is None:
+        boolean_mask = np.ones_like(x, dtype='bool')
+
+    if len(x[boolean_mask]) > 0:
+
+        # Make scatterplot
+        h_sc = plt.scatter(x[boolean_mask], y[boolean_mask],
+                           c=c[boolean_mask],
+                           s=0.2,
+                           cmap=cmap,
+                           vmin=vmin,
+                           vmax=vmax)
+
+        if cbar:
+            pcbar = plt.colorbar(h_sc)
+            pcbar.set_label(clabel)
+
+    plt.text(0.05, 0.95, text_str,
+             horizontalalignment='left',
+             verticalalignment='top',
+             transform=plt.gca().transAxes,
+             fontsize=8)
+
+    plt.xlim([plot_x_min, plot_x_max])
+    plt.ylim([plot_y_min, plot_y_max])
+    plt.xticks(fontsize=9)
+    plt.yticks(fontsize=9)
+    plt.xlabel(xlabel, fontsize=9)
+    plt.ylabel(ylabel, fontsize=9)
+
+    return h_sc
+
+def plot_Vmp_Imp_scatter_preprocess(voltage : pd.Series, 
+                         current : pd.Series, 
+                         temperature_cell : pd.Series,
+                         operating_cls : pd.Series,
+                         boolean_mask : np.ndarray =None,
+                         p_plot : 'dataframe' =None,
+                         vmin : float =0,
+                         vmax : float =70,
+                         plot_imp_max : float =8,
+                         plot_vmp_max : float =40,
+                         figsize : tuple =(6.5, 3.5),
+                         cbar : bool =True,
+                         text_str : str ='',
+                         ylabel : str ='Current (A)',
+                         xlabel : str ='Voltage (V)'):
+    """
+    Make Vmp, Imp scatter plot.
+
+    Parameters
+    ----------
+    p_plot
+    figure_number
+    iteration
+    vmin
+    vmax
+
+    Returns
+    -------
+
+    """
+
+
+    # if figure_number is not None:
+    # Make figure for inverter on.
+    # fig = plt.figure(figure_number, figsize=figsize)
+    # plt.clf()
+    # ax = plt.axes()
+
+    if boolean_mask is None:
+        boolean_mask = operating_cls == 0
+    else:
+        boolean_mask = np.logical_and(operating_cls == 0, boolean_mask)
+
+    h_sc = plot_scatter(
+        x=voltage,
+        y=current,
+        c=temperature_cell,
+        boolean_mask=boolean_mask,
+        vmin=vmin,
+        vmax=vmax,
+        plot_x_max=plot_vmp_max,
+        plot_y_max=plot_imp_max,
+        text_str=text_str,
+        cbar=cbar,
+        xlabel=xlabel,
+        ylabel=ylabel
+    )
 
     temp_limits = np.linspace(vmin, vmax, 8)
 
-    if len(df) > 0:
-        inv_on_points = np.array(df['operating_cls'] == 0)
-        vmp = np.array(
-            df.loc[
-                inv_on_points, pvp.voltage_key]) / pvp.modules_per_string
-        imp = np.array(
-            df.loc[inv_on_points, pvp.current_key]) / pvp.parallel_strings
-
-        # Make scatterplot
-        h_sc = plt.scatter(vmp, imp,
-                            c=df.loc[inv_on_points, 'temperature_cell'],
-                            s=0.2,
-                            cmap='jet',
-                            vmin=vmin,
-                            vmax=vmax)
-
     if p_plot is not None:
-        # Plot one sun
-        one_sun_points = np.logical_and.reduce((
-            df['operating_cls'] == 0,
-            df[pvp.irradiance_poa_key] > 995,
-            df[pvp.irradiance_poa_key] < 1005,
-        ))
-        if len(one_sun_points) > 0:
-            # print('number one sun points: ', len(one_sun_points))
-            plt.scatter(df.loc[
-                            one_sun_points, pvp.voltage_key] / pvp.modules_per_string,
-                        df.loc[
-                            one_sun_points, pvp.current_key] / pvp.parallel_strings,
-                        c=df.loc[one_sun_points, 'temperature_cell'],
-                        edgecolors='k',
-                        s=0.2)
 
         # Plot temperature scan
         temperature_smooth = np.linspace(vmin, vmax, 20)
 
         for effective_irradiance in [100, 1000]:
-            voltage_plot, current_plot = pvp.single_diode_predict(
+            out = pvlib_single_diode(
                 effective_irradiance=np.array([effective_irradiance]),
                 temperature_cell=temperature_smooth,
-                operating_cls=np.zeros_like(temperature_smooth),
-                params=p_plot)
+                **p_plot)
 
+            voltage_plot = out['v_mp']
+            current_plot = out['i_mp']
             plt.plot(voltage_plot, current_plot, 'k:')
 
             plt.text(voltage_plot[-1] - 0.5, current_plot[-1],
-                        '{:.1g} sun'.format(effective_irradiance / 1000),
-                        horizontalalignment='right',
-                        verticalalignment='center',
-                        fontsize=8)
+                     '{:.1g} sun'.format(effective_irradiance / 1000),
+                     horizontalalignment='right',
+                     verticalalignment='center',
+                     fontsize=8)
 
         # Plot irradiance scan
         for j in np.flip(np.arange(len(temp_limits))):
             temp_curr = temp_limits[j]
             irrad_smooth = np.linspace(1, 1000, 500)
 
-            voltage_plot, current_plot = pvp.single_diode_predict(
+            out = pvlib_single_diode(
                 effective_irradiance=irrad_smooth,
                 temperature_cell=temp_curr + np.zeros_like(irrad_smooth),
-                operating_cls=np.zeros_like(irrad_smooth),
-                params=p_plot)
+                **p_plot)
+
+            voltage_plot = out['v_mp']
+            current_plot = out['i_mp']
 
             # find the right color to plot.
             norm_temp = (temp_curr - vmin) / (vmax - vmin)
@@ -103,27 +182,12 @@ def plot_Vmp_Imp_scatter(pvp,
             line_color[3] = 0.3
 
             plt.plot(voltage_plot, current_plot,
-                        label='Fit {:2.0f} C'.format(temp_curr),
-                        color=line_color,
-                        )
-    text_str = pvp.build_plot_text_str(df, p_plot=p_plot)
+                     label='Fit {:2.0f} C'.format(temp_curr),
+                     color=line_color,
+                     )
 
-    plt.text(0.05, 0.95, text_str,
-                horizontalalignment='left',
-                verticalalignment='top',
-                transform=plt.gca().transAxes,
-                fontsize=8)
 
-    plt.xlim([0, plot_vmp_max])
-    plt.ylim([0, plot_imp_max])
-    plt.xticks(fontsize=9)
-    plt.yticks(fontsize=9)
-    if cbar and len(df) > 0:
-        pcbar = plt.colorbar(h_sc)
-        pcbar.set_label('Cell Temperature (C)')
-
-    plt.xlabel(xlabel, fontsize=9)
-    plt.ylabel(ylabel, fontsize=9)
+    return h_sc
 
 def plot_temperature_Vmp_scatter(
                                     df : 'dataframe',
@@ -226,6 +290,57 @@ def plot_temperature_Vmp_scatter(
     plt.show()
 
     return fig
+
+def plot_poa_Imp_scatter(current : pd.Series, 
+                         poa : pd.Series, 
+                         temperature_cell : pd.Series,
+                         operating_cls : pd.Series,
+                         boolean_mask : np.ndarray =None,
+                         vmin : float =0,
+                         vmax : float =70,
+                         plot_poa_max : float =1200,
+                         plot_imp_max : float =10,
+                         cbar : bool =True,
+                         text_str : str ='',
+                         ylabel : str ='Current (A)',
+                         xlabel : str ='POA (W/m2^2)'):
+    """
+    Make Vmp, Imp scatter plot.
+
+    Parameters
+    ----------
+    p_plot
+    figure_number
+    iteration
+    vmin
+    vmax
+
+    Returns
+    -------
+
+    """
+
+    if boolean_mask is None:
+        boolean_mask = operating_cls == 0
+    else:
+        boolean_mask = np.logical_and(operating_cls == 0, boolean_mask)
+
+    h_sc = plot_scatter(
+        x=poa,
+        y=current,
+        c=temperature_cell,
+        boolean_mask=boolean_mask,
+        vmin=vmin,
+        vmax=vmax,
+        plot_x_max=plot_poa_max,
+        plot_y_max=plot_imp_max,
+        text_str=text_str,
+        cbar=cbar,
+        xlabel=xlabel,
+        ylabel=ylabel
+    )
+
+    return h_sc
 
 def plot_suns_voc_scatter(
                             df : 'dataframe',
@@ -514,7 +629,6 @@ def plot_temperature_rise_irradiance_scatter(
         plt.ylabel('T module-T ambient (C)', fontsize=9)
         plt.xlabel('POA (W/m^2)', fontsize=9)
 
-
 def plot_operating_cls(extra_matrices, figsize : tuple =(12, 6)):
 
     if not 'operating_cls' in extra_matrices:
@@ -535,6 +649,11 @@ def plot_operating_cls(extra_matrices, figsize : tuple =(12, 6)):
                 vmin=-2.5, vmax=2.5)
     plt.colorbar()
     return fig
+
+
+"""
+Functions to plot off-MPP detection results
+"""
 
 def plot_Pmp_error_vs_time(pvp, boolean_mask : array, points_show : array= None, figsize : tuple =[4,3], 
                                 sys_name : str = None):
@@ -989,161 +1108,84 @@ def plot_results_timeseries_error(pfit : DataFrame,
             n = n + 1
     return error_df
 
-def plot_scatter(x : array, y : array, c : array, 
-                 boolean_mask : bool =None, 
-                 vmin : float =0,
-                 vmax : float =70,
-                 plot_x_min : float =0,
-                 plot_x_max : float =40,
-                 plot_y_min : float =0,
-                 plot_y_max : float =10,
-                 text_str : str ='',
-                 cbar : bool =True,
-                 cmap : str ='jet',
-                 ylabel : str ='',
-                 xlabel : str ='',
-                 clabel : str =''):
+def plot_Vmp_Imp_scatter(pvp,
+                            df : pd.DataFrame,
+                            p_plot : dict,
+                            vmin : float =0,
+                            vmax : float =70,
+                            plot_imp_max : float =8,
+                            plot_vmp_max : float =40,
+                            cbar : bool =True,
+                            ylabel : str ='Current (A)',
+                            xlabel : str ='Voltage (V)'):
     """
     Make Vmp, Imp scatter plot.
 
-    Parameters
-    ----------
-    p_plot
-    figure_number
-    iteration
-    vmin
-    vmax
-
-    Returns
-    -------
-
     """
-
-    if boolean_mask is None:
-        boolean_mask = np.ones_like(x, dtype='bool')
-
-    if len(x[boolean_mask]) > 0:
-
-        # Make scatterplot
-        h_sc = plt.scatter(x[boolean_mask], y[boolean_mask],
-                           c=c[boolean_mask],
-                           s=0.2,
-                           cmap=cmap,
-                           vmin=vmin,
-                           vmax=vmax)
-
-        if cbar:
-            pcbar = plt.colorbar(h_sc)
-            pcbar.set_label(clabel)
-
-    plt.text(0.05, 0.95, text_str,
-             horizontalalignment='left',
-             verticalalignment='top',
-             transform=plt.gca().transAxes,
-             fontsize=8)
-
-    plt.xlim([plot_x_min, plot_x_max])
-    plt.ylim([plot_y_min, plot_y_max])
-    plt.xticks(fontsize=9)
-    plt.yticks(fontsize=9)
-    plt.xlabel(xlabel, fontsize=9)
-    plt.ylabel(ylabel, fontsize=9)
-
-    return h_sc
-
-def plot_Vmp_Imp_scatter_preprocess(voltage : pd.Series, 
-                         current : pd.Series, 
-                         temperature_cell : pd.Series,
-                         operating_cls : pd.Series,
-                         boolean_mask : np.ndarray =None,
-                         p_plot : 'dataframe' =None,
-                         vmin : float =0,
-                         vmax : float =70,
-                         plot_imp_max : float =8,
-                         plot_vmp_max : float =40,
-                         figsize : tuple =(6.5, 3.5),
-                         cbar : bool =True,
-                         text_str : str ='',
-                         ylabel : str ='Current (A)',
-                         xlabel : str ='Voltage (V)'):
-    """
-    Make Vmp, Imp scatter plot.
-
-    Parameters
-    ----------
-    p_plot
-    figure_number
-    iteration
-    vmin
-    vmax
-
-    Returns
-    -------
-
-    """
-
-
-    # if figure_number is not None:
-    # Make figure for inverter on.
-    # fig = plt.figure(figure_number, figsize=figsize)
-    # plt.clf()
-    # ax = plt.axes()
-
-    if boolean_mask is None:
-        boolean_mask = operating_cls == 0
-    else:
-        boolean_mask = np.logical_and(operating_cls == 0, boolean_mask)
-
-    h_sc = plot_scatter(
-        x=voltage,
-        y=current,
-        c=temperature_cell,
-        boolean_mask=boolean_mask,
-        vmin=vmin,
-        vmax=vmax,
-        plot_x_max=plot_vmp_max,
-        plot_y_max=plot_imp_max,
-        text_str=text_str,
-        cbar=cbar,
-        xlabel=xlabel,
-        ylabel=ylabel
-    )
 
     temp_limits = np.linspace(vmin, vmax, 8)
 
+    if len(df) > 0:
+        inv_on_points = np.array(df['operating_cls'] == 0)
+        vmp = np.array(
+            df.loc[
+                inv_on_points, pvp.voltage_key]) / pvp.modules_per_string
+        imp = np.array(
+            df.loc[inv_on_points, pvp.current_key]) / pvp.parallel_strings
+
+        # Make scatterplot
+        h_sc = plt.scatter(vmp, imp,
+                            c=df.loc[inv_on_points, 'temperature_cell'],
+                            s=0.2,
+                            cmap='jet',
+                            vmin=vmin,
+                            vmax=vmax)
+
     if p_plot is not None:
+        # Plot one sun
+        one_sun_points = np.logical_and.reduce((
+            df['operating_cls'] == 0,
+            df[pvp.irradiance_poa_key] > 995,
+            df[pvp.irradiance_poa_key] < 1005,
+        ))
+        if len(one_sun_points) > 0:
+            # print('number one sun points: ', len(one_sun_points))
+            plt.scatter(df.loc[
+                            one_sun_points, pvp.voltage_key] / pvp.modules_per_string,
+                        df.loc[
+                            one_sun_points, pvp.current_key] / pvp.parallel_strings,
+                        c=df.loc[one_sun_points, 'temperature_cell'],
+                        edgecolors='k',
+                        s=0.2)
 
         # Plot temperature scan
         temperature_smooth = np.linspace(vmin, vmax, 20)
 
         for effective_irradiance in [100, 1000]:
-            out = pvlib_single_diode(
+            voltage_plot, current_plot = pvp.single_diode_predict(
                 effective_irradiance=np.array([effective_irradiance]),
                 temperature_cell=temperature_smooth,
-                **p_plot)
+                operating_cls=np.zeros_like(temperature_smooth),
+                params=p_plot)
 
-            voltage_plot = out['v_mp']
-            current_plot = out['i_mp']
             plt.plot(voltage_plot, current_plot, 'k:')
 
             plt.text(voltage_plot[-1] - 0.5, current_plot[-1],
-                     '{:.1g} sun'.format(effective_irradiance / 1000),
-                     horizontalalignment='right',
-                     verticalalignment='center',
-                     fontsize=8)
+                        '{:.1g} sun'.format(effective_irradiance / 1000),
+                        horizontalalignment='right',
+                        verticalalignment='center',
+                        fontsize=8)
 
         # Plot irradiance scan
         for j in np.flip(np.arange(len(temp_limits))):
             temp_curr = temp_limits[j]
             irrad_smooth = np.linspace(1, 1000, 500)
 
-            out = pvlib_single_diode(
+            voltage_plot, current_plot = pvp.single_diode_predict(
                 effective_irradiance=irrad_smooth,
                 temperature_cell=temp_curr + np.zeros_like(irrad_smooth),
-                **p_plot)
-
-            voltage_plot = out['v_mp']
-            current_plot = out['i_mp']
+                operating_cls=np.zeros_like(irrad_smooth),
+                params=p_plot)
 
             # find the right color to plot.
             norm_temp = (temp_curr - vmin) / (vmax - vmin)
@@ -1152,60 +1194,24 @@ def plot_Vmp_Imp_scatter_preprocess(voltage : pd.Series,
             line_color[3] = 0.3
 
             plt.plot(voltage_plot, current_plot,
-                     label='Fit {:2.0f} C'.format(temp_curr),
-                     color=line_color,
-                     )
+                        label='Fit {:2.0f} C'.format(temp_curr),
+                        color=line_color,
+                        )
+    text_str = pvp.build_plot_text_str(df, p_plot=p_plot)
 
+    plt.text(0.05, 0.95, text_str,
+                horizontalalignment='left',
+                verticalalignment='top',
+                transform=plt.gca().transAxes,
+                fontsize=8)
 
-    return h_sc
+    plt.xlim([0, plot_vmp_max])
+    plt.ylim([0, plot_imp_max])
+    plt.xticks(fontsize=9)
+    plt.yticks(fontsize=9)
+    if cbar and len(df) > 0:
+        pcbar = plt.colorbar(h_sc)
+        pcbar.set_label('Cell Temperature (C)')
 
-def plot_poa_Imp_scatter(current : pd.Series, 
-                         poa : pd.Series, 
-                         temperature_cell : pd.Series,
-                         operating_cls : pd.Series,
-                         boolean_mask : np.ndarray =None,
-                         vmin : float =0,
-                         vmax : float =70,
-                         plot_poa_max : float =1200,
-                         plot_imp_max : float =10,
-                         cbar : bool =True,
-                         text_str : str ='',
-                         ylabel : str ='Current (A)',
-                         xlabel : str ='POA (W/m2^2)'):
-    """
-    Make Vmp, Imp scatter plot.
-
-    Parameters
-    ----------
-    p_plot
-    figure_number
-    iteration
-    vmin
-    vmax
-
-    Returns
-    -------
-
-    """
-
-    if boolean_mask is None:
-        boolean_mask = operating_cls == 0
-    else:
-        boolean_mask = np.logical_and(operating_cls == 0, boolean_mask)
-
-    h_sc = plot_scatter(
-        x=poa,
-        y=current,
-        c=temperature_cell,
-        boolean_mask=boolean_mask,
-        vmin=vmin,
-        vmax=vmax,
-        plot_x_max=plot_poa_max,
-        plot_y_max=plot_imp_max,
-        text_str=text_str,
-        cbar=cbar,
-        xlabel=xlabel,
-        ylabel=ylabel
-    )
-
-    return h_sc
+    plt.xlabel(xlabel, fontsize=9)
+    plt.ylabel(ylabel, fontsize=9)

@@ -1,4 +1,6 @@
 from array import array
+from typing import Union
+
 import pvlib
 import numpy as np
 import pandas as pd
@@ -495,7 +497,7 @@ class PvProHandler:
         print(
             'Elapsed time: {:.2f} min'.format((time.time() - start_time) / 60))
 
-    def _x_to_p(self, x : array, key : str):
+    def _x_to_p(self, x : pd.Series, key : str):
         """
         Change from numerical fit value (x) to physical parameter (p). This
         transformation improves the numerical performance of the fitting algorithm.
@@ -539,7 +541,7 @@ class PvProHandler:
         else:
             return x
 
-    def _p_to_x(self, p : array, key : str):
+    def _p_to_x(self, p : pd.Series, key : str):
         """
         Change from physical parameter (p) to numerical fit value (x). This
         transformation improves the numerical performance of the fitting algorithm.
@@ -579,7 +581,7 @@ class PvProHandler:
         else:
             return p
 
-    def _pvpro_L2_loss(self, x : array, sdm : 'function', voltage : array, current : array, voltage_scale : float, current_scale : float,
+    def _pvpro_L2_loss(self, x : pd.Series, sdm : 'function', voltage : pd.Series, current : pd.Series, voltage_scale : float, current_scale : float,
                     weights : float, fit_params : list):
         voltage_fit, current_fit = sdm(
             **{param: self._x_to_p(x[n], param) for n, param in
@@ -591,11 +593,11 @@ class PvProHandler:
                         ((current_fit - current) * weights / current_scale) ** 2)
 
     def production_data_curve_fit(self,
-        temperature_cell : array,
-        effective_irradiance : array,
-        operating_cls : array,
-        voltage : array,
-        current : array,
+        temperature_cell : pd.Series,
+        effective_irradiance : pd.Series,
+        operating_cls : pd.Series,
+        voltage : pd.Series,
+        current : pd.Series,
         cells_in_series : int =60,
         band_gap_ref : float = None,
         dEgdT : float = None,
@@ -603,12 +605,12 @@ class PvProHandler:
         lower_bounds : float =None,
         upper_bounds : float =None,
         alpha_isc : float =None,
-        diode_factor : array =None,
-        photocurrent_ref : array =None,
-        saturation_current_ref : array =None,
-        resistance_series_ref : array =None,
-        resistance_shunt_ref : array =None,
-        conductance_shunt_extra : array =None,
+        diode_factor : pd.Series =None,
+        photocurrent_ref : pd.Series =None,
+        saturation_current_ref : pd.Series =None,
+        resistance_series_ref : pd.Series =None,
+        resistance_shunt_ref : pd.Series =None,
+        conductance_shunt_extra : pd.Series =None,
         verbose : bool =False,
         solver : str ='L-BFGS-B',
         singlediode_method : str ='fast',
@@ -617,8 +619,7 @@ class PvProHandler:
         use_voc_points : bool =True,
         use_clip_points : bool =True,
         # fit_params=None,
-        saturation_current_multistart : array =None,
-        brute_number_grid_points : int =2
+        saturation_current_multistart : pd.Series =None
         ):
         """
         Use curve fitting to find best-fit single-diode-model paramters given the
@@ -992,9 +993,9 @@ class PvProHandler:
             )
 
     def single_diode_predict(self,
-                             effective_irradiance : array,
-                             temperature_cell : array,
-                             operating_cls : array,
+                             effective_irradiance : pd.Series,
+                             temperature_cell : pd.Series,
+                             operating_cls : pd.Series,
                              params : dict,
                              ):
 
@@ -1016,7 +1017,7 @@ class PvProHandler:
 
         return voltage, current
 
-    def build_plot_text_str(self, df : 'dataframe', p_plot : bool =None):
+    def build_plot_text_str(self, df : pd.DataFrame, p_plot : dict):
 
         if len(df) > 0:
             dates_str = 'Dates: {} to {}\n'.format(
@@ -1049,7 +1050,7 @@ class PvProHandler:
 
         return text_str
 
-    def analyze_yoy(self, pfit : 'dataframe'):
+    def analyze_yoy(self, pfit : pd.DataFrame):
         out = {}
 
         for k in ['photocurrent_ref', 'saturation_current_ref',
@@ -1075,66 +1076,6 @@ class PvProHandler:
 
         return out
 
-def calculate_error_real(pfit : 'dataframe', df_ref : 'dataframe', nrolling : int = 1):
-    keys = ['diode_factor',
-            'photocurrent_ref', 'saturation_current_ref',
-            'resistance_series_ref',
-            'resistance_shunt_ref',
-            'i_sc_ref', 'v_oc_ref',
-            'i_mp_ref', 'v_mp_ref', 'p_mp_ref']
-
-    all_error_df = pd.DataFrame(index=keys, columns=['rms', 'rms_rela', 'corr_coef'])
-
-    for key in keys:
-        para_ref = df_ref[key].rolling(nrolling).mean()
-        para_pvpro = pfit[key].rolling(nrolling).mean()
-
-        mask = np.logical_and(~np.isnan(para_pvpro), ~np.isnan(para_ref))
-        corrcoef = np.corrcoef(para_pvpro[mask], para_ref[mask])
-        rela_rmse = np.sqrt(np.mean((para_pvpro[mask]-para_ref[mask]) ** 2))/np.mean(para_pvpro[mask])
-
-        all_error_df['rms_rela'][key] = rela_rmse
-        all_error_df['corr_coef'][key] = corrcoef[0,1]
-
-    return all_error_df
-
-def calculate_error_synthetic(pfit : 'dataframe', df : 'dataframe', nrolling : int = 1):
-    dft = pd.DataFrame()
-
-    keys = ['diode_factor',
-            'photocurrent_ref', 'saturation_current_ref',
-            'resistance_series_ref',
-            'conductance_shunt_extra', 'resistance_shunt_ref',
-            'nNsVth_ref', 'i_sc_ref', 'v_oc_ref',
-            'i_mp_ref', 'v_mp_ref', 'p_mp_ref']
-
-    for k in range(len(pfit)):
-        cax = np.logical_and(df.index >= pfit['t_start'].iloc[k],
-                            df.index < pfit['t_end'].iloc[k])
-        dfcurr_mean = df[cax][keys].mean()
-
-        for key in dfcurr_mean.keys():
-            dft.loc[pfit['t_start'].iloc[k], key] = dfcurr_mean[key]
-
-    all_error_df = pd.DataFrame(index=keys, columns=['rms', 'rms_rela', 'corr_coef'])
-    
-    for k in keys:
-    
-        p1 = dft[k]
-        p2 = pfit[k]
-        mask = ~np.isnan(p1) & ~np.isnan(p2)# remove nan value for corrcoef calculation
-        
-        all_error_df.loc[k, 'rms'] = np.sqrt(np.mean((p1[mask]-p2[mask]) ** 2))
-        all_error_df.loc[k,'rms_rela'] = np.sqrt(np.nanmean(((p1[mask]-p2[mask])/p1[mask]) ** 2))
-        all_error_df.loc[k, 'corr_coef'] = np.corrcoef(p1[mask], 
-                                                p2[mask])[0,1]
-
-    return all_error_df
-
-
-    """
-    Functions of plotting
-    """
 
 
 """
@@ -1142,17 +1083,16 @@ Class for estimation of initial paramters
 """
 class EstimateInitial:
 
-    def estimate_imp_ref(self, poa : array,
-                     temperature_cell : array,
-                     imp : array,
+    def estimate_imp_ref(self, poa : pd.Series,
+                     temperature_cell : pd.Series,
+                     imp : pd.Series,
                      poa_lower_limit : float =200,
                      irradiance_ref : float =1000,
                      temperature_ref : float =25,
                      figure : bool =False,
                      figure_number : int =20 ,
-                     model : string ='sandia',
-                     verbose : bool =False,
-                     solver : string ='huber',
+                     model : str ='sandia',
+                     solver : str ='huber',
                      epsilon : float =1.5,
                      ):
         """
@@ -1331,15 +1271,15 @@ class EstimateInitial:
 
         return out
 
-    def estimate_vmp_ref(self, poa : array,
-                        temperature_cell : array,
-                        vmp : array,
+    def estimate_vmp_ref(self, poa : pd.Series,
+                        temperature_cell : pd.Series,
+                        vmp : pd.Series,
                         irradiance_ref : float =1000,
                         temperature_ref : float =25,
                         figure : bool =False,
                         figure_number : int =21,
-                        model: string ='sandia1',
-                        solver: string ='huber',
+                        model: str ='sandia1',
+                        solver: str ='huber',
                         epsilon : float =2.5
                         ):
         """
@@ -1560,12 +1500,12 @@ class EstimateInitial:
 
         return out
 
-    def estimate_diode_factor(self, vmp_ref : array, beta_vmp : float, imp_ref : array,
+    def estimate_diode_factor(self, vmp_ref : pd.Series, beta_vmp : float, imp_ref : pd.Series,
                             alpha_isc_norm  : float =0,
                             resistance_series : float =0.35,
                             cells_in_series : int =60,
                             temperature_ref : float =25,
-                            technology : string =None):
+                            technology : str =None):
 
         # Thermal temperature
         k = 1.381e-23
@@ -1591,7 +1531,7 @@ class EstimateInitial:
 
         return diode_factor.real
 
-    def estimate_photocurrent_ref_simple(self, imp_ref: array, technology : str ='mono-Si'):
+    def estimate_photocurrent_ref_simple(self, imp_ref: pd.Series, technology : str ='mono-Si'):
         photocurrent_imp_ratio = {'multi-Si': 1.0746167586063207,
                                 'mono-Si': 1.0723051517913444,
                                 'thin-film': 1.1813401654607967,
@@ -1602,7 +1542,7 @@ class EstimateInitial:
 
         return photocurrent_ref
 
-    def estimate_saturation_current(self, isc : array, voc : array, nNsVth : array):
+    def estimate_saturation_current(self, isc : pd.Series, voc : pd.Series, nNsVth : pd.Series):
         """
             .. [2] John A Dufﬁe, William A Beckman, "Solar Engineering of Thermal
         Processes", Wiley, 2013
@@ -1619,7 +1559,7 @@ class EstimateInitial:
         """
         return isc * np.exp(-voc / nNsVth)
 
-    def estimate_cells_in_series(self, voc_ref : array, technology : str ='mono-Si'):
+    def estimate_cells_in_series(self, voc_ref : pd.Series, technology : str ='mono-Si'):
         """
 
         Note: Could improve this by using the fact that most modules have one of
@@ -1644,7 +1584,7 @@ class EstimateInitial:
 
         return int(voc_ref / voc_cell[technology])
 
-    def estimate_voc_ref(self, vmp_ref : array, technology : str =None):
+    def estimate_voc_ref(self, vmp_ref : pd.Series, technology : str):
         voc_vmp_ratio = {'thin-film': 1.3069503474012514,
                         'multi-Si': 1.2365223483476515,
                         'cigs': 1.2583291018540534,
@@ -1664,7 +1604,7 @@ class EstimateInitial:
         beta_voc = beta_vmp * beta_voc_to_beta_vmp_ratio[technology]
         return beta_voc
 
-    def estimate_alpha_isc(self, isc : array, technology : str):
+    def estimate_alpha_isc(self, isc : pd.Series, technology : str):
         alpha_isc_to_isc_ratio = {'multi-Si': 0.0005864523754010862,
                                 'mono-Si': 0.0005022410194560715,
                                 'thin-film': 0.00039741211251133725,
@@ -1674,7 +1614,7 @@ class EstimateInitial:
         alpha_isc = isc * alpha_isc_to_isc_ratio[technology]
         return alpha_isc
 
-    def estimate_isc_ref(self, imp_ref : array, technology: str):
+    def estimate_isc_ref(self, imp_ref : pd.Series, technology: str):
         isc_to_imp_ratio = {'multi-Si': 1.0699135787527263,
                             'mono-Si': 1.0671785412770871,
                             'thin-film': 1.158663685900219,
@@ -1685,23 +1625,23 @@ class EstimateInitial:
 
         return isc_ref
 
-    def estimate_resistance_series_simple(self, vmp : array, imp : array,
-                                        saturation_current : array,
-                                        photocurrent : array,
-                                        nNsVth : array):
+    def estimate_resistance_series_simple(self, vmp : pd.Series, imp : pd.Series,
+                                        saturation_current : pd.Series,
+                                        photocurrent : pd.Series,
+                                        nNsVth : pd.Series):
         Rs = (nNsVth * np.log1p(
             (photocurrent - imp) / saturation_current) - vmp) / imp
         return Rs
 
-    def estimate_singlediode_params(self, poa: array,
-                                    temperature_cell : array,
-                                    vmp : array,
-                                    imp : array,
+    def estimate_singlediode_params(self, poa: pd.Series,
+                                    temperature_cell : pd.Series,
+                                    vmp : pd.Series,
+                                    imp : pd.Series,
                                     band_gap_ref : float =1.121,
                                     dEgdT : float =-0.0002677,
                                     alpha_isc : float =None,
                                     cells_in_series : int =None,
-                                    technology : string =None,
+                                    technology : str =None,
                                     convergence_test : float =0.0001,
                                     temperature_ref : float =25,
                                     irradiance_ref : float =1000,
@@ -1709,8 +1649,8 @@ class EstimateInitial:
                                     resistance_shunt_ref : float =600,
                                     figure : bool =False,
                                     figure_number_start : int =20,
-                                    imp_model : string ='sandia',
-                                    vmp_model : string ='sandia1',
+                                    imp_model : str ='sandia',
+                                    vmp_model : str ='sandia1',
                                     verbose : bool =False,
                                     max_iter : int =10,
                                     optimize_Rs_Io : bool =False,
@@ -1785,8 +1725,7 @@ class EstimateInitial:
                             irradiance_ref=irradiance_ref,
                             model=imp_model,
                             figure=figure,
-                            figure_number=figure_number,
-                            verbose=verbose
+                            figure_number=figure_number
                             )
         figure_number += 1
 
@@ -1914,11 +1853,10 @@ def estimate_Eg_dEgdT(technology : str):
 
     return allEg[technology], alldEgdT[technology]
 
-def calcparams_pvpro(effective_irradiance : array, temperature_cell : array,
-                    alpha_isc : array, nNsVth_ref : array, photocurrent_ref : array,
-                    saturation_current_ref : array,
-                    resistance_shunt_ref : array, resistance_series_ref : array,
-                    conductance_shunt_extra : array,
+def calcparams_pvpro(effective_irradiance : pd.Series, temperature_cell : pd.Series,
+                    alpha_isc : pd.Series, nNsVth_ref : pd.Series, photocurrent_ref : pd.Series,
+                    saturation_current_ref : pd.Series,
+                    resistance_shunt_ref : pd.Series, resistance_series_ref : pd.Series,
                     band_gap_ref : float =None, dEgdT : float =None,
                     irradiance_ref : float =1000, temperature_ref : float =25):
     """
@@ -1948,10 +1886,10 @@ def calcparams_pvpro(effective_irradiance : array, temperature_cell : array,
 
     return iph, io, rs, rsh, nNsVth
 
-def singlediode_fast(photocurrent : array, 
-                    saturation_current : array, 
-                    resistance_series : array,
-                    resistance_shunt : array, nNsVth : array, calculate_voc : bool =False):
+def singlediode_fast(photocurrent : pd.Series, 
+                    saturation_current : pd.Series, 
+                    resistance_series : pd.Series,
+                    resistance_shunt : pd.Series, nNsVth : pd.Series, calculate_voc : bool =False):
     # Calculate points on the IV curve using either 'newton' or 'brentq'
     # methods. Voltages are determined by first solving the single diode
     # equation for the diode voltage V_d then backing out voltage
@@ -1974,8 +1912,8 @@ def singlediode_fast(photocurrent : array,
             'i_mp': i_mp}
 
 def pvlib_single_diode(
-        effective_irradiance : pd.Series or float,
-        temperature_cell : pd.Series or float,
+        effective_irradiance : Union[pd.Series, float],
+        temperature_cell : Union[pd.Series, float],
         resistance_shunt_ref : pd.Series,
         resistance_series_ref : pd.Series,
         diode_factor : pd.Series,
@@ -1986,7 +1924,7 @@ def pvlib_single_diode(
         conductance_shunt_extra : pd.Series = 0,
         irradiance_ref : float =1000,
         temperature_ref : float =25,
-        ivcurve_pnts : bool =None,
+        ivcurve_pnts : int =None,
         output_all_params : bool =False,
         singlediode_method : str ='fast',
         calculate_voc : bool =False,
@@ -2074,16 +2012,16 @@ def pvlib_single_diode(
     nNsVth_ref = diode_factor * cells_in_series * kB / q * (
             273.15 + temperature_ref)
 
-    iph, io, rs, rsh, nNsVth = calcparams_pvpro( effective_irradiance,
-                                                temperature_cell,
-                                                alpha_isc,
-                                                nNsVth_ref,
-                                                photocurrent_ref,
-                                                saturation_current_ref,
-                                                resistance_shunt_ref,
-                                                resistance_series_ref,
-                                                conductance_shunt_extra,
-                                                band_gap_ref=band_gap_ref, dEgdT=dEgdT,
+    iph, io, rs, rsh, nNsVth = calcparams_pvpro(effective_irradiance = effective_irradiance,
+                                                temperature_cell = temperature_cell,
+                                                alpha_isc = alpha_isc,
+                                                nNsVth_ref = nNsVth_ref,
+                                                photocurrent_ref = photocurrent_ref,
+                                                saturation_current_ref = saturation_current_ref,
+                                                resistance_shunt_ref = resistance_shunt_ref,
+                                                resistance_series_ref = resistance_series_ref,
+                                                band_gap_ref = band_gap_ref, 
+                                                dEgdT=dEgdT,
                                                 irradiance_ref=irradiance_ref,
                                                 temperature_ref=temperature_ref)
     if len(iph)>1: 
@@ -2210,19 +2148,19 @@ def singlediode_i_from_v(
     return current
 
 def pv_system_single_diode_model(
-        effective_irradiance : array,
-        temperature_cell : array,
-        operating_cls : array,
-        diode_factor : array,
-        photocurrent_ref : array,
-        saturation_current_ref : array,
-        resistance_series_ref : array,
-        conductance_shunt_extra : array,
-        resistance_shunt_ref : array,
+        effective_irradiance : pd.Series,
+        temperature_cell : pd.Series,
+        operating_cls : pd.Series,
+        diode_factor : pd.Series,
+        photocurrent_ref : pd.Series,
+        saturation_current_ref : pd.Series,
+        resistance_series_ref : pd.Series,
+        conductance_shunt_extra : pd.Series,
+        resistance_shunt_ref : pd.Series,
         cells_in_series : int,
-        alpha_isc : array,
-        voltage_operation : array = None,
-        current_operation : array = None,
+        alpha_isc : float,
+        voltage_operation : pd.Series = None,
+        current_operation : pd.Series = None,
         technology : str = None,
         band_gap_ref : float = None,
         dEgdT : float = None,
@@ -2327,3 +2265,63 @@ def pv_system_single_diode_model(
         current_fit[operating_cls == 1] = 0
 
     return voltage_fit, current_fit
+
+"""
+Functions about error calculation
+"""
+
+def calculate_error_real(pfit : pd.DataFrame, df_ref : pd.DataFrame, nrolling : int = 1):
+    keys = ['diode_factor',
+            'photocurrent_ref', 'saturation_current_ref',
+            'resistance_series_ref',
+            'resistance_shunt_ref',
+            'i_sc_ref', 'v_oc_ref',
+            'i_mp_ref', 'v_mp_ref', 'p_mp_ref']
+
+    all_error_df = pd.DataFrame(index=keys, columns=['rms', 'rms_rela', 'corr_coef'])
+
+    for key in keys:
+        para_ref = df_ref[key].rolling(nrolling).mean()
+        para_pvpro = pfit[key].rolling(nrolling).mean()
+
+        mask = np.logical_and(~np.isnan(para_pvpro), ~np.isnan(para_ref))
+        corrcoef = np.corrcoef(para_pvpro[mask], para_ref[mask])
+        rela_rmse = np.sqrt(np.mean((para_pvpro[mask]-para_ref[mask]) ** 2))/np.mean(para_pvpro[mask])
+
+        all_error_df['rms_rela'][key] = rela_rmse
+        all_error_df['corr_coef'][key] = corrcoef[0,1]
+
+    return all_error_df
+
+def calculate_error_synthetic(pfit : pd.DataFrame, df : pd.DataFrame, nrolling : int = 1):
+    dft = pd.DataFrame()
+
+    keys = ['diode_factor',
+            'photocurrent_ref', 'saturation_current_ref',
+            'resistance_series_ref',
+            'conductance_shunt_extra', 'resistance_shunt_ref',
+            'nNsVth_ref', 'i_sc_ref', 'v_oc_ref',
+            'i_mp_ref', 'v_mp_ref', 'p_mp_ref']
+
+    for k in range(len(pfit)):
+        cax = np.logical_and(df.index >= pfit['t_start'].iloc[k],
+                            df.index < pfit['t_end'].iloc[k])
+        dfcurr_mean = df[cax][keys].mean()
+
+        for key in dfcurr_mean.keys():
+            dft.loc[pfit['t_start'].iloc[k], key] = dfcurr_mean[key]
+
+    all_error_df = pd.DataFrame(index=keys, columns=['rms', 'rms_rela', 'corr_coef'])
+    
+    for k in keys:
+    
+        p1 = dft[k]
+        p2 = pfit[k]
+        mask = ~np.isnan(p1) & ~np.isnan(p2)
+        
+        all_error_df.loc[k, 'rms'] = np.sqrt(np.mean((p1[mask]-p2[mask]) ** 2))
+        all_error_df.loc[k,'rms_rela'] = np.sqrt(np.nanmean(((p1[mask]-p2[mask])/p1[mask]) ** 2))
+        all_error_df.loc[k, 'corr_coef'] = np.corrcoef(p1[mask], 
+                                                p2[mask])[0,1]
+
+    return all_error_df
