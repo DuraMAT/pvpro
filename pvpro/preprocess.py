@@ -33,7 +33,10 @@ class Preprocessor():
                  modules_per_string : int =None,
                  parallel_strings : int =None,
                  freq : str ='15min',
-                 solver : str ="MOSEK"
+                 solver : str ="MOSEK",
+                 techonology: str = None,
+                 alpha_isc : float =None,
+                 cells_in_series : int =None
                  ):
 
         # Initialize datahandler object.
@@ -50,7 +53,9 @@ class Preprocessor():
         self._ran_sdt = False
         self.freq = freq
         self.solver = solver
-
+        self.technology = techonology
+        self.cells_in_series = cells_in_series
+        self.alpha_isc = alpha_isc # alpha_isc is in units of A/C
 
         keys = [self.voltage_dc_key,
                 self.current_dc_key,
@@ -642,106 +647,4 @@ class Preprocessor():
         return voltage_temperature_filter
 
 
-    """
-    off-MPP functions
-
-    """
-    def detect_off_MPP(self, pvp, boolean_mask : array = None):
-
-        """
-        detect off-MPP based on Pmp error
-
-        return
-        ------
-        off-MPP bool array
-        
-        """
-        if boolean_mask:
-            df=pvp.df[boolean_mask]
-        else:
-            df=pvp.df
-
-        p_plot=pvp.p0
-
-        mask = np.array(df['operating_cls'] == 0)
-        vmp = np.array(df.loc[mask, pvp.voltage_key]) / pvp.modules_per_string
-        imp = np.array(df.loc[mask, pvp.current_key]) / pvp.parallel_strings
-
-        # calculate error
-        v_esti, i_esti = pvp.single_diode_predict(
-            effective_irradiance=df[pvp.irradiance_poa_key][mask],
-            temperature_cell=df[pvp.temperature_cell_key][mask],
-            operating_cls=np.zeros_like(df[pvp.irradiance_poa_key][mask]),
-            params=p_plot)
-        rmse_vmp = mean_squared_error(v_esti, vmp)/37
-        rmse_imp = mean_squared_error(i_esti, imp)/8.6
-
-        # Pmp error
-        pmp_error = abs(vmp*imp - v_esti*i_esti)
-        vmp_error = abs(vmp-v_esti)
-        imp_error = abs(imp-i_esti)
-
-        # detect off-mpp and calculate off-mpp percentage
-        offmpp = pmp_error>np.nanmean(pmp_error)+np.std(pmp_error)
-        offmpp_ratio = offmpp.sum()/pmp_error.size*100  
-
-        return offmpp
-
-    def deconvolve_Pmp_error_on_V_I (self, pvp, boolean_mask : array, points_show : array = None, figsize : list =[4.5,3], 
-                                sys_name : str = None, date_text : str = None):
-
-        points_show_bool = np.full(boolean_mask.sum(), False)
-        points_show_bool[points_show] = True
-        df=pvp.df[boolean_mask][points_show_bool]
-        
-        mask = np.array(df['operating_cls'] == 0)
-        vmp = np.array(df.loc[mask, pvp.voltage_key]) / pvp.modules_per_string
-        imp = np.array(df.loc[mask, pvp.current_key]) / pvp.parallel_strings
-        G = df[pvp.irradiance_poa_key][mask]
-        Tm = df[pvp.temperature_cell_key][mask]
-
-        # estimate
-        v_esti, i_esti = pvp.single_diode_predict(
-            effective_irradiance=G,
-            temperature_cell=Tm,
-            operating_cls=np.zeros_like(df[pvp.irradiance_poa_key][mask]),
-            params=p_plot)
-
-        # error
-        pmp_error = abs(vmp*imp - v_esti*i_esti) 
-        vmp_error = abs(vmp-v_esti)
-        imp_error = abs(imp-i_esti)
-        pmp_error = pmp_error + vmp_error*imp_error
-
-        # contribution
-        con_V = vmp_error*i_esti/pmp_error*100
-        con_I = imp_error*v_esti/pmp_error*100
-
-        fig, ax = plt.subplots(figsize=figsize)
-        xtime = df.index[mask]
-
-        # ax.fill_between(xtime, np.ones_like(con_V)*100, 0, alpha=1, color='#0070C0', edgecolor = 'white', linewidth = 2, label = 'Error of Vmp')
-        ax.fill_between(xtime, con_I+con_V, 0, alpha=1, color='#0070C0', edgecolor = 'white', linewidth = 2, label = 'Error of Vmp')
-        ax.fill_between(xtime, con_I, 0, alpha=1, color='#92D050', edgecolor = 'white', linewidth = 2, label = 'Error of Imp')
-
-        import matplotlib.dates as mdates
-        hours = mdates.HourLocator(interval = 1)
-        h_fmt = mdates.DateFormatter('%Hh')
-        ax.xaxis.set_major_locator(hours)
-        ax.xaxis.set_major_formatter(h_fmt)
-
-        # text
-        if not date_text:
-            datetext = df.index[mask][0].strftime("%Y-%m-%d")
-        text_show = sys_name + '\n' + datetext
-        ax.text(xtime[1], 10, text_show)
-
-        ax.tick_params(labelsize=13)
-        ax.tick_params(labelsize=13)
-        ax.set_xlabel('Time', fontsize=13)
-        ax.set_ylabel('Deconvolution\n of Pmp error (%)', fontsize=13, fontweight = 'bold')
-        plt.ylim([0,100])
-        plt.legend(loc=7)
-        plt.gcf().set_dpi(120)
-        plt.show()
-
+   
