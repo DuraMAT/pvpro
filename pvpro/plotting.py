@@ -634,6 +634,12 @@ class PvProPlot:
         if not 'operating_cls' in extra_matrices:
             raise Exception("""Must call 'run_preprocess_sdt' first to use 
             this visualization.""")
+            
+        # function to calculate the position at a percentage in a range
+        def get_position_at_percentage(ymax, ymin, percentage):
+            yrange = ymax-ymin
+            y = ymin + percentage*yrange
+            return y
 
         fig = plt.figure(figsize=figsize)
 
@@ -642,12 +648,26 @@ class PvProPlot:
         n_bins = 5  # Discretizes the interpolation into bins
         cmap_name = 'my_map'
         cmap = LinearSegmentedColormap.from_list(cmap_name, colors, N=n_bins)
-
-        plt.imshow(extra_matrices['operating_cls'], aspect='auto',
+        matrix_show = extra_matrices['operating_cls']
+        fig, ax = plt.subplots(figsize = [8,5])
+        plt.imshow(matrix_show, aspect='auto',
                     interpolation='none',
                     cmap=cmap,
                     vmin=-2.5, vmax=2.5)
-        plt.colorbar()
+        ax.set_xticks(np.array([0,1,2,3])*365)
+        ax.set_xticklabels(['2015', '2016', '2017', '2018'])
+        ax.set_xlabel('Year')
+        ax.get_ylim()
+        ymax,ymin = ax.get_ylim()
+        yposi = get_position_at_percentage(ymax, ymin, np.array([0.13, 0.4, 0.72]))
+        ax.set_yticks(yposi)
+        ax.set_yticklabels(['(Sunrise)', 'Time of day', '(Sunset)'], rotation=90)
+        ax.set_title('Identified PV array operating condition', weight='bold')
+        cbar = plt.colorbar()
+        cbar.ax.set_yticklabels(['','Anomaly','Inverter off','MPP', 'Open circuit', 'Clipped'])
+        plt.rcParams['font.size'] = '13'
+        plt.gcf().set_dpi(100)
+        plt.show
         return fig
 
 
@@ -721,7 +741,7 @@ class PvProPlot:
         plt.yticks(fontsize=12)
 
         plt.ylabel('Pmp error (W)', fontsize=12, fontweight = 'bold')
-        lgnd = plt.legend()
+        lgnd = plt.legend(loc = 1)
         lgnd.legendHandles[0]._sizes = [20]
         lgnd.legendHandles[1]._sizes = [20]
         plt.title(sys_name, fontsize=13, fontweight = 'bold')
