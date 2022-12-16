@@ -11,9 +11,8 @@ from array import array
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from sklearn.metrics import mean_squared_error
-from pvpro.main import pvlib_single_diode, pv_system_single_diode_model
+from pvpro.modeling import pvlib_single_diode, pv_system_single_diode_model, single_diode_predict
 from pvpro.main import calculate_error_real, calculate_error_synthetic
-from pvpro.main import single_diode_predict
 
 class PvProPlot:
 
