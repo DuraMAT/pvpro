@@ -9,6 +9,9 @@ This package, PV-Pro, automates the analysis of PV production data to extract th
 **The package is still under active development. If there is any problem, please feel free to contact us!**
 
 # Methods
+PV-Pro estimates essential PV module parameters using only operation (DC voltage and current) and weather data (irradiance and temperature). First, PV-Pro performs multi-stage data pre-processing to remove noisy data. Next, the time-series DC data are used to fit an equivalent circuit single-diode model (SDM) to estimate the circuit parameters by minimizing the differences between the measured and estimated values. In this way, the time evolutions of the SDM parameters are obtained.
+
+![Image of PV-Pro methodology](https://github.com/DuraMAT/pvpro/blob/master/doc_img/pvpro_overview.png)
 
 Here's a high level overview of the most important parts of the package.
 
