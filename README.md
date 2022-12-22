@@ -68,15 +68,15 @@ By generating a PV dataset with known module degradation, the performance of the
 
 ## Example analysis of real data.
 
-The NIST ground array provides a useful testbed for PVPRO [1]. A jupyter notebook showing analysis of this dataset is provided in [NIST16_analyze.ipynb](examples/NIST16_analyze.ipynb). 
+The NIST ground array provides a useful testbed for PVPRO [1]. A jupyter notebook showing analysis of this dataset is provided in [NIST16_analyze.ipynb](examples/NIST_ground_array_analyze.ipynb). 
 
 PVPRO analysis fits a single diode model to the data at each timestep in the analysis. Below, the thoery lines are shown next to the cleaned data.
 
-![Image of PVPRO fit result](https://github.com/DuraMAT/pvpro/blob/PVPRO_lbj/doc_img/nist-ground-fit-result.png)
+![Image of PVPRO fit result](https://github.com/DuraMAT/pvpro/blob/master/doc_img/nist-ground-fit-result.png)
 
 The trend of these parameters over time can be used to interpret what is degrading in the system. This analysis is only sensitive to module degradation (excepting drift in sensors) and not inverter degradation or downtime. Below, the PVPRO results for this system show which parameters cause the observed power loss.
 
-![Image of PVPRO parameter trend](https://github.com/DuraMAT/pvpro/blob/PVPRO_lbj/doc_img/nist-ground-parameter-trend.png)
+![Image of PVPRO parameter trend](https://github.com/DuraMAT/pvpro/blob/master/doc_img/nist-ground-parameter-trend.png)
 
 For this dataset, the estimated power degradation rate is -1.7%/yr. Inspecting the first panel, photocurrent loss is estimated to cause a -0.8%/yr loss in power, making photocurrent loss responsible for 47% of the observed power loss. This system also appears to show an increase in series resistance over time. 
 
