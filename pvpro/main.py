@@ -13,6 +13,7 @@ import scipy
 import shutil
 
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 
 from scipy.optimize import minimize
 from tqdm import tqdm
@@ -148,10 +149,6 @@ class PvProHandler:
                 verbose : bool =False,
                 method : str ='minimize',
                 solver : str ='L-BFGS-B',
-                save_figs : bool =True,
-                save_figs_directory : str ='figures',
-                plot_imp_max : float =8,
-                plot_vmp_max : float =40,
                 fit_params : list[str] =None,
                 lower_bounds : dict =None,
                 upper_bounds : dict =None,
@@ -181,8 +178,6 @@ class PvProHandler:
         verbose
         method
         solver
-        save_figs
-        save_figs_directory
         plot_imp_max
         plot_vmp_max
         fit_params
@@ -195,28 +190,7 @@ class PvProHandler:
         """
 
         start_time = time.time()
-
         pvesti = EstimateInitial()
-
-        # Make directories for exporting figures.
-        if save_figs:
-            try:
-                shutil.rmtree(save_figs_directory)
-            except OSError as e:
-                pass
-                # print('Cannot remove directory {}'.format(save_figs_directory))
-
-            os.mkdir(save_figs_directory)
-
-            export_folders = [
-                os.path.join(save_figs_directory, 'Vmp_Imp'),
-                os.path.join(save_figs_directory, 'suns_Voc'),
-                os.path.join(save_figs_directory, 'clipped'),
-                os.path.join(save_figs_directory, 'poa_Imp'),
-            ]
-            for folder in export_folders:
-                if not os.path.exists(folder):
-                    os.mkdir(folder)
 
         q = 1.602e-19
         kB = 1.381e-23
@@ -233,7 +207,6 @@ class PvProHandler:
                          'conductance_shunt_extra', 
                          'resistance_shunt_ref', 
                           'diode_factor']
-            # self.fit_params = fit_params
 
         if saturation_current_multistart is None:
             saturation_current_multistart = [0.2, 0.5, 1, 2, 5]
@@ -320,10 +293,7 @@ class PvProHandler:
                         for key in fit_params:
                             p0.loc[k, key] = p0.loc[k_last_iteration, key]
                 else:
-                    raise ValueError(
-                        'start_point_method must be "fixed" or "last"')
-
-                # Do quick parameters estimation on this iteration.from
+                    raise ValueError('start_point_method must be "fixed" or "last"')
 
                 # Do pvpro fit on this iteration.
                 if verbose:
@@ -404,19 +374,15 @@ class PvProHandler:
 
                 n = n + 1
                 k_last_iteration = k
-                # except:
-                #     print('** Error with this iteration.')
 
                 # Calculate other parameters vs. time.
-                pfit.loc[k, 'nNsVth_ref'] = pfit.loc[
-                                                k, 'diode_factor'] * self.cells_in_series * kB / q * (
-                                                    25 + 273.15)
+                pfit.loc[k, 'nNsVth_ref'] = pfit.loc[k, 'diode_factor'] * self.cells_in_series * kB / q * (25 + 273.15)
 
                 out = pvlib.pvsystem.singlediode(
                     photocurrent=pfit.loc[k, 'photocurrent_ref'],
                     saturation_current=pfit.loc[k, 'saturation_current_ref'],
                     resistance_series=pfit.loc[k, 'resistance_series_ref'],
-                    resistance_shunt = pfit.loc[k, 'resistance_shunt_ref'], # Get Rsh by estimation
+                    resistance_shunt = pfit.loc[k, 'resistance_shunt_ref'], 
                     nNsVth=pfit.loc[k, 'nNsVth_ref'])
 
                 for p in out.keys():
@@ -436,8 +402,7 @@ class PvProHandler:
             execution_time_seconds=time.time() - start_time
         )
 
-        print(
-            'Elapsed time: {:.2f} min'.format((time.time() - start_time) / 60))
+        print('Elapsed time: {:.2f} min'.format((time.time() - start_time) / 60))
 
     def _x_to_p(self, x : pd.Series, key : str):
         """
@@ -888,6 +853,9 @@ class PvProHandler:
                 p_fit[param] = self._x_to_p(res.x[n], param)
                 n = n + 1
 
+            # remove the Gsh_extra
+            p_fit['resistance_shunt_ref'] = 1/(1/p_fit['resistance_shunt_ref']-1e-5)
+
             out = {'p': p_fit,
                 'fixed_params': fixed_params,
                 'residual': res['fun'],
@@ -896,6 +864,7 @@ class PvProHandler:
                 }
             for k in res:
                 out[k] = res[k]
+
 
             return out
 
@@ -1076,7 +1045,7 @@ class PvProHandler:
         ax.fill_between(xtime, con_I+con_V, 0, alpha=1, color='#0070C0', edgecolor = 'white', linewidth = 2, label = 'Error of Vmp')
         ax.fill_between(xtime, con_I, 0, alpha=1, color='#92D050', edgecolor = 'white', linewidth = 2, label = 'Error of Imp')
 
-        import matplotlib.dates as mdates
+        
         hours = mdates.HourLocator(interval = 1)
         h_fmt = mdates.DateFormatter('%Hh')
         ax.xaxis.set_major_locator(hours)
@@ -1086,14 +1055,14 @@ class PvProHandler:
         if not date_text:
             datetext = df.index[mask][0].strftime("%Y-%m-%d")
         text_show = sys_name + '\n' + datetext
-        ax.text(xtime[1], 10, text_show)
+        ax.text(xtime[1], 10, text_show, fontsize=10)
 
-        ax.tick_params(labelsize=13)
-        ax.tick_params(labelsize=13)
-        ax.set_xlabel('Time', fontsize=13)
-        ax.set_ylabel('Deconvolution\n of Pmp error (%)', fontsize=13, fontweight = 'bold')
+        ax.tick_params(labelsize=10)
+        ax.tick_params(labelsize=10)
+        ax.set_xlabel('Time', fontsize=10)
+        ax.set_ylabel('Deconvolution\n of Pmp error (%)', fontsize=10, fontweight = 'bold')
         plt.ylim([0,100])
-        plt.legend(loc=7)
+        plt.legend(loc=7, fontsize=10)
         plt.gcf().set_dpi(120)
         plt.show()
 

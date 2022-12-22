@@ -7,6 +7,7 @@ from pandas.core.frame import DataFrame
 
 import seaborn as sns
 from array import array
+import matplotlib.dates as mdates
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
@@ -727,8 +728,7 @@ class PvProPlot:
         ax.plot([df.index[mask][0], df.index[mask][-1]], [np.nanmean(pmp_error)]*2, 
                     '--', linewidth = 1, color='#0070C0', label = 'Mean Pmp error')
 
-        import matplotlib.dates as mdates
-        # h_fmt = mdates.DateFormatter('%y-%m')
+        
         h_fmt = mdates.DateFormatter('%Y')
         xloc = mdates.YearLocator(1)
         ax.xaxis.set_major_locator(xloc)
@@ -736,16 +736,16 @@ class PvProPlot:
 
         # fig.autofmt_xdate()
         plt.ylim([0, 300])
-        plt.xticks(fontsize=12)
-        plt.yticks(fontsize=12)
+        plt.xticks(fontsize=10)
+        plt.yticks(fontsize=10)
 
-        plt.ylabel('Pmp error (W)', fontsize=12, fontweight = 'bold')
-        lgnd = plt.legend(loc = 1)
+        plt.ylabel('Pmp error (W)', fontsize=10, fontweight = 'bold')
+        lgnd = plt.legend(loc = 1, fontsize=10)
         lgnd.legendHandles[0]._sizes = [20]
         lgnd.legendHandles[1]._sizes = [20]
-        plt.title(sys_name, fontsize=13, fontweight = 'bold')
+        plt.title(sys_name, fontsize=11, fontweight = 'bold')
 
-        plt.gcf().set_dpi(150)
+        plt.gcf().set_dpi(120)
         plt.show()
 
     def plot_Vmp_Imp_scatters_Pmp_error(self, pvp, boolean_mask : array, points_show : array = None, figsize : list =[4,3], show_only_offmpp : bool = False, 
@@ -993,8 +993,6 @@ class PvProPlot:
                 'saturation_current_ref': 'I0 (A)',
                 'resistance_series_ref': 'Rs (Ω)',
                 'resistance_shunt_ref': 'Rsh (Ω)',
-                'conductance_shunt_ref': 'G shunt ref (1/Ω)',
-                'conductance_shunt_extra': 'G shunt extra (1/kΩ)',
                 'i_sc_ref': 'Isc (A)',
                 'v_oc_ref': 'Voc (V)',
                 'i_mp_ref': 'Imp (A)',

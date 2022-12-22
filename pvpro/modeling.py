@@ -1,4 +1,3 @@
-
 """
 Functions about single diode modelling
 """
@@ -7,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from array import array
+from typing import Union
 from pvlib.pvsystem import calcparams_desoto, singlediode
 from pvlib.singlediode import _lambertw_i_from_v, _lambertw_v_from_i, \
     bishop88_mpp, bishop88_v_from_i
@@ -80,6 +80,9 @@ def calcparams_pvpro(effective_irradiance : pd.Series, temperature_cell : pd.Ser
         irrad_ref=irradiance_ref,
         temp_ref=temperature_ref
     )
+
+    Gsh_extra = 1e-5 # To avoid Rsh becomes unbounded when G is near 0
+    rsh = 1/(1/rsh+Gsh_extra)
     
 
     return iph, io, rs, rsh, nNsVth
