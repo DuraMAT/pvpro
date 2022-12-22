@@ -6,6 +6,9 @@ NIST_canopy_analyze.ipynb
 NIST_roof_analyze.ipynb
 plot_NIST_results.ipynb
 SIRTA_analysis.ipynb
+NIST_ground_array_analyze_local.ipynb
+NIST16_analyze_old.ipynb
+Synthetic_analyze_local.ipynb
 
 # test files
 test.ipynb
