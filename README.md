@@ -14,7 +14,7 @@ This package, pvpro, automates the analysis of PV production data to extract the
 
 Here's a high level overview of the most important parts of the package.
 
-- fit.production_data_curve_fit - Fits a single diode model to production data.
+- main.production_data_curve_fit - Fits a single diode model to production data.
 - main.PvProHandler - class method for running the pvpro data analysis. Convenient way to keep track of all the variables required for the analysis and run production_data_curve_fit iteratively over time-series data.
 - main.PvProHandler.execute - Runs the pvpro simulfit.
 
@@ -57,11 +57,6 @@ pip install matplotlib==3.3.2
 
 # Examples
 
-## Estimate size of power block
-The size of a power block can be estimated by first estimating `vmp_ref` and `imp_ref`. The number of modules in series in and parallel are then found by dividing by the datasheet  
-
-An example with the NIST ground dataset is provided in the file [example_estimate_number_series_parallel.py](examples/example_estimate_number_series_parallel.py)
-
 ## Run analysis on synthetic data
 
 By generating a PV dataset with known module degradation, the performance of the algorithm in extracting single diode model parameters can be tested. A jupyter notebook showing the generation of dataset and analysis of this dataset is provided in [Synthetic_analyze.ipynb](examples/Synthetic_analyze.ipynb).  Estimated evolution trends of parameters show good match with the ground truth.
@@ -70,7 +65,7 @@ By generating a PV dataset with known module degradation, the performance of the
 
 ## Example analysis of real data.
 
-The NIST ground array provides a useful testbed for PVPRO [1]. A jupyter notebook showing analysis of this dataset is provided in [NIST16_analyze.ipynb](examples/NIST_ground_array_analyze.ipynb). 
+The NIST ground array provides a useful testbed for PVPRO [1]. A jupyter notebook showing analysis of this dataset is provided in [NIST_ground_array_analyze.ipynb](examples/NIST_ground_array_analyze.ipynb). 
 
 PVPRO analysis fits a single diode model to the data at each timestep in the analysis. Below, the theory lines are shown next to the cleaned data.
 
