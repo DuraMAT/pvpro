@@ -1,12 +1,10 @@
-# PV Production Tools (pvpro)
+# PV Production Tools (PV-Pro)
 
 [![PyPI release](https://img.shields.io/pypi/v/pvpro.svg)](https://pypi.org/project/pvpro/)
 
-The typical photovoltaic (PV) analysis tools focus on extracting the rate of change of power at reference conditions. This quantity, *pmp_ref*, is just one of many physical parameters of a PV system. 
+In a typical photovoltaic (PV) system, more information is stored than just the DC or AC power. When a dataset contains the DC voltage, DC current, module temperature and plane-of-array irradiance, we can fit a single-diode model and extract many parameters as a function of time. These parameters include series resistance, shunt resistance, reference photocurrent, and more.
 
-Fortunately, in a typical PV dataset, more information is stored than just the DC or AC power. When a dataset also contains the DC voltage, DC current, module temperature and plane-of-array irradiance, we can fit a single-diode model and extract many parameters as a function of time. These parameters include series resistance, shunt resistance, reference photocurrent, and more.
-
-This package, pvpro, automates the analysis of PV production data to extract the rate of change of these parameters. 
+This package, PV-Pro, automates the analysis of PV production data to extract the rate of change of these parameters. 
 
 **The package is still under active development. If there is any problem, please feel free to contact us!**
 
@@ -65,17 +63,13 @@ By generating a PV dataset with known module degradation, the performance of the
 
 ## Example analysis of real data.
 
-The NIST ground array provides a useful testbed for PVPRO [1]. A jupyter notebook showing analysis of this dataset is provided in [NIST_ground_array_analyze.ipynb](examples/NIST_ground_array_analyze.ipynb). 
+The NIST ground array provides a useful testbed for PV-Pro [1]. A jupyter notebook showing analysis of this dataset is provided in [NIST_ground_array_analyze.ipynb](examples/NIST_ground_array_analyze.ipynb). 
 
-PVPRO analysis fits a single diode model to the data at each timestep in the analysis. Below, the theory lines are shown next to the cleaned data.
+PVPRO analysis fits a single diode model to the data at each timestep in the analysis. The trend of these parameters over time can be used to interpret what is degrading in the system. This analysis is only sensitive to module degradation (excepting drift in sensors) and not inverter degradation or downtime. Below, the PVPRO results for this system show which parameters cause the observed power loss.
 
 ![Image of PVPRO fit result](https://github.com/DuraMAT/pvpro/blob/master/doc_img/nist-ground-fit-result.png)
 
-The trend of these parameters over time can be used to interpret what is degrading in the system. This analysis is only sensitive to module degradation (excepting drift in sensors) and not inverter degradation or downtime. Below, the PVPRO results for this system show which parameters cause the observed power loss.
-
-![Image of PVPRO parameter trend](https://github.com/DuraMAT/pvpro/blob/master/doc_img/nist-ground-parameter-trend.png)
-
-For this dataset, the estimated power degradation rate is -1.7%/yr. Inspecting the first panel, photocurrent loss is estimated to cause a -0.8%/yr loss in power, making photocurrent loss responsible for 47% of the observed power loss. This system also appears to show an increase in series resistance over time. 
+For this dataset, the estimated power degradation rate is -1.07%/yr. This system also appears to show an increase in series resistance over time. 
 
 
 
