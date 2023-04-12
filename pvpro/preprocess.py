@@ -21,9 +21,10 @@ from solardatatools import DataHandler
 from pvanalytics.features import clipping
 
 class Preprocessor():
+    
 
     def __init__(self,
-                 df : 'dataframe',
+                #  df : 'dataframe',
                  system_name : str ='Unknown',
                  voltage_dc_key : str =None,
                  current_dc_key : str =None,
@@ -41,7 +42,6 @@ class Preprocessor():
 
         # Initialize datahandler object.
 
-        self.dh = DataHandler(df)
         self.system_name = system_name
         self.voltage_dc_key = voltage_dc_key
         self.current_dc_key = current_dc_key
@@ -56,82 +56,77 @@ class Preprocessor():
         self.technology = techonology
         self.cells_in_series = cells_in_series
         self.alpha_isc = alpha_isc # alpha_isc is in units of A/C
+        
+        pd.set_option('mode.chained_assignment', None)
+
+    def check_data_keys(self, df):
 
         keys = [self.voltage_dc_key,
                 self.current_dc_key,
                 self.temperature_module_key,
                 self.irradiance_poa_key]
 
-        # Check keys in df.
+        # Check keys in df
         for k in keys:
-            if not k in self.df.keys():
+            if not k in df.keys():
                 raise Exception("""Key '{}' not in dataframe. Check 
                 specification of voltage_dc_key, current_dc_key, 
                 temperature_module_key and irradiance_poa_key""".format(k)
                                 )
 
-        if self.df[self.temperature_module_key].max() > 85:
+        if df[self.temperature_module_key].max() > 85:
             warnings.warn("""Maximum module temperature is larger than 85 C. 
             Double check that input temperature is in Celsius, not Farenheight. 
-            
             """)
 
-    @property
-    def df(self):
-        """
-        Store dataframe inside the DataHandler.
-
-        Returns
-        -------
-        df : dataframe
-            Time-series data
-        """
-        return self.dh.data_frame_raw
-
-    @df.setter
-    def df(self, value : str):
-        """
-        Set Dataframe by setting the version inside datahandler.
-
-        Parameters
-        ----------
-        value : dataframe
-            Time-series data
-
-        Returns
-        -------
-
-        """
-        self.dh.data_frame_raw = value
-
-    def run_preprocess_sdt(self,
+    def run_basic_preprocess(self, df,
                 correct_tz : bool =False,
                 data_sampling : bool =None,
-                correct_dst : bool =False,
+                correct_dst : bool =True,
                 fix_shifts : bool =True,
                 max_val : bool =None,
                 verbose : bool =True):
+        
         """
-        Perform "time-consuming" preprocessing steps, using solarDataTool
+        Perform basic preprocessing steps, including:
+        1. check data keys
+        2. calculate cell temperature from module temperature
+        3. calculate normalized power
+        4. using solarDataTool
+        5. classify operating conditions
+
+        Returns
+        ------
+        dh.data_frame_raw (processed dataframe)
+        dh (datahandler of solarDataTool)
+
         """
 
+        # check data keys
+        self.check_data_keys(df)
+
+        # Calculate cell temperature from module temperature
+        self.cal_cell_temp_from_module_temp(df, delta_T=3) 
+
+        # Make normalized power column
+        df.loc[df.index,'power_dc'] = df[self.voltage_dc_key] * df[
+            self.current_dc_key] / self.modules_per_string / self.parallel_strings
+
+        dh = DataHandler(df)
+
         if type(data_sampling) != type(None):
-            self.dh.data_sampling = data_sampling
+            dh.data_sampling = data_sampling
 
         # Run solar-data-tools.
         if correct_dst:
             if verbose:
                 print('Fixing daylight savings time shift...')
-            self.dh.fix_dst()
+            dh.fix_dst()
 
         if verbose:
             print('Running solar data tools...')
 
-        # Make normalized power column.
-        self.df['power_dc'] = self.df[self.voltage_dc_key] * self.df[
-            self.current_dc_key] / self.modules_per_string / self.parallel_strings
-
-        self.dh.run_pipeline(power_col='power_dc',
+        dh.run_pipeline(power_col='power_dc',
                             correct_tz=correct_tz,
                             extra_cols=[self.temperature_module_key,
                                         self.irradiance_poa_key,
@@ -143,12 +138,19 @@ class Preprocessor():
                             solver=self.solver)
         self._ran_sdt = True
 
-    def classify_points_sdt(self):
+        # Classifiy the points
+        self.classify_points_sdt(dh)
 
-        self.dh.find_clipped_times()
+        # Classifiy the operating condition
+        self.classify_operating_condition(dh)
+
+        return dh.data_frame_raw, dh
+
+    def classify_points_sdt(self, dh):
+
+        dh.find_clipped_times()
 
         # Calculate boolean masks
-        dh = self.dh
         dh.augment_data_frame(dh.boolean_masks.daytime, 'daytime')
         dh.augment_data_frame(dh.boolean_masks.clipped_times,
                               'clipped_times')
@@ -206,18 +208,16 @@ class Preprocessor():
 
         self.df.loc[:,'daytime'] = np.logical_not(self.df.loc[:, 'low_p'])
 
-    def calculate_cell_temperature(self, delta_T : float =3,
+    def cal_cell_temp_from_module_temp(self, df, delta_T : float =3,
                                    temperature_cell_key : str ='temperature_cell'):
         """
         Set cell temeperature in dataframe.
         """
         # Calculate cell temperature
-        self.df.loc[:,temperature_cell_key] = sapm_cell_from_module(
-            module_temperature=self.df[self.temperature_module_key],
-            poa_global=self.df[self.irradiance_poa_key],
+        df.loc[:,temperature_cell_key] = sapm_cell_from_module(
+            module_temperature=df[self.temperature_module_key],
+            poa_global=df[self.irradiance_poa_key],
             deltaT=delta_T)
-
-        print("Cell temperature assigned to '{}'".format(temperature_cell_key))
 
     def find_clipped_times_pva(self):
 
@@ -341,7 +341,7 @@ class Preprocessor():
 
         return operating_cls
 
-    def build_operating_cls(self):
+    def classify_operating_condition(self, dh):
         """
         Adds a key to self.df of 'operating_cls'. This field classifies the
         operating point according to the following table:
@@ -353,26 +353,30 @@ class Preprocessor():
         -2: Other
 
         """
+
         if self._ran_sdt:
-            for df in [self.dh.data_frame_raw, self.dh.data_frame]:
+            for df in [dh.data_frame_raw, dh.data_frame]:
                 df.loc[:,'operating_cls'] = self.build_operating_classification(df)
 
-            self.dh.generate_extra_matrix('operating_cls',
-                          new_index=self.dh.data_frame.index)
+            dh.generate_extra_matrix('operating_cls', new_index=dh.data_frame.index)
+
         else:
-            for df in [self.dh.data_frame_raw]:
+            for df in [dh.data_frame_raw]:
                 df.loc[:, 'operating_cls'] = self.build_operating_classification(df)
 
-    def find_clear_times_sdt(self,
+    def find_clear_times(self, dh,
                          min_length : int =2,
                          smoothness_hyperparam : int =5000):
         """
-        Find clear times.
+        Find clear times using solar data tool
         """
-        self.dh.find_clear_times(min_length=min_length,
+
+        dh.find_clear_times(min_length=min_length,
                                  smoothness_hyperparam=smoothness_hyperparam)
-        self.dh.augment_data_frame(self.dh.boolean_masks.clear_times,
+
+        dh.augment_data_frame(dh.boolean_masks.clear_times,
                                    'clear_time')
+        return dh.data_frame_raw['clear_time']
 
     def monotonic(self, y : array, fractional_rate_limit : float =0.05):
         """
@@ -394,9 +398,9 @@ class Preprocessor():
         ))
         return boolean_mask
 
-    def find_monotonic_times(self, fractional_rate_limit : float =0.05):
-        self.df['monotonic'] = self.monotonic(
-            self.df[self.voltage_dc_key] * self.df[self.current_dc_key],
+    def find_monotonic_times(self, df, fractional_rate_limit : float =0.05):
+        return self.monotonic(
+            df[self.voltage_dc_key] * df[self.current_dc_key],
             fractional_rate_limit=fractional_rate_limit)
 
     def find_huber_outliers(self, x : array, y : array, sample_weight : bool =None,
@@ -579,7 +583,7 @@ class Preprocessor():
 
         return clearSeries
 
-    def find_current_irradiance_outliers(self,
+    def find_current_irradiance_outliers(self, df,
                                          boolean_mask : array =None,
                                          poa_lower_lim : float =10,
                                          epsilon : float =2.0,
@@ -587,8 +591,8 @@ class Preprocessor():
 
 
         filter = np.logical_and.reduce(
-            (self.df['operating_cls'] == 0,
-             self.df[self.irradiance_poa_key] > poa_lower_lim)
+            (df['operating_cls'] == 0,
+             df[self.irradiance_poa_key] > poa_lower_lim)
         )
 
         if boolean_mask is None:
@@ -597,19 +601,16 @@ class Preprocessor():
             boolean_mask = np.logical_and(boolean_mask, filter)
 
         current_irradiance_filter = self.find_linear_model_outliers_timeseries(
-            x=self.df[self.irradiance_poa_key],
-            y=self.df[self.current_dc_key] / self.parallel_strings,
+            x=df[self.irradiance_poa_key],
+            y=df[self.current_dc_key] / self.parallel_strings,
             boolean_mask=boolean_mask,
             fit_intercept=False,
             epsilon=epsilon,
             points_per_iteration=points_per_iteration)
 
-        self.df['current_irradiance_outliers'] = current_irradiance_filter[
-            'outliers']
+        return current_irradiance_filter['outliers'], current_irradiance_filter
 
-        return current_irradiance_filter
-
-    def find_temperature_voltage_outliers(self,
+    def find_temperature_voltage_outliers(self, df,
                                          boolean_mask : bool =None,
                                          poa_lower_lim : float =10,
                                          voltage_lower_lim : float = 10,
@@ -617,9 +618,9 @@ class Preprocessor():
                                          points_per_iteration : int =2000):
 
         filter = np.logical_and.reduce(
-            (self.df['operating_cls'] == 0,
-             self.df[self.irradiance_poa_key] > poa_lower_lim,
-             self.df[self.voltage_dc_key]/self.modules_per_string > voltage_lower_lim)
+            (df['operating_cls'] == 0,
+             df[self.irradiance_poa_key] > poa_lower_lim,
+             df[self.voltage_dc_key]/self.modules_per_string > voltage_lower_lim)
         )
 
 
@@ -627,24 +628,21 @@ class Preprocessor():
             boolean_mask = filter
         else:
             boolean_mask = np.logical_and(boolean_mask, filter)
-        if 'temperature_cell' not in self.df:
+        if 'temperature_cell' not in df:
             raise Exception("""Need 'temperature_cell' in dataframe, 
             run 'calculate_cell_temperature' first. 
             
             """)
 
         voltage_temperature_filter = self.find_linear_model_outliers_timeseries(
-            x=self.df['temperature_cell'],
-            y=self.df[self.voltage_dc_key] / self.modules_per_string,
+            x=df['temperature_cell'],
+            y=df[self.voltage_dc_key] / self.modules_per_string,
             boolean_mask=boolean_mask,
             fit_intercept=True,
             epsilon=epsilon,
             points_per_iteration=points_per_iteration)
 
-        self.df['voltage_temperature_outliers'] = voltage_temperature_filter[
-            'outliers']
-
-        return voltage_temperature_filter
+        return voltage_temperature_filter['outliers'], voltage_temperature_filter
 
 
    

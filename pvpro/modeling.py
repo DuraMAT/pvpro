@@ -225,8 +225,8 @@ def pvlib_single_diode(
                                                 dEgdT=dEgdT,
                                                 irradiance_ref=irradiance_ref,
                                                 temperature_ref=temperature_ref)
-    if len(iph)>1: 
-        iph[iph <= 0] = 0 
+    # if len(iph)>1: 
+    #     iph[iph <= 0] = 0 
 
     if singlediode_method == 'fast':
         out = singlediode_fast(iph,

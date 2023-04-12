@@ -1066,6 +1066,73 @@ class PvProHandler:
         plt.gcf().set_dpi(120)
         plt.show()
 
+    def deconvolve_Pmp_error_on_V_I_line (self,  boolean_mask : array, points_show : array = None, figsize : list =[3,3], 
+                                sys_name : str = None, date_text : str = None, title : str = None):
+
+        p_plot=self.p0
+
+        points_show_bool = np.full(boolean_mask.sum(), False)
+        points_show_bool[points_show] = True
+        df=self.df[boolean_mask][points_show_bool]
+        
+        mask = np.array(df['operating_cls'] == 0)
+        vmp = np.array(df.loc[mask, self.voltage_key]) / self.modules_per_string
+        imp = np.array(df.loc[mask, self.current_key]) / self.parallel_strings
+        G = df[self.irradiance_poa_key][mask]
+        Tm = df[self.temperature_cell_key][mask]
+
+        # estimate
+        v_esti, i_esti = single_diode_predict(self,
+            effective_irradiance=G,
+            temperature_cell=Tm,
+            operating_cls=np.zeros_like(df[self.irradiance_poa_key][mask]),
+            params=p_plot)
+
+        # error
+        pmp_error = abs(vmp*imp - v_esti*i_esti) 
+        vmp_error = abs(vmp-v_esti)
+        imp_error = abs(imp-i_esti)
+        pmp_error = pmp_error #+ vmp_error*imp_error
+
+        # contribution
+        con_V = vmp_error*i_esti/pmp_error*100
+        con_I = imp_error*v_esti/pmp_error*100
+
+        fig, ax = plt.subplots(figsize=figsize)
+        xtime = df.index[mask]
+
+        # ax.fill_between(xtime, np.ones_like(con_V)*100, 0, alpha=1, color='#0070C0', edgecolor = 'white', linewidth = 2, label = 'Error of Vmp')
+       
+        ax.plot(xtime, con_V, '-o',color='#92D050',  linewidth = 2, label = 'Contribution of Vmp')
+        ax.plot(xtime, con_I, '-o', color='#00B0F0', linewidth = 2, label = 'Contribution of Imp')
+        ax.plot([xtime[0], xtime[-1]], [np.mean(con_V),np.mean(con_V)], '--', color='#00A44B', linewidth = 2)
+        ax.plot([xtime[0], xtime[-1]], [np.mean(con_I),np.mean(con_I)], '--', color='#0070C0', linewidth = 2)
+        ax.text(xtime[0], np.mean(con_V)+2, 'Mean: {:.2f}%'.format(np.mean(con_V)), fontsize=10)
+        ax.text(xtime[0], np.mean(con_I)+2, 'Mean: {:.2f}%'.format(np.mean(con_I)), fontsize=10)
+        
+        hours = mdates.HourLocator(interval = 1)
+        h_fmt = mdates.DateFormatter('%Hh')
+        ax.xaxis.set_major_locator(hours)
+        ax.xaxis.set_major_formatter(h_fmt)
+
+        # text
+        if not date_text:
+            datetext = df.index[mask][0].strftime("%Y-%m-%d")
+        text_show = sys_name + '\n' + datetext
+
+        ax.set_title(title, fontweight = 'bold', fontsize = 11)
+        ax.text(xtime[0], 6, text_show, fontsize=11)
+        ax.grid()
+
+        ax.tick_params(labelsize=11)
+        ax.tick_params(labelsize=11)
+        ax.set_xlabel('Time', fontsize=11)
+        ax.set_ylabel('Contribution\n to Pmp error (%)', fontsize=11, fontweight = 'bold')
+        plt.ylim([0,100])
+        plt.legend(loc=7, fontsize=11)
+        plt.gcf().set_dpi(120)
+        plt.show()
+        return fig
 
 
 """
