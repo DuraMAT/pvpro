@@ -22,9 +22,10 @@ PV-Pro estimates essential PV module parameters using only operation (DC voltage
 
 Here's a high level overview of the most important parts of the package.
 
-- main.production_data_curve_fit - Fits a single diode model to production data.
-- main.PvProHandler - class method for running the pvpro data analysis. Convenient way to keep track of all the variables required for the analysis and run production_data_curve_fit iteratively over time-series data.
-- main.PvProHandler.execute - Runs the pvpro simulfit.
+- preprocess.Preprocessor - class for running the pre-processing of time-series data.
+- main.PvProHandler - class method for running the parameter estimation. Convenient way to keep track of all the variables required for the analysis.
+- postprocess.PostProcessor - class for running the post-processing of PV-Pro results.
+- plotting.PvProPlot - class to plot related figures conviniently
 
 # Installation
 
