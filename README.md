@@ -76,22 +76,27 @@ pip install matplotlib==3.3.2
 
 ## Run analysis on synthetic data
 
-By generating a PV dataset with known module degradation, the performance of the algorithm in extracting single diode model parameters can be tested. A jupyter notebook showing the generation of dataset and analysis of this dataset is provided in [Synthetic_analyze.ipynb](examples/Synthetic_analyze.ipynb).  Estimated evolution trends of parameters show good match with the ground truth.
+By generating a PV dataset with known module degradation, the performance of the algorithm in extracting single diode model parameters can be tested. A jupyter notebook showing the generation of dataset and analysis of this dataset is provided in [Synthetic_analyze.ipynb](examples/Synthetic_analyze.ipynb). 
 
 ![Image of PV-Pro fit result of synthetic dataset](https://github.com/DuraMAT/pvpro/blob/master/doc_img/synthetic_results.png)
 
+Estimated evolution trends of parameters show good match with the ground truth.
+
 ## Example analysis of real data.
 
-The NIST ground array provides a useful testbed for PV-Pro [1]. A jupyter notebook showing analysis of this dataset is provided in [NIST_ground_array_analysis.ipynb](examples/NIST_ground_array_analysis.ipynb). 
+The [NIST ground array dataset](https://pvdata.nist.gov/) provides a useful testbed for PV-Pro. A jupyter notebook showing analysis of this dataset is provided in [NIST_ground_array_analysis.ipynb](examples/NIST_ground_array_analysis.ipynb). 
 
 PVPRO analysis fits a single diode model to the data at each timestep in the analysis. The trend of these parameters over time can be used to interpret what is degrading in the system. This analysis is only sensitive to module degradation (excepting drift in sensors) and not inverter degradation or downtime. Below, the PV-Pro results for this system show which parameters cause the observed power loss.
 
 ![Image of PV-Pro fit result](doc_img/nist_ground_result.png)
 
-For this dataset, the estimated power degradation rate is -1.07%/yr. This system also appears to show an increase in series resistance over time. 
+For this dataset, the estimated power degradation rate is -1.07%/yr. PV-Pro also reveals that the system appears to show a sharp decrease of current over time.
+
+[NEW] Post-processing function (based on [solar-data-tools](https://github.com/slacgismo/solar-data-tools)) of PV-Pro results are recently introduced, which estimate a “clean” trend of the parameter changes over time with noise and seasonality removed.
+
+![Image of post results](doc_img/nist_ground_result_post.png)
+
+After removing the noise and seasonality, clear degradation trends of parameters are revealed. The NIST ground system appears to show a slight increase of Rs and a decrease of Rsh over time.
 
 
 
-
-
-[1]. Boyd, M. (2017), Performance Data from the NIST Photovoltaic (PV) Arrays and Weather Station, Journal of Research (NIST JRES), National Institute of Standards and Technology, Gaithersburg, MD, [online], https://doi.org/10.6028/jres.122.040 (Accessed July 27, 2022)
