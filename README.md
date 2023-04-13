@@ -11,7 +11,7 @@ This package, PV-Pro, automates the analysis of PV production data to extract th
 ## Publications
 Details of PV-Pro are provided in the following publications:
 
-[1] Li, Baojie, Todd Karin, Bennet E. Meyers, Xin Chen, Dirk C. Jordan, Clifford W. Hansen, Bruce H. King, Michael G. Deceglie, and Anubhav Jain. "Determining circuit model parameters from operation data for PV system degradation analysis: PVPRO." Solar Energy 254 (2023): 168-181.
+[1] Li, Baojie, Todd Karin, Bennet E. Meyers, Xin Chen, Dirk C. Jordan, Clifford W. Hansen, Bruce H. King, Michael G. Deceglie, and Anubhav Jain. "Determining circuit model parameters from operation data for PV system degradation analysis: PVPRO." Solar Energy 254 (2023): 168-181. DOI: [10.1016/j.solener.2023.03.011](https://doi.org/10.1016/j.solener.2023.03.011)
 
 [2] Li, Baojie, Todd Karin, Xin Chen, and Anubhav Jain. "Estimation and Degradation Analysis of Physics-based Circuit Parameters for PV Systems Using Only DC Operation and Weather Data." In 2022 IEEE 49th Photovoltaics Specialists Conference (PVSC), pp. 1236-1236. IEEE, 2022. DOI: [10.1109/PVSC48317.2022.9938484](https://doi.org/10.1109/PVSC48317.2022.9938484)
 
@@ -47,6 +47,14 @@ Next activate the environment, cd into the pvpro repository and run:
 ```
 pip install -e .
 ```
+
+## Install Mosek solver
+
+The pre-processing part of PV-Pro relies on the [solar-data-tools](https://github.com/slacgismo/solar-data-tools), which requires the installation of [Mosek](https://www.mosek.com/resources/getting-started/) solver. MOSEK is a commercial software package. You will still need to obtain a license. More information is available here:
+
+* [Free 30-day trial](https://www.mosek.com/products/trial/)
+* [Personal academic license](https://www.mosek.com/products/academic-licenses/)
+
 ## Make environment manually
 Another way to make a valid virtual environment is with the following commands. This section will be updated in the future to make a more minimal environment.
 
