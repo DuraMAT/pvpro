@@ -13,7 +13,7 @@ Details of PV-Pro are provided in the following publications:
 
 [1] Li, Baojie, Todd Karin, Bennet E. Meyers, Xin Chen, Dirk C. Jordan, Clifford W. Hansen, Bruce H. King, Michael G. Deceglie, and Anubhav Jain. "Determining circuit model parameters from operation data for PV system degradation analysis: PVPRO." Solar Energy 254 (2023): 168-181.
 
-[2] Li, Baojie, Todd Karin, Xin Chen, and Anubhav Jain. "Estimation and Degradation Analysis of Physics-based Circuit Parameters for PV Systems Using Only DC Operation and Weather Data." In 2022 IEEE 49th Photovoltaics Specialists Conference (PVSC), pp. 1236-1236. IEEE, 2022.
+[2] Li, Baojie, Todd Karin, Xin Chen, and Anubhav Jain. "Estimation and Degradation Analysis of Physics-based Circuit Parameters for PV Systems Using Only DC Operation and Weather Data." In 2022 IEEE 49th Photovoltaics Specialists Conference (PVSC), pp. 1236-1236. IEEE, 2022. DOI: [10.1109/PVSC48317.2022.9938484](https://doi.org/10.1109/PVSC48317.2022.9938484)
 
 # Methods
 PV-Pro estimates essential PV module parameters using only operation (DC voltage and current) and weather data (irradiance and temperature). First, PV-Pro performs multi-stage data pre-processing to remove noisy data. Next, the time-series DC data are used to fit an equivalent circuit single-diode model (SDM) to estimate the circuit parameters by minimizing the differences between the measured and estimated values. In this way, the time evolutions of the SDM parameters are obtained.
