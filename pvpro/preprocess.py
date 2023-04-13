@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from tqdm import tqdm
 from array import array
+import warnings
 
 
 from pvlib.location import Location
@@ -37,7 +38,8 @@ class Preprocessor():
                  solver : str ="MOSEK",
                  techonology: str = None,
                  alpha_isc : float =None,
-                 cells_in_series : int =None
+                 cells_in_series : int =None,
+                 ignore_warning: bool = False
                  ):
 
         # Initialize datahandler object.
@@ -56,6 +58,9 @@ class Preprocessor():
         self.technology = techonology
         self.cells_in_series = cells_in_series
         self.alpha_isc = alpha_isc # alpha_isc is in units of A/C
+
+        if ignore_warning:
+            warnings.filterwarnings('ignore')
         
         pd.set_option('mode.chained_assignment', None)
 
