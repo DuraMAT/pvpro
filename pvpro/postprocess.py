@@ -21,11 +21,11 @@ from time import time
 from solardatatools.utilities import progress
 
 
-class PVPROPostProcessor:
+class PostProcessor:
     """This is a class to process a dataset, perform signal decomposition to
     model degradation trends, and analyze and visualize the resulting trends.
-    :param file_name: Name of the data file to be imported (must be .csv)
-    :type file_name: str
+    :param df: PVPro-processed results for post-processing 
+    :type df: dataframe
     :param period: How many data points in the file make up a full year of data
     (for instance, in 5-day interval data, the period is 73)
     :type period: int
@@ -50,7 +50,7 @@ class PVPROPostProcessor:
 
     def __init__(
         self,
-        file_name,
+        df,
         period,
         index_col=0,
         dates=None,
@@ -85,16 +85,21 @@ class PVPROPostProcessor:
 
         def default_val():
             return None
+        
+        keys = ['i_sc_ref', 'v_oc_ref', 'i_mp_ref', 'v_mp_ref', 'p_mp_ref',
+                 'photocurrent_ref','saturation_current_ref', 'diode_factor',
+                'resistance_series_ref', 'resistance_shunt_ref']
 
-        self.df = pd.read_csv(file_name, index_col=index_col, parse_dates=dates)
+        self.df = df[keys]
         self.period = int(period)
 
         # dataframe preparation (column selection, time index correction)
         if df_prep is True:
             self.data_setup(include=include, exclude=exclude)
-            self.df_ds = self.df_ds
+            self.df_ds = self.df
         else:
             self.df_ds = self.df
+            print('a')
 
         # processing steps
         if bp == True:
@@ -138,37 +143,7 @@ class PVPROPostProcessor:
             start=self.df.index[0], end=self.df.index[-1], freq="{}s".format(freq)
         )
         self.df = self.df.set_index(new_index)
-
-        # column selection
-        rule1 = lambda x: (
-            "photocurrent" in x
-            or "saturation" in x
-            or "resistance" in x
-            or "i_sc" in x
-            or "v_oc" in x
-            or "mp" in x
-        )
-
-        if include is not None:
-            rule2 = lambda x: include in x
-            if exclude is not None:
-                rule3 = lambda x: exclude not in x
-                cols = [
-                    c for c in self.df.columns if rule1(c) and rule2(c) and rule3(c)
-                ]
-            else:
-                cols = [c for c in self.df.columns if rule1(c) and rule2(c)]
-        else:
-            if exclude is not None:
-                rule3 = lambda x: exclude not in x
-                cols = [c for c in self.df.columns if rule1(c) and rule3(c)]
-            else:
-                cols = [c for c in self.df.columns if rule1(c)]
-
-        df_ds = self.df.loc[:, cols]
-        df_ds = df_ds.reindex(index=new_index)
-
-        self.df_ds = df_ds
+        self.df_ds = self.df
 
     def boundary_points(self, verbose=False):
         """Determines indices of points on the boundary to a tolerance

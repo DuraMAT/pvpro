@@ -14,6 +14,8 @@ from matplotlib.colors import LinearSegmentedColormap
 from sklearn.metrics import mean_squared_error
 from pvpro.modeling import pvlib_single_diode, pv_system_single_diode_model, single_diode_predict
 from pvpro.main import calculate_error_real, calculate_error_synthetic
+import matplotlib.dates as mdates
+from matplotlib.dates import DateFormatter
 
 class PvProPlot:
 
@@ -629,7 +631,7 @@ class PvProPlot:
             plt.ylabel('T module-T ambient (C)', fontsize=9)
             plt.xlabel('POA (W/m^2)', fontsize=9)
 
-    def plot_operating_cls(self, extra_matrices, figsize : tuple =(12, 6)):
+    def plot_operating_condition(self, extra_matrices, figsize : tuple =(12, 6)):
 
         if not 'operating_cls' in extra_matrices:
             raise Exception("""Must call 'run_preprocess_sdt' first to use 
@@ -708,6 +710,7 @@ class PvProPlot:
 
         # Pmp error
         pmp_error = abs(vmp*imp - v_esti*i_esti)
+        pmp_error_rela = abs(vmp*imp - v_esti*i_esti)/(v_esti*i_esti)
         vmp_error = abs(vmp-v_esti)
         imp_error = abs(imp-i_esti)
 
@@ -715,7 +718,8 @@ class PvProPlot:
         ax.scatter(df.index[mask], pmp_error, s =1, color ='#8ACCF8', label = 'At-MPP')
 
         # detect off-mpp and calculate off-mpp percentage
-        offmpp = pmp_error>np.nanmean(pmp_error)+np.std(pmp_error)
+        Pmp_thresh = 0.1
+        offmpp = pmp_error_rela>Pmp_thresh
         offmpp_ratio = offmpp.sum()/pmp_error.size*100  
         plt.text(df.index[0], 240, 'Off-MPP ratio:\
                         \n{}%'.format(round(offmpp_ratio,2)),
@@ -725,8 +729,8 @@ class PvProPlot:
         ax.scatter(df.index[mask][offmpp], pmp_error[offmpp], s =1, color ='#FFA222', label = 'Off-MPP')
 
         # plot mean Pmp error line
-        ax.plot([df.index[mask][0], df.index[mask][-1]], [np.nanmean(pmp_error)]*2, 
-                    '--', linewidth = 1, color='#0070C0', label = 'Mean Pmp error')
+        # ax.plot([df.index[mask][0], df.index[mask][-1]], [np.nanmean(pmp_error)]*2, 
+        #             '--', linewidth = 1, color='#0070C0', label = 'Mean Pmp error')
 
         
         h_fmt = mdates.DateFormatter('%Y')
@@ -739,7 +743,7 @@ class PvProPlot:
         plt.xticks(fontsize=10)
         plt.yticks(fontsize=10)
 
-        plt.ylabel('Pmp error (W)', fontsize=10, fontweight = 'bold')
+        plt.ylabel('Pmp error per module (W)', fontsize=10, fontweight = 'bold')
         lgnd = plt.legend(loc = 1, fontsize=10)
         lgnd.legendHandles[0]._sizes = [20]
         lgnd.legendHandles[1]._sizes = [20]
@@ -747,8 +751,10 @@ class PvProPlot:
 
         plt.gcf().set_dpi(120)
         plt.show()
+        return fig
 
-    def plot_Vmp_Imp_scatters_Pmp_error(self, pvp, boolean_mask : array, points_show : array = None, figsize : list =[4,3], show_only_offmpp : bool = False, 
+    def plot_Vmp_Imp_scatters_Pmp_error(self, pvp, boolean_mask : array, points_show : array = None, figsize : list =[4,2.5], 
+                                show_only_offmpp : bool = False, 
                                 sys_name : str = None, date_show : str = None):
 
         """
@@ -779,13 +785,14 @@ class PvProPlot:
 
         # Pmp error
         pmp_error = abs(vmp*imp - v_esti*i_esti)
+        pmp_error_rela = abs(vmp*imp - v_esti*i_esti)/(v_esti*i_esti)
         vmp_error = abs(vmp-v_esti)
         imp_error = abs(imp-i_esti)
 
         # calculate off-mpp percentage
         msk = np.full(pmp_error.size, True)
         if show_only_offmpp:
-            msk = (pmp_error>np.nanmean(pmp_error)+np.std(pmp_error) ) & (pmp_error<300)
+            msk = (pmp_error_rela>0.1) & (pmp_error<300)
 
         # plot
         fig, ax = plt.subplots(figsize=figsize)
@@ -794,22 +801,24 @@ class PvProPlot:
                 s=10,  alpha = 0.8, c=pmp_error[msk])
                             
         pcbar = plt.colorbar(h_sc)
-        pcbar.set_label('Pmp error (W)', fontsize = 13)
+        pcbar.set_label('Pmp error (W)', fontsize = 12)
 
         if not date_show:
             date_show = df.index[mask][0].strftime("%Y-%m-%d")
 
         text_show = sys_name + '\n' + date_show
-        plt.text (35,85, text_show)
-        plt.xticks(fontsize=13)
-        plt.yticks(fontsize=13)
-        plt.xlim([0,80])
-        plt.ylim([0,100])
-        plt.xlabel('RE of Vmp (%)', fontsize=13)
-        plt.ylabel('RE of Imp (%)', fontsize=13)
-        plt.title('Distribution of off-MPP points', fontweight = 'bold', fontsize=13)
+        # plt.text (25,88, text_show, fontsize=12)
+        plt.xticks(fontsize=12)
+        plt.yticks(fontsize=12)
+        plt.xlim([0,50])
+        plt.ylim([0,80])
+        plt.xlabel('RE of Vmp (%)', fontsize=12)
+        plt.ylabel('RE of Imp (%)', fontsize=12)
+        # plt.title('Distribution of off-MPP points', fontweight = 'bold', fontsize=12)
+        plt.title(date_show, fontweight = 'bold', fontsize=12)
         plt.gcf().set_dpi(120)
         plt.show()
+        return fig
 
     def plot_Vmp_Tm_Imp_G_vs_time (self, pvp, boolean_mask : array, points_show : array = None, figsize : list =[5,6]):
 
@@ -961,7 +970,7 @@ class PvProPlot:
     """
     Functions to plot PVPRO results
     """
-    def plot_results_timeseries_error(self, pfit : DataFrame, 
+    def plot_results_timeseries_error_vertical(self, pfit : DataFrame, 
                                 df : pd.DataFrame = None, 
                                 yoy_result : dict =None,
                                 compare : DataFrame = None,
@@ -1127,6 +1136,151 @@ class PvProPlot:
                 n = n + 1
         return error_df
 
+    def plot_results_timeseries_error(self, pfit : DataFrame, 
+                                df : pd.DataFrame = None, 
+                                yoy_result : dict =None,
+                                compare : DataFrame = None,
+                                compare_label : str ='True value',
+                                keys_to_plot : list = None,
+                                yoy_plot : bool = False,
+                                linestyle : str = '.',
+                                wspace : float = 0.4,
+                                figsize : tuple = (8, 9),
+                                legendloc : list[float] = [0.3, -1.7],
+                                ncol : int = 3,
+                                cal_error_synthetic : bool = False,
+                                cal_error_real : bool = False,
+                                xticks : array = None,
+                                nylim : list = None ):
+        
+        ylabel = {'diode_factor': 'Diode factor',
+                'photocurrent_ref': 'Iph (A)',
+                'saturation_current_ref': 'I0 (A)',
+                'resistance_series_ref': 'Rs (Ω)',
+                'resistance_shunt_ref': 'Rsh (Ω)',
+                'i_sc_ref': 'Isc (A)',
+                'v_oc_ref': 'Voc (V)',
+                'i_mp_ref': 'Imp (A)',
+                'p_mp_ref': 'Pmp (W)',
+                'i_x_ref': 'I x ref (A)',
+                'v_mp_ref': 'Vmp (V)',
+                'residual': 'Residual (AU)',
+                }
+
+        if keys_to_plot is None:
+            keys_to_plot = [
+                 'i_sc_ref', 'v_oc_ref', 'i_mp_ref', 'v_mp_ref', 'p_mp_ref',
+                 'photocurrent_ref','saturation_current_ref', 'diode_factor',
+                'resistance_series_ref', 'resistance_shunt_ref']
+
+        warnings.filterwarnings("ignore")
+
+        fig, ax_all = plt.subplots(2, 5, figsize=[18,6])
+        plt.subplots_adjust(wspace=wspace, hspace=0.3)
+
+        for key_id in range(0, 10):
+
+            if key_id < 5:
+                ax = ax_all[0,key_id]
+            else:
+                ax = ax_all[1,key_id-5]
+
+            k = keys_to_plot[key_id]
+
+            if k in pfit:
+
+                x_show = pfit['t_years']#- pfit['t_years'][0]
+                ax.scatter(x_show, pfit[k], 20,
+                        color=np.array([6,86,178])/256,
+                        label='PVPRO')
+
+                ylims = np.array([np.nanmin(pfit[k]), np.nanmax(pfit[k])])
+
+                if compare is not None:
+                    x_real_show = compare['t_years']#-compare['t_years'][0]
+                    if k in compare:
+                        ax.plot(x_real_show, compare[k],
+                                linestyle,
+                                color = 'deepskyblue',
+                                label=compare_label,
+                                )
+
+                        ylims[0] = np.min([ylims[0], np.nanmin(compare[k])])
+                        ylims[1] = np.max([ylims[1], np.nanmax(compare[k])])
+
+                if k in ['diode_factor']:
+                    ylims[0] = np.nanmin([0.9, ylims[0]])
+                    ylims[1] = np.nanmax([1.2, ylims[1]])
+                    if nylim:
+                        ylims[0] = nylim[0]
+                        ylims[1] = nylim[1]
+
+                if k in ['saturation_current_ref']:
+                    ylims = ylims * np.array([0.5, 1.5])
+                else:
+                    ylims = ylims + 0.1 * np.array([-1, 1]) * (ylims[1] - ylims[0])
+
+                ax.set_ylim(ylims)
+
+                # calculate error 
+                
+                Nrolling = 1
+                error_df = np.NaN
+                if cal_error_synthetic:
+                    error_df = calculate_error_synthetic(pfit,df,Nrolling)
+                    error_df.loc['diode_factor', 'corr_coef'] = 1
+                
+                if cal_error_real:
+                    error_df = calculate_error_real(pfit, compare)
+                    error_df.loc['diode_factor', 'corr_coef'] = 0
+
+                if k not in ['residual'] and (yoy_result is not None) and yoy_plot:
+                    t_smooth = np.linspace(x_show.min(), x_show.max(), 20)
+                    t_mean = np.mean(x_show)
+                    ax.plot(t_smooth,
+                            pfit[k].median() * (1 + (t_smooth - t_mean) * (
+                            yoy_result[k]['percent_per_year'] * 1e-2)),'--',
+                            linewidth = 4,
+                            color='darkorange', 
+                            label='YOY trend of PVPRO')
+                    hori = 'left'
+                    posi = [0.02,0.04]
+
+                    if cal_error_synthetic | cal_error_real:
+                        ax.text(posi[0], posi[1], 'RMSE: {:.2f}%\
+                                            \nCorr_coef: {:.2f}\
+                                            \nRate: {:.2f}%/yr\
+                                            '.\
+                                format(
+                                    error_df['rms_rela'][k]*100,
+                                    error_df['corr_coef'][k],
+                                yoy_result[k]['percent_per_year']),
+                                transform=ax.transAxes,
+                                backgroundcolor=[1, 1, 1, 0],
+                                fontsize=11,
+                                horizontalalignment = hori)
+                    else:
+                        ax.text(posi[0], posi[1], 'Rate: {:.2f}%/yr'.\
+                                format(yoy_result[k]['percent_per_year']),
+                                transform=ax.transAxes,
+                                backgroundcolor=[1, 1, 1, 0],
+                                fontsize=11,
+                                horizontalalignment = hori)
+                if xticks:
+                    ax.set_xticks(xticks, labels= xticks, fontsize=11, rotation=0)
+
+                if key_id in range(5,10):   
+                    ax.set_xlabel('Year', fontsize=13)
+
+                ax.tick_params(axis='y', labelsize=11)
+                ax.set_ylabel(ylabel[k], fontsize=12, fontweight='bold')
+
+                if key_id in [7]:
+                    ax.legend(loc=legendloc, ncol = ncol, fontsize=12)
+
+        # plt.tight_layout()
+        plt.gcf().set_dpi(150)
+
     def plot_Vmp_Imp_scatter(self, pvp,
                             df : pd.DataFrame,
                             p_plot : dict,
@@ -1234,3 +1388,91 @@ class PvProPlot:
 
         plt.xlabel(xlabel, fontsize=9)
         plt.ylabel(ylabel, fontsize=9)
+
+
+"""
+Function to plot post-processed results
+"""
+
+def plot_post_processed_results(NIST):
+    keys = ['Iph', 'I0', 'Rs', 'Rsh', 'n', 'Vmp', 'Imp', 'Voc', 'Isc', 'Pmp']
+    keys_pvpro = ['photocurrent_ref','saturation_current_ref',
+                'resistance_series_ref', 'resistance_shunt_ref', 'diode_factor',
+                 'i_sc_ref', 'v_oc_ref', 'i_mp_ref', 'v_mp_ref', 'p_mp_ref']
+    allc = ['#F2529D', '#FFC000', '#00B0F0', '#0070C0']
+    ylabels = ['Iph (A)', 'I0 (A)', 'Rs ()', 'Rsh ()', 'n',
+            'Vmp_ref (V)', 'Imp_ref (A)', 'Voc_ref (V)', 'Isc_ref (A)', 'Pmp_ref (W)']
+
+    fig, ax_all = plt.subplots(2, 5, figsize=[18,6])
+    plt.subplots_adjust(wspace=0.4, hspace=0.3)
+    for key_id in range(0, 10):
+
+        if key_id < 5:
+            ax = ax_all[0,key_id]
+        else:
+            ax = ax_all[1,key_id-5]
+        
+        para_show = keys[key_id]
+        para_pvpro = keys_pvpro[key_id]
+
+        #### PVPRO ####
+        x_pvpro = NIST.df.index
+        y_pvpro = NIST.df[para_pvpro]
+
+        ylim = [0,1000]
+
+        yscale = 'linear'
+        if para_show == 'Rs':
+            ylim = [0,1]
+        elif para_show == 'Iph':
+            ylim = [0,10]
+        elif para_show == 'Rsh':
+            ylim = [200,800]
+        elif para_show == 'n':
+            ylim = [0,3]
+        elif para_show == 'I0':
+            ylim = [0,1e-6]
+            yscale = 'log'
+
+        mask_y = (y_pvpro>ylim[0]) & (y_pvpro<ylim[1])
+        
+        ax.scatter(x_pvpro[mask_y],y_pvpro[mask_y].rolling(1).mean(), 10, label = 'PV-Pro',
+                       color = allc[2])
+
+        ### post-processed ###
+        if para_show != 'n':
+            model = "smooth_monotonic"
+            datashow = NIST.descaled_data[para_pvpro + "_" + model]
+            x = datashow.index
+            ycom = datashow['composed_signal']
+            ytrend = datashow['x5']*datashow['composed_signal'][0]
+            yperi = datashow['x4']*datashow['x3'][0]
+
+            Nrolling = 1
+
+            ax.plot(x,ycom.rolling(Nrolling).mean(), '-', linewidth = 3, label = 'Composed',
+                        color = allc[3])
+            ax.plot(x,yperi.rolling(Nrolling).mean(), '-', linewidth = 3, label = 'Periodic',
+                        color = allc[1])
+            
+            
+            ax.plot(x,ytrend.rolling(Nrolling).mean(), '-', linewidth = 3, label = 'Degra trend',
+                        color = allc[0])
+    
+        ax.set_yscale(yscale)
+        ax.set_ylabel(ylabels[key_id], fontsize = 13)
+        
+        date_form = DateFormatter("%Y")
+        ax.xaxis.set_major_formatter(date_form)
+        ax.xaxis.set_major_locator(mdates.YearLocator(1))
+
+        # adjust ylim
+        [ymin, ymax] = ax.get_ylim()
+        # ax.set_ylim([ymin*0.95, ymax])
+        if para_show in ['Iph', 'Vmp']:
+            ax.legend( markerscale=3, 
+                        prop={'size': 11}, framealpha=0.5, loc = 3)
+        ax.set_title('{}_ref'.format(para_show),weight='bold',fontsize = 15)
+        ax.grid(True)
+        plt.tight_layout()
+        plt.gcf().set_dpi(150)
