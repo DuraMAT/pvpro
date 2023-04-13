@@ -92,11 +92,16 @@ PVPRO analysis fits a single diode model to the data at each timestep in the ana
 
 For this dataset, the estimated power degradation rate is -1.07%/yr. PV-Pro also reveals that the system appears to show a sharp decrease of current over time.
 
-**[NEW]** Post-processing function (based on [solar-data-tools](https://github.com/slacgismo/solar-data-tools)) of PV-Pro results are recently introduced, which estimate a “clean” trend of the parameter changes over time with noise and seasonality removed.
+**[NEW] Post-processing functions** (based on [solar-data-tools](https://github.com/slacgismo/solar-data-tools)) of PV-Pro results are recently introduced, which can estimate a “clean” trend of the parameter changes over time with _noise and seasonality_ removed.
 
 ![Image of post results](doc_img/nist_ground_result_post.png)
 
-After removing the noise and seasonality, clear degradation trends of parameters are revealed. The NIST ground system appears to show a slight increase of Rs and a decrease of Rsh over time.
+_After removing the noise and seasonality, clear degradation trends of parameters are revealed. The NIST ground system appears to show a slight increase of Rs and a decrease of Rsh over time._
 
+### Contributors to this content:
+Baojie Li, Todd Karin.
+
+### Contributors to PV-Pro project:
+Baojie Li (LBL), Todd Karin (PVEL), Bennet E. Meyers (SLAC), Xin Chen (LBL), Dirk C. Jordan (NREL), Clifford W. Hansen (Sandia), Bruce H. King (Sandia), Michael G. Deceglie (NREL), Anubhav Jain (LBL)
 
 
