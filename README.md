@@ -70,7 +70,7 @@ The NIST ground array provides a useful testbed for PV-Pro [1]. A jupyter notebo
 
 PVPRO analysis fits a single diode model to the data at each timestep in the analysis. The trend of these parameters over time can be used to interpret what is degrading in the system. This analysis is only sensitive to module degradation (excepting drift in sensors) and not inverter degradation or downtime. Below, the PV-Pro results for this system show which parameters cause the observed power loss.
 
-![Image of PV-Pro fit result](https://github.com/DuraMAT/pvpro/blob/master/doc_img/nist_ground_result.png)
+![Image of PV-Pro fit result](doc_img/nist_ground_result.png)
 
 For this dataset, the estimated power degradation rate is -1.07%/yr. This system also appears to show an increase in series resistance over time. 
 
