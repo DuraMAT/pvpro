@@ -2,7 +2,7 @@
 
 [![PyPI release](https://img.shields.io/pypi/v/pvpro.svg)](https://pypi.org/project/pvpro/)
 
-<img src="https://github.com/DuraMAT/pvpro/blob/master/doc_img/pvpro_logo_ani.gif?raw=true" width="100"/>
+<img src="https://github.com/DuraMAT/pvpro/blob/master/doc_img/pvpro_logo_ani.gif?raw=true" width="300"/>
 
 In a typical photovoltaic (PV) system, more information is stored than just the DC or AC power. When a dataset contains the DC voltage, DC current, module temperature and plane-of-array irradiance, we can fit a single-diode model and extract many parameters as a function of time. These parameters include series resistance, shunt resistance, reference photocurrent, and more.
 
