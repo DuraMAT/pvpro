@@ -25,7 +25,7 @@ class Preprocessor():
     
 
     def __init__(self,
-                #  df : 'dataframe',
+                 df : 'dataframe',
                  system_name : str ='Unknown',
                  voltage_dc_key : str =None,
                  current_dc_key : str =None,
@@ -44,6 +44,7 @@ class Preprocessor():
 
         # Initialize datahandler object.
 
+        self.df = df
         self.system_name = system_name
         self.voltage_dc_key = voltage_dc_key
         self.current_dc_key = current_dc_key
@@ -64,7 +65,9 @@ class Preprocessor():
         
         pd.set_option('mode.chained_assignment', None)
 
-    def check_data_keys(self, df):
+    def check_data_keys(self):
+
+        df = self.df
 
         keys = [self.voltage_dc_key,
                 self.current_dc_key,
@@ -84,13 +87,14 @@ class Preprocessor():
             Double check that input temperature is in Celsius, not Farenheight. 
             """)
 
-    def run_basic_preprocess(self, df,
+    def run_basic_preprocess(self,
                 correct_tz : bool =False,
                 data_sampling : bool =None,
                 correct_dst : bool =True,
                 fix_shifts : bool =True,
                 max_val : bool =None,
-                verbose : bool =True):
+                verbose : bool =True,
+                use_sdt: bool = False):
         
         """
         Perform basic preprocessing steps, including:
@@ -106,52 +110,65 @@ class Preprocessor():
         dh (datahandler of solarDataTool)
 
         """
+        df = self.df
 
         # check data keys
-        self.check_data_keys(df)
+        self.check_data_keys()
 
         # Calculate cell temperature from module temperature
-        self.cal_cell_temp_from_module_temp(df, delta_T=3) 
+        self.calc_cell_temp_from_module_temp(delta_T=3) 
 
         # Make normalized power column
-        df.loc[df.index,'power_dc'] = df[self.voltage_dc_key] * df[
+        df['power_dc'] = df[self.voltage_dc_key] * df[
             self.current_dc_key] / self.modules_per_string / self.parallel_strings
+        
+        if use_sdt:
 
-        dh = DataHandler(df)
+            dh = DataHandler(df)
 
-        if type(data_sampling) != type(None):
-            dh.data_sampling = data_sampling
+            if type(data_sampling) != type(None):
+                dh.data_sampling = data_sampling
 
-        # Run solar-data-tools.
-        if correct_dst:
+            # Run solar-data-tools.
+            if correct_dst:
+                if verbose:
+                    print('Fixing daylight savings time shift...')
+                dh.fix_dst()
+
             if verbose:
-                print('Fixing daylight savings time shift...')
-            dh.fix_dst()
+                print('Running solar data tools...')
 
-        if verbose:
-            print('Running solar data tools...')
+            dh.run_pipeline(power_col='power_dc',
+                                correct_tz=correct_tz,
+                                extra_cols=[self.temperature_module_key,
+                                            self.irradiance_poa_key,
+                                            self.voltage_dc_key,
+                                            self.current_dc_key],
+                                verbose=verbose,
+                                fix_shifts=fix_shifts,
+                                max_val=max_val,
+                                solver=self.solver)
+            self._ran_sdt = True
 
-        dh.run_pipeline(power_col='power_dc',
-                            correct_tz=correct_tz,
-                            extra_cols=[self.temperature_module_key,
-                                        self.irradiance_poa_key,
-                                        self.voltage_dc_key,
-                                        self.current_dc_key],
-                            verbose=verbose,
-                            fix_shifts=fix_shifts,
-                            max_val=max_val,
-                            solver=self.solver)
-        self._ran_sdt = True
+            # Classifiy the points
+            self.classify_points_sdt(dh)
+            self.df = dh.data_frame_raw
 
-        # Classifiy the points
-        self.classify_points_sdt(dh)
+        else:
+            # Classifiy the points
+            self.classify_points_pva()
 
         # Classifiy the operating condition
-        self.classify_operating_condition(dh)
+        self.build_operating_classification()
 
-        return dh.data_frame_raw, dh
+        return self.df
+
 
     def classify_points_sdt(self, dh):
+        """
+        Classify points using solar data tools to identify the operating conditions
+
+        """
 
         dh.find_clipped_times()
 
@@ -213,11 +230,14 @@ class Preprocessor():
 
         self.df.loc[:,'daytime'] = np.logical_not(self.df.loc[:, 'low_p'])
 
-    def cal_cell_temp_from_module_temp(self, df, delta_T : float =3,
+    def calc_cell_temp_from_module_temp(self, delta_T : float =3,
                                    temperature_cell_key : str ='temperature_cell'):
         """
         Set cell temeperature in dataframe.
         """
+
+        df = self.df
+
         # Calculate cell temperature
         df.loc[:,temperature_cell_key] = sapm_cell_from_module(
             module_temperature=df[self.temperature_module_key],
@@ -283,7 +303,7 @@ class Preprocessor():
 
         return cls
 
-    def build_operating_classification(self, df: pd.DataFrame):
+    def build_operating_classification(self):
         """
         Build array of classifications of each time stamp based on boolean arrays
         provided.
@@ -320,6 +340,9 @@ class Preprocessor():
 
 
         """
+
+        df = self.df
+
         if isinstance(df, pd.DataFrame):
             operating_cls = np.zeros(len(df), dtype='int')
         else:
@@ -344,30 +367,7 @@ class Preprocessor():
                 np.logical_not(df['no_errors'])
             )] = -2
 
-        return operating_cls
-
-    def classify_operating_condition(self, dh):
-        """
-        Adds a key to self.df of 'operating_cls'. This field classifies the
-        operating point according to the following table:
-
-        0: System at maximum power point.
-        1: System at open circuit conditions.
-        2: Clipped or curtailed. DC operating point is not necessarily at MPP.
-        -1: No power/inverter off
-        -2: Other
-
-        """
-
-        if self._ran_sdt:
-            for df in [dh.data_frame_raw, dh.data_frame]:
-                df.loc[:,'operating_cls'] = self.build_operating_classification(df)
-
-            dh.generate_extra_matrix('operating_cls', new_index=dh.data_frame.index)
-
-        else:
-            for df in [dh.data_frame_raw]:
-                df.loc[:, 'operating_cls'] = self.build_operating_classification(df)
+        df.loc[:, 'operating_cls'] = operating_cls
 
     def find_clear_times(self, dh,
                          min_length : int =2,

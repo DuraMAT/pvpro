@@ -337,24 +337,6 @@ class PvProHandler:
                 pfixed_iter = fit_result_iter['fixed_params']
                 residual = fit_result_iter['residual']
 
-                # Estimate parameters quickly.
-                cax = df['operating_cls'] == 0
-                if np.sum(cax) > 10:
-
-                    est, est_results = pvesti.estimate_singlediode_params(
-                        poa=df.loc[cax, self.irradiance_poa_key],
-                        temperature_cell=df.loc[cax, 'temperature_cell'],
-                        imp=df.loc[cax, self.current_key] / self.parallel_strings,
-                        vmp=df.loc[cax, self.voltage_key] / self.modules_per_string,
-                        vmp_model='sandia1',
-                        imp_model='sandia',
-                        cells_in_series = self.cells_in_series,
-                        technology = technology
-                        )
-
-                    for key in est.keys():
-                        pfit.loc[k, key + '_est'] = est[key]
-
                 for p in pfit_iter: pfit.loc[k, p] = pfit_iter[p]
 
                 for p in pfixed_iter: pfit.loc[k, p] = pfixed_iter[p]
@@ -806,8 +788,7 @@ class PvProHandler:
                 loss = np.inf
                 for Io_multiplier in saturation_current_multistart:
 
-                    p0[
-                        'saturation_current_ref'] = saturation_current_ref_start * Io_multiplier
+                    p0['saturation_current_ref'] = saturation_current_ref_start * Io_multiplier
                     # Get numerical fit start point.
                     x0 = [self._p_to_x(p0[k], k) for k in fit_params]
 
@@ -845,26 +826,31 @@ class PvProHandler:
                             ),
                             )
 
-            if verbose:
-                print(res)
             n = 0
-            p_fit = {}
-            for param in fit_params:
-                p_fit[param] = self._x_to_p(res.x[n], param)
-                n = n + 1
+            try:
+                p_fit = {}
+                for param in fit_params:
+                    p_fit[param] = self._x_to_p(res.x[n], param)
+                    n = n + 1
 
-            # remove the Gsh_extra
-            p_fit['resistance_shunt_ref'] = 1/(1/p_fit['resistance_shunt_ref']-1e-5)
+                # remove the Gsh_extra
+                p_fit['resistance_shunt_ref'] = 1/(1/p_fit['resistance_shunt_ref']-1e-5)
 
-            out = {'p': p_fit,
-                'fixed_params': fixed_params,
-                'residual': res['fun'],
-                'x0': x0,
-                'p0': p0,
-                }
-            for k in res:
-                out[k] = res[k]
-
+                out = {'p': p_fit,
+                    'fixed_params': fixed_params,
+                    'residual': res['fun'],
+                    'x0': x0,
+                    'p0': p0,
+                    }
+                for k in res:
+                    out[k] = res[k]
+            except:
+                out = {'p': {},
+                    'fixed_params': fixed_params,
+                    'residual': np.nan,
+                    'x0': x0,
+                    'p0': p0,
+                    }
 
             return out
 
@@ -1596,7 +1582,7 @@ class EstimateInitial:
         photocurrent_imp_ratio = {'multi-Si': 1.0746167586063207,
                                 'mono-Si': 1.0723051517913444,
                                 'thin-film': 1.1813401654607967,
-                                'cigs': 1.1706462692015707,
+                                'CIGS': 1.1706462692015707,
                                 'cdte': 1.1015249105470803}
 
         photocurrent_ref = imp_ref * photocurrent_imp_ratio[technology]
@@ -1639,7 +1625,7 @@ class EstimateInitial:
 
         voc_cell = {'thin-film': 0.7477344670083659,
                     'multi-Si': 0.6207941068112764,
-                    'cigs': 0.4972842261904762,
+                    'CIGS': 0.4972842261904762,
                     'mono-Si': 0.6327717834732666,
                     'cdte': 0.8227840909090908}
 
@@ -1648,7 +1634,7 @@ class EstimateInitial:
     def estimate_voc_ref(self, vmp_ref : pd.Series, technology : str):
         voc_vmp_ratio = {'thin-film': 1.3069503474012514,
                         'multi-Si': 1.2365223483476515,
-                        'cigs': 1.2583291018540534,
+                        'CIGS': 1.2583291018540534,
                         'mono-Si': 1.230866745147029,
                         'cdte': 1.2188176469944012}
         voc_ref = vmp_ref * voc_vmp_ratio[technology]
@@ -1659,7 +1645,7 @@ class EstimateInitial:
     def estimate_beta_voc(self, beta_vmp : float, technology : str ='mono-Si'):
         beta_voc_to_beta_vmp_ratio = {'thin-film': 0.9594252453485964,
                                     'multi-Si': 0.9782579114165342,
-                                    'cigs': 0.9757373267198366,
+                                    'CIGS': 0.9757373267198366,
                                     'mono-Si': 0.9768254239046427,
                                     'cdte': 0.9797816054754396}
         beta_voc = beta_vmp * beta_voc_to_beta_vmp_ratio[technology]
@@ -1669,7 +1655,7 @@ class EstimateInitial:
         alpha_isc_to_isc_ratio = {'multi-Si': 0.0005864523754010862,
                                 'mono-Si': 0.0005022410194560715,
                                 'thin-film': 0.00039741211251133725,
-                                'cigs': -8.422066533574996e-05,
+                                'CIGS': -8.422066533574996e-05,
                                 'cdte': 0.0005573603056215652}
 
         alpha_isc = isc * alpha_isc_to_isc_ratio[technology]
@@ -1679,7 +1665,7 @@ class EstimateInitial:
         isc_to_imp_ratio = {'multi-Si': 1.0699135787527263,
                             'mono-Si': 1.0671785412770871,
                             'thin-film': 1.158663685900219,
-                            'cigs': 1.1566217151572733, 
+                            'CIGS': 1.1566217151572733, 
                             'cdte': 1.0962996330688608}
 
         isc_ref = imp_ref * isc_to_imp_ratio[technology]
