@@ -7,8 +7,8 @@
 
 In a typical photovoltaic (PV) system, more information is stored than just the DC or AC power. When a dataset contains the **Production** (DC voltage & DC current) and **Weather data** (module temperature and plane-of-array irradiance) , we can fit and reconstruct a **precise physical model** of the PV system. This model serves to:
 
- - Identify the degradation trend and rate of key PV parameters
- - Perform irradiance-to-power conversion for accurate power prediction
+ - **Identify the degradation trend and rate** of key PV parameters
+ - **Perform irradiance-to-power conversion** for accurate power prediction
 
 **The package is still under active development. If there is any problem, please feel free to [contact us](mailto:baojieli@lbl.gov)!**
 
