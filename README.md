@@ -5,11 +5,12 @@
 <img src="https://github.com/DuraMAT/pvpro/blob/master/doc_img/pvpro_logo_slogan.gif?raw=true" width="800"/>
 <img src="https://github.com/DuraMAT/pvpro/blob/master/doc_img/pvpro_overview_new.png?raw=true" width="800"/>
 
-In a typical photovoltaic (PV) system, more information is stored than just the DC or AC power. When a dataset contains the DC voltage, DC current, module temperature and plane-of-array irradiance, we can fit a single-diode model and extract many parameters as a function of time. These parameters include series resistance, shunt resistance, reference photocurrent, and more.
+In a typical photovoltaic (PV) system, more information is stored than just the DC or AC power. When a dataset contains the DC voltage, DC current, module temperature and plane-of-array irradiance, we can fit and reconstruct a precise physical model of the PV system. This model serves to:
 
-This package, PV-Pro, automates the analysis of PV production data to extract the rate of change of these parameters. 
+ - Identify the degradation trend and rate of key PV parameters
+ - Perform irradiance-to-power conversion for accurate power prediction
 
-**The package is still under active development. If there is any problem, please feel free to contact us!**
+**The package is still under active development. If there is any problem, please feel free to [contact us](mailto:baojieli@lbl.gov)!**
 
 # Publications
 Details of PV-Pro are provided in the following publications. If you use PV-Pro in a published work, please also cite:
@@ -24,7 +25,7 @@ Details of PV-Pro are provided in the following publications. If you use PV-Pro 
 pip install pvpro
 ```
 
-## Install Mosek solver (Optional)
+### Install Mosek solver (Optional)
 
 Pre-processing of PV-Pro could use [solar-data-tools](https://github.com/slacgismo/solar-data-tools) for better performance (optional), which requires the installation of [Mosek](https://www.mosek.com/resources/getting-started/) solver. MOSEK is a commercial software package. You will still need to obtain a license. More information is available here:
 
