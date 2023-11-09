@@ -7,8 +7,8 @@
 
 In a typical photovoltaic (PV) system, more information is stored than just the DC or AC power. When a dataset contains the **Production** (DC voltage & DC current) and **Weather data** (module temperature and plane-of-array irradiance) , we can fit and reconstruct a **precise physical model** of the PV system. This model serves to:
 
- - **Identify the degradation trend and rate** of key PV parameters
- - **Perform irradiance-to-power conversion** for accurate power prediction
+ - <font color="#753AA2">**Identify the degradation trend and rate** of key PV parameters</font>
+ - <font color="#029A8A">**Perform irradiance-to-power conversion** for accurate power prediction</font>
 
 **The package is still under active development. If there is any problem, please feel free to [contact us](mailto:baojieli@lbl.gov)!**
 
@@ -70,7 +70,7 @@ Here's a high level overview of the most important parts of the package.
 
 The [NIST ground array dataset](https://pvdata.nist.gov/) provides a useful testbed for PV-Pro. A jupyter notebook showing analysis is provided in [Degradation_analysis.ipynb](examples/Degradation_analysis.ipynb). PV-Pro estimates the trend of the SDM and IV parameters over time to interpret what is degrading in the PV system. 
 
-<img src="https://github.com/DuraMAT/pvpro/blob/master/doc_img/NIST_ground_results.png" width="700"/>
+<img src="https://github.com/DuraMAT/pvpro/blob/master/doc_img/NIST_ground_results.png" width="800"/>
 
 From the results, the degradation of power (about -1.29%/yr) is mainly related to the degradation of the current-related parameters ($I_{mp}$, $I_{sc}$, and $I_{ph}$), which notably dropped since 2018. System operators were then advised to pay attention to factors impeding the generation of current, like soiling.
 
