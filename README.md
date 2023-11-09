@@ -12,7 +12,7 @@ In a typical photovoltaic (PV) system, more information is stored than just the 
 
 **The package is still under active development. If there is any problem, please feel free to [contact us](mailto:baojieli@lbl.gov)!**
 
-# Publications
+## Publications
 Details of PV-Pro are provided in the following publications. If you use PV-Pro in a published work, please also cite:
 
 [1] Li, B., et al. "Determining circuit model parameters from operation data for PV system degradation analysis: PVPRO." Solar Energy 254 (2023): 168-181. DOI: [10.1016/j.solener.2023.03.011](https://doi.org/10.1016/j.solener.2023.03.011)
@@ -33,16 +33,28 @@ Pre-processing of PV-Pro could use [solar-data-tools](https://github.com/slacgis
 * [Personal academic license](https://www.mosek.com/products/academic-licenses/)
 
 
-# Method and Application
+# Methodology
+
+## Method
 PV-Pro can estimates 10 essential PV module parameters (listed below) at the reference condition (STC) using only production (DC voltage and current) and weather data (irradiance and temperature). Specifically, PV-Pro has 2 steps:
 - **Pre-processing**: identify outliers, clear sky, operating conditions, etc.
 - **Parameter extraction**: Fit a single-diode model (SDM) to get the estimated SDM parameters by minimizing the differences between the measured and modeled voltage & current. Then use the SDM parameters to estimate the IV parameters at STC.
 
+| SDM parameters\* | IV parameters\* | 
+| -------- | -------- |
+| Photocurrent ($I_{ph}$) | Maximum power ($P_{mp}$)|
+| Saturation current ($I_{o}$)| Voltage at MPP ($V_{mp}$)| 
+| Series resistance ($R_{s}$)| Current at MPP ($I_{mp}$)| 
+| Shunt resistance ($R_{sh}$)| Open-circuit voltage ($V_{oc}$)| 
+| Diode factor ($n$)| Short-circuit current ($I_{sc}$)| 
+\* At the reference condition (STC)
+
+## Application
 PV-Pro has two major applications:
 - **Degradation analaysis**: Calculate the degradation rate.
 - **Power prediction**: Calculate the degradation rate.
 
-<img src="https://github.com/DuraMAT/pvpro/blob/master/doc_img/pvpro_overview.png?raw=true" width="700"/>
+## Package overview
 
 Here's a high level overview of the most important parts of the package.
 
