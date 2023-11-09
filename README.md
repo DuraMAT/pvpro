@@ -13,7 +13,7 @@ In a typical photovoltaic (PV) system, more information is stored than just the 
 **The package is still under active development. If there is any problem, please feel free to [contact us](mailto:baojieli@lbl.gov)!**
 
 ## Publications
-Details of PV-Pro are provided in the following publications. If you use PV-Pro in a published work, please also cite:
+Details of PV-Pro are provided in the following publications. If you use PV-Pro in a published work, please cite:
 
 [1] Li, B., et al. "Determining circuit model parameters from operation data for PV system degradation analysis: PVPRO." Solar Energy 254 (2023): 168-181. DOI: [10.1016/j.solener.2023.03.011](https://doi.org/10.1016/j.solener.2023.03.011)
 
@@ -40,14 +40,13 @@ PV-Pro can estimates 10 essential PV module parameters (listed below) at the ref
 - **Pre-processing**: identify outliers, clear sky, operating conditions, etc.
 - **Parameter extraction**: Fit a single-diode model (SDM) to get the estimated SDM parameters by minimizing the differences between the measured and modeled voltage & current. Then use the SDM parameters to estimate the IV parameters at STC.
 
-| SDM parameters\* | IV parameters\* | 
+| SDM parameters at STC | IV parameters at STC | 
 | -------- | -------- |
 | Photocurrent ($I_{ph}$) | Maximum power ($P_{mp}$)|
 | Saturation current ($I_{o}$)| Voltage at MPP ($V_{mp}$)| 
 | Series resistance ($R_{s}$)| Current at MPP ($I_{mp}$)| 
 | Shunt resistance ($R_{sh}$)| Open-circuit voltage ($V_{oc}$)| 
 | Diode factor ($n$)| Short-circuit current ($I_{sc}$)| 
-\* At the reference condition (STC)
 
 ## Application
 PV-Pro has two major applications:
