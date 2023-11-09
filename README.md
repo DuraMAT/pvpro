@@ -6,9 +6,9 @@
 <img src="https://github.com/DuraMAT/pvpro/blob/master/doc_img/pvpro_overview_new.png?raw=true" width="800"/>
 
 In a typical photovoltaic (PV) system, more information is stored than just the DC or AC power. When a dataset contains the **Production** (DC voltage & DC current) and **Weather data** (module temperature and plane-of-array irradiance) , we can fit and reconstruct a **precise physical model** of the PV system. This model serves to:
-<span style="color:red">This is some red text</span>
- - <font color="#753AA2">**Identify the degradation trend and rate** of key PV parameters</font>
- - <font color="#029A8A">**Perform irradiance-to-power conversion** for accurate power prediction</font>
+
+ - **Identify the degradation trend and rate** of key PV parameters
+ - **Perform irradiance-to-power conversion** for accurate power prediction
 
 **The package is still under active development. If there is any problem, please feel free to [contact us](mailto:baojieli@lbl.gov)!**
 
