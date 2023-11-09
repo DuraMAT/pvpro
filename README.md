@@ -68,9 +68,7 @@ Here's a high level overview of the most important parts of the package.
 
 ## Degradation analaysis
 
-The [NIST ground array dataset](https://pvdata.nist.gov/) provides a useful testbed for PV-Pro. A jupyter notebook showing analysis is provided in [Degradation_analysis.ipynb](examples/Degradation_analysis.ipynb). 
-
-PV-Pro estimates the trend of the SDM and IV parameters over time to interpret what is degrading in the PV system. 
+The [NIST ground array dataset](https://pvdata.nist.gov/) provides a useful testbed for PV-Pro. A jupyter notebook showing analysis is provided in [Degradation_analysis.ipynb](examples/Degradation_analysis.ipynb). PV-Pro estimates the trend of the SDM and IV parameters over time to interpret what is degrading in the PV system. 
 
 ![Image of PV-Pro fit result](doc_img/nist_ground_result.png)
 
@@ -81,6 +79,7 @@ From the results, the degradation of power (about -1.29%/yr) is mainly related t
 
 Using the same NIST dataset
 
+<img src="https://github.com/DuraMAT/pvpro/blob/master/doc_img/power_prediction_results.png" width="700"/>
 
 # Contribution
 
