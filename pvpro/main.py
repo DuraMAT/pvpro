@@ -5,12 +5,11 @@ import pvlib
 import numpy as np
 import pandas as pd
 
-
-import datetime
 import os
 import time
 import scipy
 import shutil
+from datetime import datetime, timedelta
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -46,10 +45,12 @@ class PvProHandler:
                  modules_per_string : int =None,
                  parallel_strings : int =None,
                  alpha_isc : float =None,
-                 resistance_shunt_ref : float =600,
-                 use_clear_times : bool =True,
+                 resistance_shunt_ref : float = 600,
                  cells_in_series : int =None,
                  technology : str =None,
+                 days_per_run: int = 14,
+                 disable_tqdm: bool = False,
+                 include_operating_cls: bool = True
                  ):
 
         # Initialize datahandler object.
@@ -70,6 +71,9 @@ class PvProHandler:
         self.modules_per_string = modules_per_string
         self.parallel_strings = parallel_strings
         self.technology = technology
+        self.days_per_run = days_per_run
+        self.disable_tqdm = disable_tqdm
+        self.include_operating_cls = include_operating_cls
 
         self.p0 = dict(
             diode_factor=1.03,
@@ -133,28 +137,27 @@ class PvProHandler:
 
     def execute(self,
                 iteration : str ='all',
-                boolean_mask : bool =None,
-                days_per_run : float =365.25,
-                iterations_per_year : int =10,
+                boolean_mask : list[bool] = None,
+                days_per_run : float = 14,
+                iterations_per_year : int = 26,
                 start_point_method : str ='fixed',
                 use_mpp_points : bool =True,
                 use_voc_points : bool =True,
                 use_clip_points : bool =True,
-                diode_factor : bool =None,
-                photocurrent_ref : bool =None,
-                saturation_current_ref : bool =None,
-                resistance_series_ref : bool =None,
-                resistance_shunt_ref : bool =None,
+                diode_factor : float =None,
+                photocurrent_ref : float =None,
+                saturation_current_ref : float =None,
+                resistance_series_ref : float =None,
+                resistance_shunt_ref : float =None,
                 conductance_shunt_extra : float =0,
                 verbose : bool =False,
                 method : str ='minimize',
                 solver : str ='L-BFGS-B',
-                fit_params : list[str] =None,
-                lower_bounds : dict =None,
-                upper_bounds : dict =None,
+                fit_params : list[str] = None,
+                lower_bounds : dict = None,
+                upper_bounds : dict = None,
                 singlediode_method : str ='fast',
-                saturation_current_multistart : bool =None,
-                technology : str = None 
+                saturation_current_multistart : list[float] = None
                 ):
         """
         Main PVPRO Method.
@@ -196,8 +199,8 @@ class PvProHandler:
         kB = 1.381e-23
 
         # Calculate iteration start days
-        dataset_length_days = (self.df.index[-1] - self.df.index[0]).days
-        iteration_start_days = np.arange(0, dataset_length_days - days_per_run,
+        dataset_length_days = (self.df.index[-1] - self.df.index[0]).days + 1
+        iteration_start_days = np.arange(0, dataset_length_days - days_per_run + 1,
                                          365.25 / iterations_per_year)
 
         # Fit params taken from p0
@@ -215,8 +218,7 @@ class PvProHandler:
         self.time = []
         for d in iteration_start_days:
             self.time.append(self.df.index[0] +
-                             datetime.timedelta(
-                                 int(d + 0.5 * days_per_run)))
+                             timedelta(int(d + 0.5 * days_per_run)))
 
         # Bounds
         lower_bounds = lower_bounds or dict(
@@ -251,7 +253,7 @@ class PvProHandler:
 
         n = 0
         k_last_iteration = 0
-        for k in tqdm(iteration):
+        for k in tqdm(iteration, disable=self.disable_tqdm):
 
             # Get df for current iteration.
             if boolean_mask is None:
@@ -264,9 +266,9 @@ class PvProHandler:
                     'Boolean mask has length {}, it must have same length as self.df: {}'.format(
                         len(boolean_mask), len(self.df)))
 
-            pfit.loc[k, 't_start'] = self.df.index[0] + datetime.timedelta(
+            pfit.loc[k, 't_start'] = self.df.index[0] + timedelta(
                 iteration_start_days[k])
-            pfit.loc[k, 't_end'] = self.df.index[0] + datetime.timedelta(
+            pfit.loc[k, 't_end'] = self.df.index[0] + timedelta(
                 iteration_start_days[k] + days_per_run)
 
             idx = np.logical_and.reduce(
@@ -370,7 +372,7 @@ class PvProHandler:
                 for p in out.keys():
                     pfit.loc[k, p + '_ref'] = out[p]
 
-        pfit['t_mean'] = pfit['t_start'] + datetime.timedelta(
+        pfit['t_mean'] = pfit['t_start'] + timedelta(
             days=days_per_run / 2)
 
         pfit['t_years'] = np.array(
@@ -926,14 +928,13 @@ class PvProHandler:
         out = {}
 
         for k in ['photocurrent_ref', 'saturation_current_ref',
-                'resistance_series_ref', 'resistance_shunt_ref',
-                'conductance_shunt_extra', 'diode_factor', 'i_sc_ref',
-                'v_oc_ref', 'i_mp_ref', 'v_mp_ref', 'p_mp_ref', 'v_mp_ref_est',
-                'i_mp_ref_est', 'p_mp_ref_est',
-                'nNsVth_ref']:
+                'resistance_series_ref', 'resistance_shunt_ref','diode_factor', 'i_sc_ref',
+                'v_oc_ref', 'i_mp_ref', 'v_mp_ref', 'p_mp_ref']:
+            
             if k in pfit:
                 Rd_pct, Rd_CI, calc_info = degradation_year_on_year(pd.Series(pfit[k]),
                                                                     recenter=False)
+                
                 renorm = np.nanmedian(pfit[k])
                 if renorm == 0:
                     renorm = np.nan
@@ -947,6 +948,128 @@ class PvProHandler:
                     'median': np.nanmedian(pfit[k])}
 
         return out
+
+    def run_pipeline(self):
+        """
+        Run pipeline of parameter extraction
+
+        :param disable_tqdm: disable the display of tqdm process
+        :return pfit: dataframe containing extracted SDM parameters
+        
+        """
+
+        df = self.df
+        if self.include_operating_cls:
+            boolean_mask = np.logical_and.reduce((
+                                       np.logical_not(df['current_irradiance_outliers']),
+                                       np.logical_not(df['voltage_temperature_outliers']),
+                                       df[self.irradiance_poa_key]>100,
+                                       np.logical_or.reduce((
+                                            df['operating_cls']==0,
+                                            df['operating_cls']==1,
+                                            df['operating_cls']==2
+                                            ))
+                                    ))
+
+        else:
+            boolean_mask = np.logical_and.reduce((np.logical_not(df['current_irradiance_outliers']),
+                                        np.logical_not(df['voltage_temperature_outliers']),
+                                        df[self.irradiance_poa_key]>100
+                                        ))
+        
+        # Estimate initial parameters
+        self.estimate_p0(boolean_mask=boolean_mask, technology = self.technology)
+        
+        # Diode factor is set constant
+        self.p0['diode_factor'] = 1
+
+        hyperparams = {
+            'use_voc_points': False,
+            'use_mpp_points': True,
+            'use_clip_points': False,
+            'method': 'minimize',
+            'solver': 'L-BFGS-B',
+            'days_per_run': self.days_per_run,
+            'iterations_per_year': int(365/self.days_per_run),
+            'start_point_method': 'last',
+            'saturation_current_multistart': [1],
+            'verbose': False,
+            'diode_factor': self.p0['diode_factor']
+        }
+
+        fit_params = ['photocurrent_ref', 'saturation_current_ref','resistance_series_ref', 
+              'conductance_shunt_extra', 'resistance_shunt_ref', 'diode_factor']
+        
+        lower_bounds = dict(
+                    diode_factor=0.1,
+                    photocurrent_ref=0.01,
+                    saturation_current_ref=5e-12,
+                    resistance_series_ref=0.1,
+                    conductance_shunt_extra=0,
+                    resistance_shunt_ref=100
+                )
+
+        upper_bounds = dict(
+            diode_factor=1.5,
+            photocurrent_ref=10,
+            saturation_current_ref=1e-6,
+            resistance_series_ref=2,
+            conductance_shunt_extra=0,
+            resistance_shunt_ref=1000
+        )
+
+        self.execute(iteration='all', fit_params= fit_params,
+                        lower_bounds=lower_bounds,
+                        upper_bounds=upper_bounds,
+                        **hyperparams,
+                        boolean_mask = boolean_mask)
+        
+        pfit = self.result['p']
+
+        return pfit
+
+    def system_modelling(self, df : pd.DataFrame, pfit : dict, inx : list[bool] = None):
+
+        """
+        Model the PV sytem using the SDM parameters extracted by PV-Pro
+
+        :param df: dataframe of the data 
+        :param pfit: dict containing the SDM parameters
+        :param inx: index of dataframe to model
+
+        :return system_power: modeled power using the given SDM parameters and weather data
+
+        """
+
+        if inx is None:
+            inx = [True]*len(df)
+
+        out_test = pvlib_single_diode(
+            effective_irradiance = df[self.irradiance_poa_key][inx],
+            temperature_cell = df['temperature_cell'][inx],
+            resistance_shunt_ref = pfit['resistance_shunt_ref'],
+            resistance_series_ref = pfit['resistance_series_ref'],
+            diode_factor = pfit['diode_factor'],
+            cells_in_series = self.cells_in_series,
+            alpha_isc = self.alpha_isc,
+            photocurrent_ref = pfit['photocurrent_ref'],
+            saturation_current_ref = pfit['saturation_current_ref'],
+            band_gap_ref=1.121,
+            dEgdT=-0.0002677,
+            conductance_shunt_extra=pfit['conductance_shunt_extra'],
+            irradiance_ref=1000,
+            temperature_ref=25,
+            ivcurve_pnts=None,
+            output_all_params=False,
+            singlediode_method='fast',
+            calculate_voc=True)
+        
+        modules_per_string = self.modules_per_string
+        parallel_strings = self.parallel_strings
+
+        system_power = out_test['v_mp']* out_test['i_mp']*modules_per_string*parallel_strings
+
+        return system_power
 
     """
     off-MPP functions
@@ -1939,3 +2062,80 @@ def calculate_error_synthetic(pfit : pd.DataFrame, df : pd.DataFrame, nrolling :
                                                 p2[mask])[0,1]
 
     return all_error_df
+
+"""
+Functions for irradiance-to-power conversion of power prediction
+"""
+
+def str2date(date_string: str):
+    """
+    Convert string to datetime format
+
+    :param date_string: string to convert
+    :return datetime_object
+    
+    """
+    date_format = "%Y-%m-%d"
+    if isinstance(date_string, datetime):
+        datetime_object = date_string
+    else:
+        datetime_object = datetime.strptime(date_string, date_format)
+
+    return datetime_object
+
+def get_train_test_index(df, test_start_date : str, train_days : int, test_days : int = 1):
+    
+    """
+    Get index of training data and test data for the power prediction
+
+    :param df: dataframe containing the data
+    :param test_start_date: start date of the test
+    :param train_days: length of historical data to extract SDM parameters
+    :param test_days: length of test data (default 1 day)
+
+    :return inx_train: index of training data
+    :return inx_test: index of test data
+    
+    """
+
+    test_start_date = str2date(test_start_date)
+    train_start_date = test_start_date - timedelta(days=int(train_days))
+    test_end_date = test_start_date + timedelta(days=int(test_days))
+
+    inx_train = (df.index >= train_start_date) & (df.index < test_start_date)
+    inx_test = (df.index >= test_start_date) & (df.index < test_end_date)
+
+    return inx_train, inx_test
+
+def calc_err(y_pred: list, y_ref : pd.DataFrame, nominal_power : float):
+
+    """
+    Calculate several error metrics between predicted and reference power
+
+    :param y_pred: predicted power
+    :param y_ref: reference power
+    :param nominal_power: nominal power of the PV system
+    :return err_dict: dict of errors
+
+    """
+
+    mean_ref = np.nanmean(y_ref)
+    mae = np.nanmean(np.abs(y_pred - y_ref))
+    mbe = np.nanmean(y_pred - y_ref)
+    rmse = np.sqrt(np.nanmean(np.abs(y_pred - y_ref)**2))
+
+    nmae_av = mae/mean_ref*100
+    nmbe_av = mbe/mean_ref*100
+    nrmse_av = rmse/mean_ref*100
+
+    nmae = mae/nominal_power*100
+    nmbe = mbe/nominal_power*100
+    nrmse = rmse/nominal_power*100
+
+    r2 = 1- np.sum((y_pred - y_ref)**2)/np.sum((y_ref-mean_ref)**2)
+
+    err_dict = {'nMAE': nmae, 'nRMSE': nrmse, 'nMBE': nmbe, 
+                'nMAEav': nmae_av, 'nRMSEav': nrmse_av, 'nMBEav': nmbe_av, 
+                'R2': r2}
+
+    return err_dict

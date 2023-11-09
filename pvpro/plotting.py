@@ -9,14 +9,16 @@ import seaborn as sns
 from array import array
 import matplotlib.dates as mdates
 
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from sklearn.metrics import mean_squared_error
 from pvpro.modeling import pvlib_single_diode, pv_system_single_diode_model, single_diode_predict
-from pvpro.main import calculate_error_real, calculate_error_synthetic
+from pvpro.main import calculate_error_real, calculate_error_synthetic, calc_err
 import matplotlib.dates as mdates
 from matplotlib.dates import YearLocator, DateFormatter
 from matplotlib.ticker import FuncFormatter
+
 
     
 """
@@ -1122,11 +1124,11 @@ def plot_results_timeseries(pfit : DataFrame,
                             compare : DataFrame = None,
                             compare_label : str ='True value',
                             keys_to_plot : list = None,
-                            yoy_plot : bool = False,
+                            yoy_plot : bool = True,
                             linestyle : str = '.',
                             wspace : float = 0.4,
                             figsize : tuple = (8, 9),
-                            legendloc : list[float] = [0.3, -0.4],
+                            legendloc : list[float] = [-0.3, -0.4],
                             ncol : int = 3,
                             cal_error_synthetic : bool = False,
                             cal_error_real : bool = False,
@@ -1532,3 +1534,39 @@ def plot_compare_post_processed_results(df_post1, df_post2, model):
         ax.grid(True)
         plt.tight_layout()
         plt.gcf().set_dpi(150)
+
+
+"""
+Functions to plot irradiance-to-power conversion results
+
+"""
+
+def plot_predicted_ref_power(y_predicted, y_ref, nominal_power):
+
+    """
+    Plot predicted and reference power
+
+    :param y_predicted: predicted power
+    :param y_ref: reference power
+    :param nominal_power: nominal power of the PV system
+    
+    """
+
+    err = calc_err(y_predicted, y_ref, nominal_power)
+    matplotlib.rcParams['font.family'] = 'Arial'
+
+    fig, ax = plt.subplots(figsize = [9,6], dpi = 90)
+    ax.plot(y_ref.index, y_ref/1000, '--', linewidth = 3, label = 'Ref')
+    ax.plot(y_ref.index, y_predicted/1000, linewidth = 3, label = 'PV-Pro')
+    ax.text(0.15, 0.75, 
+            'nMAE: {:.2f}%\nnRMSE: {:.2f}%'.format(err['nMAE'], err['nRMSE']),
+            transform=fig.transFigure, fontsize = 20, fontweight = 'bold')
+    ax.set_ylabel('Power (kW)', fontsize = 18)
+    ax.set_xlabel('Time', fontsize = 18)
+    h_fmt = mdates.DateFormatter('%Hh')
+    ax.xaxis.set_major_formatter(h_fmt)
+    ax.tick_params(axis='both', which='major', labelsize=17)
+    ax.set_title('{}'.format(y_ref.index[0].date()), fontweight = 'bold', fontsize = 20)
+
+    ax.legend(fontsize = 18)
+    ax.grid(True)

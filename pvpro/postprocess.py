@@ -246,6 +246,7 @@ class PostProcessor:
         verbose=False,
         known=None,
         solver="Default",
+        monotonic = True,
     ):
         """Runs an optimization problem to perform a 5-component signal
         decomposition using cvxpy on one parameter of the PV system. Creates
@@ -338,10 +339,11 @@ class PostProcessor:
         if model == "linear":
             constraints.append(cp.diff(x5, k=2) == 0)
         else:
-            if decreasing == True:
-                constraints.append(cp.diff(x5, k=1) <= 0)
-            else:
-                constraints.append(cp.diff(x5, k=1) >= 0)
+            if monotonic:
+                if decreasing == True:
+                    constraints.append(cp.diff(x5, k=1) <= 0)
+                else:
+                    constraints.append(cp.diff(x5, k=1) >= 0)
 
             if model == "smooth_monotonic":
                 cost += lambda_5 * cp.sum_squares(cp.diff(x5, k=2))
@@ -419,6 +421,7 @@ class PostProcessor:
         verbose=False,
         known=None,
         solver="Default",
+        monotonic = True
     ):
         """Performs optimize() with default values. All parameters and outputs
         are the same as those in optimize().
@@ -457,6 +460,7 @@ class PostProcessor:
             verbose=verbose,
             known=known,
             solver=solver,
+            monotonic=monotonic
         )
 
     def retreive_result(self, label, model="smooth_monotonic"):
