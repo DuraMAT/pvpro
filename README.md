@@ -33,8 +33,14 @@ Pre-processing of PV-Pro could use [solar-data-tools](https://github.com/slacgis
 * [Personal academic license](https://www.mosek.com/products/academic-licenses/)
 
 
-# Methods
-PV-Pro estimates essential PV module parameters using only operation (DC voltage and current) and weather data (irradiance and temperature). First, PV-Pro performs multi-stage data pre-processing to remove noisy data. Next, the time-series DC data are used to fit an equivalent circuit single-diode model (SDM) to estimate the circuit parameters by minimizing the differences between the measured and estimated values. In this way, the time evolutions of the SDM parameters are obtained.
+# Method and Application
+PV-Pro can estimates 10 essential PV module parameters (listed below) at the reference condition (STC) using only production (DC voltage and current) and weather data (irradiance and temperature). Specifically, PV-Pro has 2 steps:
+- **Pre-processing**: identify outliers, clear sky, operating conditions, etc.
+- **Parameter extraction**: Fit a single-diode model (SDM) to get the estimated SDM parameters by minimizing the differences between the measured and modeled voltage & current. Then use the SDM parameters to estimate the IV parameters at STC.
+
+PV-Pro has two major applications:
+- **Degradation analaysis**: Calculate the degradation rate.
+- **Power prediction**: Calculate the degradation rate.
 
 <img src="https://github.com/DuraMAT/pvpro/blob/master/doc_img/pvpro_overview.png?raw=true" width="700"/>
 
@@ -47,7 +53,7 @@ Here's a high level overview of the most important parts of the package.
 
 
 
-# Application Examples
+# Examples
 
 ## Degradation analaysis
 
