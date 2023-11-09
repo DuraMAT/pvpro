@@ -51,7 +51,7 @@ PV-Pro can estimates 10 essential PV module parameters (listed below) at the ref
 ## Application
 PV-Pro has two major applications:
 - **Degradation analaysis**: Calculate the degradation rate of the SDM and IV parameters. See example: [Degradation_analysis.ipynb](examples/Degradation_analysis.ipynb)
-- **Irradiance-to-power converstion**: Use the estimated SDM parameters to map the forecasted irradiance to power. See example:
+- **Irradiance-to-power converstion**: Use the estimated SDM parameters to map the forecasted irradiance to power. See example: [Degradation_analysis.ipynb](examples/Power_prediction.ipynb)
 
 ## Package overview
 
@@ -76,10 +76,11 @@ From the results, the degradation of power (about -1.29%/yr) is mainly related t
 
 ## Irradiance-to-power conversion 
 
-
-Using the same NIST dataset
+When the forecasted ground weather data is available, PV-Pro can also perform precise irradiance-to-power conversion based on the estimated SDM parameters that reflect the **actual health status** of the PV system.  A jupyter notebook is presented in [Degradation_analysis.ipynb](examples/Power_prediction.ipynb). Here, we focus on a daily power prediction with example results on two days with different weather (clear and cloudy) presented below.
 
 <img src="https://github.com/DuraMAT/pvpro/blob/master/doc_img/power_prediction_results.png" width="700"/>
+
+It is shown that PV-Pro achieves an outstanding power conversion on both days with nMAE <1%.
 
 # Contribution
 
