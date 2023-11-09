@@ -37,7 +37,7 @@ Pre-processing of PV-Pro could use [solar-data-tools](https://github.com/slacgis
 
 ## Method
 PV-Pro can estimates 10 essential PV module parameters (listed below) at the reference condition (STC) using only production (DC voltage and current) and weather data (irradiance and temperature). Specifically, PV-Pro has 2 steps:
-- **Pre-processing**: identify outliers, clear sky, operating conditions, etc.
+- **Pre-processing**: Identify outliers, clear sky, operating conditions, etc.
 - **Parameter extraction**: Fit a single-diode model (SDM) to get the estimated SDM parameters by minimizing the differences between the measured and modeled voltage & current. Then use the SDM parameters to estimate the IV parameters at STC.
 
 | SDM parameters at STC | IV parameters at STC | 
@@ -50,31 +50,31 @@ PV-Pro can estimates 10 essential PV module parameters (listed below) at the ref
 
 ## Application
 PV-Pro has two major applications:
-- **Degradation analaysis**: Calculate the degradation rate.
-- **Power prediction**: Calculate the degradation rate.
+- **Degradation analaysis**: Calculate the degradation rate of the SDM and IV parameters. See example: [Degradation_analysis.ipynb](examples/Degradation_analysis.ipynb)
+- **Irradiance-to-power converstion**: Use the estimated SDM parameters to map the forecasted irradiance to power. See example:
 
 ## Package overview
 
 Here's a high level overview of the most important parts of the package.
 
-- preprocess.Preprocessor - class for running the pre-processing of time-series data.
-- main.PvProHandler - class method for running the parameter estimation. 
-- postprocess.PostProcessor - class for running the post-processing of PV-Pro results.
-- plotting.PvProPlot - class to plot figures conveniently
-
+- preprocess.Preprocessor - class for the pre-processing of data
+- main.PvProHandler.run_pipeline - class method to run the parameter estimation
+- main.PvProHandler.system_modelling - class method to model the power
+- plotting.plot_results_timeseries - function to plot the degradation trend of parameters
+- plotting.plot_predicted_ref_power - function to plot the predicted and reference power
 
 
 # Examples
 
 ## Degradation analaysis
 
-The [NIST ground array dataset](https://pvdata.nist.gov/) provides a useful testbed for PV-Pro. A jupyter notebook showing analysis of this dataset is provided in [NIST_ground_array_analysis.ipynb](examples/NIST_ground_array_analysis.ipynb). 
+The [NIST ground array dataset](https://pvdata.nist.gov/) provides a useful testbed for PV-Pro. A jupyter notebook showing analysis is provided in [Degradation_analysis.ipynb](examples/Degradation_analysis.ipynb). 
 
-PVPRO analysis fits a single diode model to the data at each timestep in the analysis. The trend of these parameters over time can be used to interpret what is degrading in the system. This analysis is only sensitive to module degradation (excepting drift in sensors) and not inverter degradation or downtime. Below, the PV-Pro results for this system show which parameters cause the observed power loss.
+PV-Pro estimates the trend of the SDM and IV parameters over time to interpret what is degrading in the PV system. 
 
 ![Image of PV-Pro fit result](doc_img/nist_ground_result.png)
 
-For this dataset, the estimated power degradation rate is -1.07%/yr. PV-Pro also reveals that the system appears to show a sharp decrease of current over time.
+From the results, the degradation of power (about -1.29%/yr) is mainly related to the degradation of the current-related parameters ($I_{mp}$, $I_{sc}$, and $I_{ph}$), which notably dropped since 2018. System operators were then advised to pay attention to factors impeding the generation of current, like soiling.
 
 ## Irradiance-to-power conversion 
 
