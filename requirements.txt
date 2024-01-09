@@ -9,7 +9,6 @@ idna==2.10
 joblib==0.16.0
 kiwisolver==1.2.0
 matplotlib==3.3.2
-Mosek
 numpy
 olefile==0.46
 osqp==0.6.1
@@ -19,6 +18,7 @@ pyparsing==2.4.7
 python-dateutil==2.8.1
 pytz==2020.1
 requests==2.24.0
+rdtools
 scikit-learn==0.23.2
 scipy
 scs==2.1.2
@@ -29,5 +29,4 @@ threadpoolctl==2.1.0
 tornado==6.0.4
 tqdm
 urllib3==1.26.5
-pvlib==0.7.2
-solar-data-tools==0.4.3
+pvlib

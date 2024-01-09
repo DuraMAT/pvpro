@@ -2,7 +2,6 @@ name: pvpro-user
 channels:
   - defaults
   - anaconda
-  - mosek
   - slacgismo
   - conda-forge
 dependencies:
@@ -18,11 +17,9 @@ dependencies:
   - requests
   - scikit-learn
   - s3fs
-  - solar-data-tools
   - statistical-clear-sky
   - cassandra-driver
   - openblas
-  - mosek
   - tqdm
   - pyqt
   - pvlib-python

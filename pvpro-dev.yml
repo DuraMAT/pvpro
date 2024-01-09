@@ -2,7 +2,6 @@ name: pvpro-dev
 channels:
   - defaults
   - anaconda
-  - mosek
   - conda-forge
 dependencies:
   - jupyter
@@ -20,7 +19,6 @@ dependencies:
   - s3fs
   - cassandra-driver
   - openblas
-  - mosek
   - tqdm
   - pyqt
   - pvlib-python
