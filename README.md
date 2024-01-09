@@ -53,7 +53,7 @@ PV-Pro can estimates 10 essential PV module parameters (listed below) at the ref
 ## Application
 PV-Pro has two major applications:
 - **Degradation analaysis**: Calculate the degradation rate of the SDM and IV parameters. See example: [Degradation_analysis.ipynb](examples/Degradation_analysis.ipynb)
-- **Irradiance-to-power converstion**: Use the estimated SDM parameters to map the forecasted irradiance to power. See example: [Degradation_analysis.ipynb](examples/Power_prediction.ipynb)
+- **Irradiance-to-power conversion**: Use the estimated SDM parameters to map the forecasted irradiance to power. See example: [Degradation_analysis.ipynb](examples/Power_prediction.ipynb)
 
 ## Package overview
 
