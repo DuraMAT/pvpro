@@ -90,7 +90,7 @@ def plot_Vmp_Imp_scatter_preprocess(voltage : pd.Series,
                         temperature_cell : pd.Series,
                         operating_cls : pd.Series,
                         boolean_mask : np.ndarray =None,
-                        p_plot : 'dataframe' =None,
+                        p_plot : pd.DataFrame =None,
                         vmin : float =0,
                         vmax : float =70,
                         plot_imp_max : float =8,
@@ -347,7 +347,6 @@ def plot_poa_Imp_scatter(current : pd.Series,
 
 def plot_suns_voc_scatter(df : pd.DataFrame,
                             p_plot : dict,
-                            figure_number : int =2,
                             vmin : float =0,
                             vmax : float =70,
                             plot_voc_max : float =45.,
@@ -950,10 +949,10 @@ def plot_Vmp_vs_Tm_Imp_vs_G (pvp, boolean_mask : array, points_show : array = No
 """
 Functions to plot PVPRO results
 """
-def plot_results_timeseries_error_vertical(pfit : DataFrame, 
+def plot_results_timeseries_error_vertical(pfit : pd.DataFrame, 
                             df : pd.DataFrame = None, 
                             yoy_result : dict =None,
-                            compare : DataFrame = None,
+                            compare : pd.DataFrame = None,
                             compare_label : str ='True value',
                             nrows : int =5,
                             ncols : int =2,
@@ -1116,10 +1115,10 @@ def plot_results_timeseries_error_vertical(pfit : DataFrame,
             n = n + 1
     return error_df
 
-def plot_results_timeseries(pfit : DataFrame, 
+def plot_results_timeseries(pfit : pd.DataFrame, 
                             df : pd.DataFrame = None, 
                             yoy_result : dict =None,
-                            compare : DataFrame = None,
+                            compare : pd.DataFrame = None,
                             compare_label : str ='True value',
                             keys_to_plot : list = None,
                             yoy_plot : bool = True,
@@ -1539,7 +1538,9 @@ Functions to plot irradiance-to-power conversion results
 
 """
 
-def plot_predicted_ref_power(y_predicted, y_ref, nominal_power):
+def plot_predicted_ref_power(y_predicted : list, 
+                             y_ref : list, 
+                             nominal_power : float):
 
     """
     Plot predicted and reference power
