@@ -17,7 +17,9 @@ Details of PV-Pro are provided in the following publications. If you use PV-Pro 
 
 [1] Li, B., et al. "Determining circuit model parameters from operation data for PV system degradation analysis: PVPRO." Solar Energy 254 (2023): 168-181. DOI: [10.1016/j.solener.2023.03.011](https://doi.org/10.1016/j.solener.2023.03.011)
 
-[2] Li, B., et al. "Estimation and Degradation Analysis of Physics-based Circuit Parameters for PV Systems Using Only DC Operation and Weather Data." In 2022 IEEE 49th Photovoltaics Specialists Conference (PVSC), pp. 1236-1236. IEEE, 2022. DOI: [10.1109/PVSC48317.2022.9938484](https://doi.org/10.1109/PVSC48317.2022.9938484)
+[2] Li, B., et al. "Detection and Analyze of Off-Maximum Power Points of PV Systems Based on PV-Pro Modelling." In 2023 IEEE 50th Photovoltaic Specialists Conference (PVSC), pp. 1-3. IEEE, 2023. DOI: [10.1109/PVSC48320.2023.10359868](https://doi.org/10.1109/PVSC48320.2023.10359868)
+
+[3] Li, B., et al. "Estimation and Degradation Analysis of Physics-based Circuit Parameters for PV Systems Using Only DC Operation and Weather Data." In 2022 IEEE 49th Photovoltaics Specialists Conference (PVSC), pp. 1236-1236. IEEE, 2022. DOI: [10.1109/PVSC48317.2022.9938484](https://doi.org/10.1109/PVSC48317.2022.9938484)
 
 # Installation
 
