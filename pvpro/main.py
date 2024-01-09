@@ -4,11 +4,8 @@ from typing import Union
 import pvlib
 import numpy as np
 import pandas as pd
-
-import os
 import time
 import scipy
-import shutil
 from datetime import datetime, timedelta
 
 import matplotlib.pyplot as plt
@@ -34,12 +31,11 @@ Class for running pvpro analysis.
 class PvProHandler:
     
     def __init__(self,
-                 df : 'dataframe',
+                 df : pd.DataFrame,
                  system_name : str ='Unknown',
                  voltage_key : str =None,
                  current_key : str =None,
                  temperature_cell_key : str ='temperature_cell',
-                 temperature_module_key : str =None,
                  temperature_ambient_key : str =None,
                  irradiance_poa_key : str =None,
                  modules_per_string : int =None,
