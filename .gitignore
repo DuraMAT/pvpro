@@ -1,5 +1,6 @@
 # pvpro meta data
 examples/data/
+pvpro/old/
 
 # pvpro test ipynb
 NIST_canopy_analyze.ipynb
@@ -9,6 +10,8 @@ SIRTA_analysis.ipynb
 NIST_ground_array_analyze_local.ipynb
 NIST16_analyze_old.ipynb
 Synthetic_analyze_local.ipynb
+NIST_ground_IVcurve_MPP.ipynb
+*.ipynb
 
 # test files
 test.ipynb
@@ -21,6 +24,12 @@ processed_data/
 
 # vs code settings
 .vscode/
+
+# pictures
+*.png
+
+# files
+*.pickle
 
 #ignore
 .gitignore
@@ -54,6 +63,11 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+matlab/
+NIST_results
+doc_img/
+pvdaq_results/
+README_old.md
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -232,3 +246,4 @@ fabric.properties
 .idea/caches/build_file_checksums.ser
 
 **/.DS_Store
+.DS_Store

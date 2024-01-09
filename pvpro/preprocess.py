@@ -25,7 +25,7 @@ class Preprocessor():
     
 
     def __init__(self,
-                 df : 'dataframe',
+                #  df : 'dataframe',
                  system_name : str ='Unknown',
                  voltage_dc_key : str =None,
                  current_dc_key : str =None,
@@ -44,7 +44,7 @@ class Preprocessor():
 
         # Initialize datahandler object.
 
-        self.df = df
+        # self.df = df
         self.system_name = system_name
         self.voltage_dc_key = voltage_dc_key
         self.current_dc_key = current_dc_key
@@ -65,9 +65,7 @@ class Preprocessor():
         
         pd.set_option('mode.chained_assignment', None)
 
-    def check_data_keys(self):
-
-        df = self.df
+    def check_data_keys(self, df):
 
         keys = [self.voltage_dc_key,
                 self.current_dc_key,
@@ -87,7 +85,7 @@ class Preprocessor():
             Double check that input temperature is in Celsius, not Farenheight. 
             """)
 
-    def run_basic_preprocess(self,
+    def run_basic_preprocess(self, df,
                 correct_tz : bool =False,
                 data_sampling : bool =None,
                 correct_dst : bool =True,
@@ -110,17 +108,18 @@ class Preprocessor():
         dh (datahandler of solarDataTool)
 
         """
-        df = self.df
-
         # check data keys
-        self.check_data_keys()
+        self.check_data_keys(df)
 
         # Calculate cell temperature from module temperature
-        self.calc_cell_temp_from_module_temp(delta_T=3) 
+        self.calc_cell_temp_from_module_temp(df, delta_T=3) 
 
         # Make normalized power column
         df['power_dc'] = df[self.voltage_dc_key] * df[
             self.current_dc_key] / self.modules_per_string / self.parallel_strings
+        
+        df['power_dc_sys'] = df[self.voltage_dc_key] * df[
+            self.current_dc_key]
         
         if use_sdt:
 
@@ -152,17 +151,16 @@ class Preprocessor():
 
             # Classifiy the points
             self.classify_points_sdt(dh)
-            self.df = dh.data_frame_raw
+            df = dh.data_frame_raw
 
         else:
             # Classifiy the points
-            self.classify_points_pva()
+            self.classify_points_pva(df)
 
         # Classifiy the operating condition
-        self.build_operating_classification()
+        self.build_operating_classification(df)
 
-        return self.df
-
+        return df
 
     def classify_points_sdt(self, dh):
         """
@@ -206,37 +204,35 @@ class Preprocessor():
         dh.data_frame_raw['no_errors'] = dh.data_frame_raw[
             'no_errors'].fillna(True, inplace=False)
 
-    def classify_points_pva(self):
+    def classify_points_pva(self, df):
 
-        self.find_clipped_times_pva()
+        self.find_clipped_times_pva(df)
 
         voltage_fill_nan = np.nan_to_num(
-            self.df[self.voltage_dc_key], nan=-9999)
-        self.df.loc[:,'high_v'] = voltage_fill_nan > 0.01 * np.nanquantile(
-            self.df[self.voltage_dc_key], 0.98)
+            df[self.voltage_dc_key], nan=-9999)
+        df.loc[:,'high_v'] = voltage_fill_nan > 0.01 * np.nanquantile(
+            df[self.voltage_dc_key], 0.98)
 
-        self.df.loc[:,'missing_data'] = np.logical_or.reduce((
-            np.isnan(self.df[self.voltage_dc_key]),
-            np.isnan(self.df[self.current_dc_key]),
-            np.isnan(self.df[self.irradiance_poa_key]),
-            np.isnan(self.df[self.temperature_module_key])))
+        df.loc[:,'missing_data'] = np.logical_or.reduce((
+            np.isnan(df[self.voltage_dc_key]),
+            np.isnan(df[self.current_dc_key]),
+            np.isnan(df[self.irradiance_poa_key]),
+            np.isnan(df[self.temperature_module_key])))
 
-        self.df.loc[:,'no_errors'] = np.logical_not(self.df['missing_data'])
+        df.loc[:,'no_errors'] = np.logical_not(df['missing_data'])
 
         power_fill_nan = np.nan_to_num(
-            self.df[self.voltage_dc_key] * self.df[self.current_dc_key], nan=1e10)
-        self.df.loc[:, 'low_p'] = power_fill_nan < 0.01 * np.nanquantile(
-            self.df[self.voltage_dc_key] * self.df[self.current_dc_key], 0.98)
+            df[self.voltage_dc_key] * df[self.current_dc_key], nan=1e10)
+        df.loc[:, 'low_p'] = power_fill_nan < 0.01 * np.nanquantile(
+            df[self.voltage_dc_key] * df[self.current_dc_key], 0.98)
 
-        self.df.loc[:,'daytime'] = np.logical_not(self.df.loc[:, 'low_p'])
+        df.loc[:,'daytime'] = np.logical_not(df.loc[:, 'low_p'])
 
-    def calc_cell_temp_from_module_temp(self, delta_T : float =3,
+    def calc_cell_temp_from_module_temp(self, df, delta_T : float =3,
                                    temperature_cell_key : str ='temperature_cell'):
         """
         Set cell temeperature in dataframe.
         """
-
-        df = self.df
 
         # Calculate cell temperature
         df.loc[:,temperature_cell_key] = sapm_cell_from_module(
@@ -244,15 +240,15 @@ class Preprocessor():
             poa_global=df[self.irradiance_poa_key],
             deltaT=delta_T)
 
-    def find_clipped_times_pva(self):
+    def find_clipped_times_pva(self, df):
 
         # Make normalized power column.
-        self.df['power_dc'] = self.df[self.voltage_dc_key] * self.df[
+        df['power_dc'] = df[self.voltage_dc_key] * df[
         self.current_dc_key] / self.modules_per_string / self.parallel_strings
 
         # Find clipped times.
-        self.df['clipped_times'] = clipping.geometric(
-            ac_power=self.df['power_dc'],
+        df['clipped_times'] = clipping.geometric(
+            ac_power=df['power_dc'],
             freq=self.freq)
 
     def classify_operating_mode(self, voltage: array, current: array,
@@ -303,7 +299,7 @@ class Preprocessor():
 
         return cls
 
-    def build_operating_classification(self):
+    def build_operating_classification(self, df):
         """
         Build array of classifications of each time stamp based on boolean arrays
         provided.
@@ -340,8 +336,6 @@ class Preprocessor():
 
 
         """
-
-        df = self.df
 
         if isinstance(df, pd.DataFrame):
             operating_cls = np.zeros(len(df), dtype='int')

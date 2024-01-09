@@ -3,8 +3,6 @@ import numpy as np
 import pandas as pd
 import warnings
 
-from pandas.core.frame import DataFrame
-
 import seaborn as sns
 from array import array
 import matplotlib.dates as mdates
@@ -1555,10 +1553,10 @@ def plot_predicted_ref_power(y_predicted, y_ref, nominal_power):
     err = calc_err(y_predicted, y_ref, nominal_power)
     matplotlib.rcParams['font.family'] = 'Arial'
 
-    fig, ax = plt.subplots(figsize = [9,6], dpi = 90)
+    fig, ax = plt.subplots(figsize = [7,4], dpi = 120)
     ax.plot(y_ref.index, y_ref/1000, '--', linewidth = 3, label = 'Ref')
     ax.plot(y_ref.index, y_predicted/1000, linewidth = 3, label = 'PV-Pro')
-    ax.text(0.15, 0.75, 
+    ax.text(0.15, 0.7, 
             'nMAE: {:.2f}%\nnRMSE: {:.2f}%'.format(err['nMAE'], err['nRMSE']),
             transform=fig.transFigure, fontsize = 20, fontweight = 'bold')
     ax.set_ylabel('Power (kW)', fontsize = 18)
