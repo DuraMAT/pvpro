@@ -5,10 +5,10 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="pvpro",
-    version="0.0.4",
-    author="toddkarin",
+    version="0.1.0",
+    author="baojieli",
     author_email="pvtools.lbl@gmail.com",
-    description="Extract single diode model paramaters from PV power plant production data.",
+    description="Extract physical model paramaters from PV production data for degradation analysis and power prediction",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/DuraMAT/pvpro",
