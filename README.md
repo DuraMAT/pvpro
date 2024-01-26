@@ -76,6 +76,8 @@ The [NIST ground array dataset](https://pvdata.nist.gov/) provides a useful test
 
 From the results, the degradation of power (about -1.29%/yr) is mainly related to the degradation of the current-related parameters ($I_{mp}$, $I_{sc}$, and $I_{ph}$), which notably dropped since 2018. System operators were then advised to pay attention to factors impeding the generation of current, like soiling.
 
+Detailed analysis example (including more figures and post processing) is available [here](examples/Degradation_analysis_detailed.ipynb).
+
 ## Irradiance-to-power conversion 
 
 When the forecasted ground weather data is available, PV-Pro can also perform precise irradiance-to-power conversion based on the estimated SDM parameters that reflect the **actual health status** of the PV system.  A jupyter notebook is presented in [Degradation_analysis.ipynb](examples/Power_prediction.ipynb). Here, we focus on a daily power prediction with example results on two days ([NIST dataset](https://pvdata.nist.gov/)) with different weather (clear and cloudy) presented below.
