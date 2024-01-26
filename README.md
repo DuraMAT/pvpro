@@ -24,7 +24,7 @@ Details of PV-Pro are provided in the following publications. If you use PV-Pro 
 # Installation
 
 ```
-pip install pvpro
+pip install pvpro==0.1.3
 ```
 
 ### Install Mosek solver (Optional)
