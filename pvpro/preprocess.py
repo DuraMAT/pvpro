@@ -88,7 +88,8 @@ class Preprocessor():
                 fix_shifts : bool =True,
                 max_val : bool =None,
                 verbose : bool =True,
-                use_sdt: bool = False):
+                use_sdt: bool = False,
+                return_dh: bool = False):
         
         """
         Perform basic preprocessing steps, including:
@@ -156,7 +157,10 @@ class Preprocessor():
         # Classifiy the operating condition
         self.build_operating_classification(df)
 
-        return df
+        if return_dh & use_sdt:
+            return df, dh
+        else:
+            return df
 
     def classify_points_sdt(self, dh):
         """

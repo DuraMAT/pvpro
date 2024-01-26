@@ -463,6 +463,18 @@ class PostProcessor:
             monotonic=monotonic
         )
 
+    def analyze_pipline(self):
+
+        keys = ['i_mp_ref', 'photocurrent_ref', 'v_mp_ref', 'saturation_current_ref', 'i_sc_ref', 
+        'v_oc_ref', 'resistance_series_ref', 'p_mp_ref', 'resistance_shunt_ref']
+
+        for key in keys:
+            try:
+                self.analyze(key)
+            except:
+                print(f'Fail to analyze {key}' )
+
+
     def retreive_result(self, label, model="smooth_monotonic"):
         if self.processed_result[label + "_" + model] is None:
             opt = input("No data entry, would you like to run optimization? (y/n)\n")

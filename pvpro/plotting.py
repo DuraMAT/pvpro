@@ -577,12 +577,14 @@ def plot_operating_condition(df):
     :return: figure
     """
 
+    matplotlib.rcParams['font.family'] = 'Arial' 
+
     m, day_axis = make_2d(df, key = 'operating_cls')
 
     year_start = day_axis[0].year
 
     def format_fn(tick_val, tick_pos):
-        return tick_pos+year_start-1
+        return (tick_pos-1)*yeargap + year_start
 
     # function to calculate the position at a percentage in a range
     def get_position_at_percentage(ymax, ymin, percentage):
@@ -590,7 +592,7 @@ def plot_operating_condition(df):
         y = ymin + percentage*yrange
         return y
 
-    fig, ax = plt.subplots()
+    _, ax = plt.subplots(figsize=[6,4])
 
     # Build colormap
     colors = sns.color_palette("Paired")[:5]
@@ -601,21 +603,38 @@ def plot_operating_condition(df):
 
     im = ax.imshow(m, aspect='auto', interpolation='none', cmap=cmap)
 
+    length_year = day_axis[-1].year - day_axis[0].year
+    label_rotation = 0
+    if length_year > 4:
+        label_rotation = 30
+
+    length_year = df.index[-1].year - df.index[0].year
+    yeargap = 1
+    label_rotation = 0
+    if length_year > 4:
+        label_rotation = 45
+        yeargap = 2
+
     ax.set_xticks(np.arange(len(day_axis)))
-    ax.set_xticklabels(day_axis)
-    ax.xaxis.set_major_locator(YearLocator())
+    ax.set_xticklabels(day_axis, rotation=label_rotation)
+    ax.xaxis.set_major_locator(YearLocator(yeargap))
     ax.xaxis.set_major_formatter(FuncFormatter(format_fn))
 
     ymax,ymin = ax.get_ylim()
     yposi = get_position_at_percentage(ymax, ymin, np.array([0.13, 0.4, 0.72]))
     ax.set_yticks(yposi)
     ax.set_yticklabels(['(Sunrise)', 'Time of day', '(Sunset)'], rotation=90)
+    ax.tick_params(labelsize=11)
+
+    ax.set_title('Operating conditions of PV system', fontweight='bold', fontsize = 13)
 
     cbar = plt.colorbar(im)
     cbar.set_ticks([-1.6, -0.8, 0, 0.8, 1.6])  # Set specific ticks for the color bar
-    cbar.set_ticklabels(['Anomaly','Inverter off','MPP', 'Open circuit', 'Clipped'])
+    cbar.set_ticklabels(['Anomaly','Inverter off','MPP', 'Open circuit', 'Clipped'], fontsize = 11)
 
-def make_2d(df, key="power_dc", trim_start=False, trim_end=False, return_day_axis=False):
+    plt.gcf().set_dpi(120)
+
+def make_2d(df, key="power_dc", trim_start=True, trim_end=True, return_day_axis=False):
     """
     This function constructs a 2D array (or matrix) from a time series signal with a standardized time axis. The data is
     chunked into days, and each consecutive day becomes a column of the matrix.
@@ -645,12 +664,43 @@ def make_2d(df, key="power_dc", trim_start=False, trim_end=False, return_day_axi
         end = days[-1].strftime("%Y-%m-%d")
     else:
         end = days[-2].strftime("%Y-%m-%d")
+
     D = np.copy(df_resampled[key].loc[start:end].values.reshape(n_steps, -1, order="F"))
 
     day_axis = pd.date_range(start=start, end=end, freq="1D")
     
     return D, day_axis
 
+def plot_dc_power(df : pd.DataFrame):
+
+    """
+    Plot DC power over time
+    
+    """
+
+    _, ax = plt.subplots(figsize=[6,4])
+
+    ax.scatter(df.index, df['power_dc'], s =10, alpha = 0.5, color ='#FFA222', edgecolors='None')
+
+    length_year = df.index[-1].year - df.index[0].year
+    yeargap = 1
+    label_rotation = 0
+    if length_year > 4:
+        label_rotation = 45
+        yeargap = 2
+
+    h_fmt = mdates.DateFormatter('%Y')
+    xloc = mdates.YearLocator(yeargap)
+    ax.xaxis.set_major_locator(xloc)
+    ax.xaxis.set_major_formatter(h_fmt)
+    ax.grid()
+
+    ax.tick_params(axis='x', rotation=label_rotation)
+    ax.tick_params(labelsize=11)
+    ax.set_title('DC power of PV system', fontsize=13, fontweight = 'bold')
+    ax.set_ylabel('DC power (W)', fontsize=12)
+
+    plt.gcf().set_dpi(120)
 
 """
 Functions to plot off-MPP detection results
@@ -1124,13 +1174,13 @@ def plot_results_timeseries(pfit : pd.DataFrame,
                             yoy_plot : bool = True,
                             linestyle : str = '.',
                             wspace : float = 0.4,
-                            figsize : tuple = (8, 9),
-                            legendloc : list[float] = [-0.3, -0.4],
+                            legendloc : list[float] = [0.7, -0.4],
                             ncol : int = 3,
                             cal_error_synthetic : bool = False,
                             cal_error_real : bool = False,
-                            xticks : array = None,
                             nylim : list = None ):
+    
+    matplotlib.rcParams['font.family'] = 'Arial' 
     
     ylabel = {'diode_factor': 'Diode factor',
             'photocurrent_ref': 'Iph_ref (A)',
@@ -1141,10 +1191,10 @@ def plot_results_timeseries(pfit : pd.DataFrame,
             'v_oc_ref': 'Voc_ref (V)',
             'i_mp_ref': 'Imp_ref (A)',
             'p_mp_ref': 'Pmp_ref (W)',
-            'i_x_ref': 'I x ref (A)',
-            'v_mp_ref': 'Vmp (V)',
-            'residual': 'Residual (AU)',
+            'v_mp_ref': 'Vmp (V)'
             }
+    
+    keys = ['Imp', 'Vmp', 'Isc', 'Voc', 'Isc', 'Pmp', 'Iph', 'I0', 'n', 'Rs', 'Rsh']
 
     if keys_to_plot is None:
         keys_to_plot = [
@@ -1159,6 +1209,8 @@ def plot_results_timeseries(pfit : pd.DataFrame,
 
     for key_id in range(0, 10):
 
+        para_show = keys[key_id]
+
         if key_id < 5:
             ax = ax_all[0,key_id]
         else:
@@ -1168,15 +1220,15 @@ def plot_results_timeseries(pfit : pd.DataFrame,
 
         if k in pfit:
 
-            x_show = pfit['t_years']#- pfit['t_years'][0]
+            x_show = pfit['t_years']
             ax.scatter(x_show, pfit[k], 20,
-                    color=np.array([6,86,178])/256,
+                    color='#00A0FF', alpha = 0.8, edgecolor = 'None',
                     label='PVPRO')
 
             ylims = np.array([np.nanmin(pfit[k]), np.nanmax(pfit[k])])
 
             if compare is not None:
-                x_real_show = compare['t_years']#-compare['t_years'][0]
+                x_real_show = compare['t_years']
                 if k in compare:
                     ax.plot(x_real_show, compare[k],
                             linestyle,
@@ -1213,15 +1265,29 @@ def plot_results_timeseries(pfit : pd.DataFrame,
                 error_df = calculate_error_real(pfit, compare)
                 error_df.loc['diode_factor', 'corr_coef'] = 0
 
-            if k not in ['residual'] and (yoy_result is not None) and yoy_plot:
+            if (yoy_result is not None) and yoy_plot:
                 t_smooth = np.linspace(x_show.min(), x_show.max(), 20)
                 t_mean = np.mean(x_show)
+
                 ax.plot(t_smooth,
                         pfit[k].median() * (1 + (t_smooth - t_mean) * (
                         yoy_result[k]['percent_per_year'] * 1e-2)),'--',
                         linewidth = 4,
-                        color='darkorange', 
-                        label='YOY trend of PVPRO')
+                        color='#F8891D',
+                        label = 'YOY trend')
+                
+                if k != 'diode_factor':
+                    ax.plot(t_smooth,
+                            pfit[k].median() * (1 + (t_smooth - t_mean) * (
+                            yoy_result['photocurrent_ref']['percent_per_year_CI'][0] * 1e-2)),'--',
+                            linewidth = 4,
+                            color='#FF973C', alpha=0.5)
+                    ax.plot(t_smooth,
+                            pfit[k].median() * (1 + (t_smooth - t_mean) * (
+                            yoy_result['photocurrent_ref']['percent_per_year_CI'][1] * 1e-2)),'--',
+                            linewidth = 4,
+                            color='#FF973C', alpha=0.5, label = 'CI of YOY trend')
+                
                 hori = 'left'
                 posi = [0.02,0.04]
 
@@ -1242,16 +1308,25 @@ def plot_results_timeseries(pfit : pd.DataFrame,
                     ax.text(posi[0], posi[1], 'Rate: {:.2f}%/yr'.\
                             format(yoy_result[k]['percent_per_year']),
                             transform=ax.transAxes,
-                            backgroundcolor=[1, 1, 1, 0],
+                            bbox=dict(facecolor='white', alpha=0.5, edgecolor='none'),
                             fontsize=11,
+                            fontweight='bold',
                             horizontalalignment = hori)
+                    
+            length_year = x_show.max() - x_show.min()
+            label_rotation = 0
+            if length_year > 4:
+                label_rotation = 30
                     
             ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
             ax.tick_params(axis='y', labelsize=11)
-            ax.set_ylabel(ylabel[k], fontsize=12, fontweight='bold')
+            ax.tick_params(axis='x', rotation=label_rotation)
+            ax.set_ylabel(ylabel[k], fontsize=12)
+            ax.set_title('{}_ref'.format(para_show),weight='bold',fontsize = 13)
+            ax.grid()
 
-            if key_id in [7]:
-                ax.legend(loc=legendloc, ncol = ncol, fontsize=12)
+            if key_id == 6:
+                ax.legend(loc=legendloc, ncol = ncol, fontsize=13)
 
     # plt.tight_layout()
     plt.gcf().set_dpi(150)
@@ -1369,17 +1444,21 @@ def plot_Vmp_Imp_scatter(pvp,
 Function to plot post-processed results
 """
 
-def plot_post_processed_results(df_post, model):
-    keys = ['Iph', 'I0', 'Rs', 'Rsh', 'n', 'Vmp', 'Imp', 'Voc', 'Isc', 'Pmp']
-    keys_pvpro = ['photocurrent_ref','saturation_current_ref',
-                'resistance_series_ref', 'resistance_shunt_ref', 'diode_factor',
-                 'i_sc_ref', 'v_oc_ref', 'i_mp_ref', 'v_mp_ref', 'p_mp_ref']
+def plot_post_processed_results(df_post, model = 'smooth_monotonic'):
+
+    matplotlib.rcParams['font.family'] = 'Arial' 
+
+    keys = ['Imp', 'Vmp', 'Isc', 'Voc', 'Pmp', 'Iph', 'I0', 'n', 'Rs', 'Rsh']
+    keys_pvpro = ['i_sc_ref', 'v_oc_ref', 'i_mp_ref', 'v_mp_ref', 'p_mp_ref', 
+                  'photocurrent_ref','saturation_current_ref',
+                  'diode_factor', 'resistance_series_ref', 'resistance_shunt_ref']
     allc = ['#F2529D', '#FFC000', '#00B0F0', '#0070C0']
-    ylabels = ['Iph (A)', 'I0 (A)', 'Rs ()', 'Rsh ()', 'n',
-            'Vmp_ref (V)', 'Imp_ref (A)', 'Voc_ref (V)', 'Isc_ref (A)', 'Pmp_ref (W)']
+    ylabels = ['Imp_ref (A)', 'Vmp_ref (V)', 'Isc_ref (A)', 'Voc_ref (V)', 'Pmp_ref (W)',
+            'Iph_ref (A)', 'I0_ref (A)', 'Rs_ref (Ω)', 'Rsh_ref (Ω)', 'n']
 
     fig, ax_all = plt.subplots(2, 5, figsize=[18,6])
     plt.subplots_adjust(wspace=0.4, hspace=0.3)
+
     for key_id in range(0, 10):
 
         if key_id < 5:
@@ -1405,47 +1484,52 @@ def plot_post_processed_results(df_post, model):
             ylim = [200,800]
         elif para_show == 'n':
             ylim = [0,3]
-        elif para_show == 'I0':
-            ylim = [0,1e-6]
-            yscale = 'log'
+        # elif para_show == 'I0':
+        #     ylim = [0,1e-6]
 
         mask_y = (y_pvpro>ylim[0]) & (y_pvpro<ylim[1])
         
-        ax.scatter(x_pvpro[mask_y],y_pvpro[mask_y].rolling(1).mean(), 10, label = 'PV-Pro',
-                       color = allc[2])
+        ax.scatter(x_pvpro[mask_y],y_pvpro[mask_y].rolling(1).mean(), 30, label = 'PV-Pro',
+                       color = '#00A0FF', alpha = 0.6, edgecolor = 'None')
 
         ### post-processed ###
         if para_show != 'n':
-            datashow = df_post.descaled_data[para_pvpro + "_" + model]
-            x = datashow.index
-            ycom = datashow['composed_signal']
-            ytrend = datashow['x5']*datashow['composed_signal'][0]
-            yperi = datashow['x4']*datashow['x3'][0]
+            key_post = para_pvpro + "_" + model
+            if key_post in df_post.descaled_data:
+                datashow = df_post.descaled_data[key_post]
+                x = datashow.index
+                ycom = datashow['composed_signal']
+                ytrend = datashow['x5']*datashow['composed_signal'][0]
+                yperi = datashow['x4']*datashow['x3'][0]
 
-            Nrolling = 1
+                Nrolling = 1
 
-            ax.plot(x,ycom.rolling(Nrolling).mean(), '-', linewidth = 3, label = 'Composed',
-                        color = allc[3])
-            ax.plot(x,yperi.rolling(Nrolling).mean(), '-', linewidth = 3, label = 'Periodic',
-                        color = allc[1])
-            
-            
-            ax.plot(x,ytrend.rolling(Nrolling).mean(), '-', linewidth = 3, label = 'Degra trend',
-                        color = allc[0])
+                ax.plot(x,ycom.rolling(Nrolling).mean(), '-', linewidth = 3, label = 'Composed',
+                            color = '#0070C0')
+                ax.plot(x,yperi.rolling(Nrolling).mean(), '-', linewidth = 3, label = 'Periodic',
+                            color = allc[1])
+                ax.plot(x,ytrend.rolling(Nrolling).mean(), '-', linewidth = 3, label = 'Degra trend',
+                            color = allc[0])
     
         ax.set_yscale(yscale)
         ax.set_ylabel(ylabels[key_id], fontsize = 13)
+
+        length_year = x[-1].year- x[0].year
+        label_rotation = 0
+        yeargap = 1
+        if length_year > 4:
+            label_rotation = 60
+            yeargap = 2
         
         date_form = DateFormatter("%Y")
         ax.xaxis.set_major_formatter(date_form)
-        ax.xaxis.set_major_locator(mdates.YearLocator(1))
+        ax.xaxis.set_major_locator(mdates.YearLocator(yeargap))
 
-        # adjust ylim
-        [ymin, ymax] = ax.get_ylim()
-        # ax.set_ylim([ymin*0.95, ymax])
-        if para_show in ['Iph', 'Vmp']:
-            ax.legend( markerscale=3, 
-                        prop={'size': 11}, framealpha=0.5, loc = 3)
+        ax.tick_params(labelsize=12)
+        ax.tick_params(axis='x', rotation=label_rotation)
+
+        if para_show in ['Iph', 'Imp']:
+            ax.legend( markerscale=1, prop={'size': 13}, framealpha=0.5, loc = 3)
         ax.set_title('{}_ref'.format(para_show),weight='bold',fontsize = 15)
         ax.grid(True)
         plt.tight_layout()

@@ -920,17 +920,42 @@ class PvProHandler:
 
         return text_str
 
+    def remove_outliers(self, pfit : pd.DataFrame):
+
+        """
+        Remove outliers whose difference to the mean value > 3 * std value
+
+        """
+
+        for k in ['photocurrent_ref', 'saturation_current_ref',
+                'resistance_series_ref', 'resistance_shunt_ref', 'i_sc_ref',
+                'v_oc_ref', 'i_mp_ref', 'v_mp_ref', 'p_mp_ref']:
+            
+            res = pfit[k]
+            pfit[k] = res[np.abs(res-np.nanmean(res))< 3 * np.nanstd(res)]
+
+        return pfit
+
     def analyze_yoy(self, pfit : pd.DataFrame):
+
+        """
+        Analzye the year of year (YOY) trend of parameters using Rdtools
+
+        :param pfit: dataframe of the data
+        :return out: dataframe containing YOY results
+
+        """
         out = {}
 
         for k in ['photocurrent_ref', 'saturation_current_ref',
                 'resistance_series_ref', 'resistance_shunt_ref','diode_factor', 'i_sc_ref',
                 'v_oc_ref', 'i_mp_ref', 'v_mp_ref', 'p_mp_ref']:
-            
+                   
             if k in pfit:
-                Rd_pct, Rd_CI, calc_info = degradation_year_on_year(pd.Series(pfit[k]),
+
+                res = pfit[k]
+                Rd_pct, Rd_CI, calc_info = degradation_year_on_year(pd.Series(res[~np.isnan(res)]),
                                                                     recenter=False)
-                
                 renorm = np.nanmedian(pfit[k])
                 if renorm == 0:
                     renorm = np.nan
@@ -945,11 +970,11 @@ class PvProHandler:
 
         return out
 
-    def run_pipeline(self):
+    def run_pipeline(self, remove_outliers: bool = False):
         """
         Run pipeline of parameter extraction
 
-        :param disable_tqdm: disable the display of tqdm process
+        :param remove_outliers: remove outliers
         :return pfit: dataframe containing extracted SDM parameters
         
         """
