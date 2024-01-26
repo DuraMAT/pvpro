@@ -970,7 +970,7 @@ class PvProHandler:
 
         return out
 
-    def run_pipeline(self, remove_outliers: bool = False):
+    def run_pipeline(self):
         """
         Run pipeline of parameter extraction
 
