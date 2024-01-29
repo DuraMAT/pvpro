@@ -211,7 +211,7 @@ def plot_results_timeseries(pfit : pd.DataFrame,
             'v_mp_ref': 'Vmp (V)'
             }
     
-    keys = ['Imp', 'Vmp', 'Isc', 'Voc', 'Isc', 'Pmp', 'Iph', 'I0', 'n', 'Rs', 'Rsh']
+    keys = ['Imp', 'Vmp', 'Isc', 'Voc', 'Pmp', 'Iph', 'I0', 'n', 'Rs', 'Rsh']
 
     keys_to_plot = [
             'i_sc_ref', 'v_oc_ref', 'i_mp_ref', 'v_mp_ref', 'p_mp_ref',
