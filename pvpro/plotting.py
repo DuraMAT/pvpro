@@ -208,10 +208,10 @@ def plot_results_timeseries(pfit : pd.DataFrame,
             'v_oc_ref': 'Voc_ref (V)',
             'i_mp_ref': 'Imp_ref (A)',
             'p_mp_ref': 'Pmp_ref (W)',
-            'v_mp_ref': 'Vmp (V)'
+            'v_mp_ref': 'Vmp_ref (V)'
             }
     
-    keys = ['Imp', 'Vmp', 'Isc', 'Voc', 'Pmp', 'Iph', 'I0', 'n', 'Rs', 'Rsh']
+    keys = ['Isc', 'Voc', 'Imp', 'Vmp', 'Pmp', 'Iph', 'I0', 'n', 'Rs', 'Rsh']
 
     keys_to_plot = [
             'i_sc_ref', 'v_oc_ref', 'i_mp_ref', 'v_mp_ref', 'p_mp_ref',
@@ -365,12 +365,21 @@ def plot_post_processed_results(df_post, model = 'smooth_monotonic'):
 
     matplotlib.rcParams['font.family'] = 'Arial' 
 
-    keys = ['Imp', 'Vmp', 'Isc', 'Voc', 'Pmp', 'Iph', 'I0', 'n', 'Rs', 'Rsh']
+    keys = ['Isc', 'Voc', 'Imp', 'Vmp', 'Pmp', 'Iph', 'I0', 'n', 'Rs', 'Rsh']
     keys_pvpro = ['i_sc_ref', 'v_oc_ref', 'i_mp_ref', 'v_mp_ref', 'p_mp_ref', 
                   'photocurrent_ref','saturation_current_ref',
                   'diode_factor', 'resistance_series_ref', 'resistance_shunt_ref']
-    ylabels = ['Imp_ref (A)', 'Vmp_ref (V)', 'Isc_ref (A)', 'Voc_ref (V)', 'Pmp_ref (W)',
-            'Iph_ref (A)', 'I0_ref (A)', 'Rs_ref (Ω)', 'Rsh_ref (Ω)', 'n']
+    ylabels = {'diode_factor': 'n',
+            'photocurrent_ref': 'Iph_ref (A)',
+            'saturation_current_ref': 'I0_ref (A)',
+            'resistance_series_ref': 'Rs_ref (Ω)',
+            'resistance_shunt_ref': 'Rsh_ref (Ω)',
+            'i_sc_ref': 'Isc_ref (A)',
+            'v_oc_ref': 'Voc_ref (V)',
+            'i_mp_ref': 'Imp_ref (A)',
+            'p_mp_ref': 'Pmp_ref (W)',
+            'v_mp_ref': 'Vmp_ref (V)'
+            }
 
     _, ax_all = plt.subplots(2, 5, figsize=[18,6])
     plt.subplots_adjust(wspace=0.4, hspace=0.3)
@@ -426,7 +435,7 @@ def plot_post_processed_results(df_post, model = 'smooth_monotonic'):
                             color = '#F2529D')
     
         ax.set_yscale(yscale)
-        ax.set_ylabel(ylabels[key_id], fontsize = 13)
+        ax.set_ylabel(ylabels[para_pvpro], fontsize = 13)
 
         length_year = x[-1].year- x[0].year
         label_rotation = 0
