@@ -920,10 +920,10 @@ class PvProHandler:
 
         return text_str
 
-    def remove_outliers(self, pfit : pd.DataFrame):
+    def remove_outliers(self, pfit : pd.DataFrame, nstd: int = 3):
 
         """
-        Remove outliers whose difference to the mean value > 3 * std value
+        Remove outliers whose difference to the mean value > nstd * std value
 
         """
 
@@ -932,7 +932,7 @@ class PvProHandler:
                 'v_oc_ref', 'i_mp_ref', 'v_mp_ref', 'p_mp_ref']:
             
             res = pfit[k]
-            pfit[k] = res[np.abs(res-np.nanmean(res))< 3 * np.nanstd(res)]
+            pfit[k] = res[np.abs(res-np.nanmean(res))< nstd * np.nanstd(res)]
 
         return pfit
 
@@ -985,11 +985,7 @@ class PvProHandler:
                                        np.logical_not(df['current_irradiance_outliers']),
                                        np.logical_not(df['voltage_temperature_outliers']),
                                        df[self.irradiance_poa_key]>100,
-                                       np.logical_or.reduce((
-                                            df['operating_cls']==0,
-                                            df['operating_cls']==1,
-                                            df['operating_cls']==2
-                                            ))
+                                       df['operating_cls']==0
                                     ))
 
         else:
@@ -1032,7 +1028,7 @@ class PvProHandler:
 
         upper_bounds = dict(
             diode_factor=1.5,
-            photocurrent_ref=10,
+            photocurrent_ref=20,
             saturation_current_ref=1e-6,
             resistance_series_ref=2,
             conductance_shunt_extra=0,
