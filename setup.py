@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="pvpro",
-    version="0.1.4",
+    version="0.1.5",
     author="baojieli",
     author_email="pvtools.lbl@gmail.com",
     description="Extract physical model paramaters from PV production data for degradation analysis and power prediction",
