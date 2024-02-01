@@ -342,7 +342,7 @@ class Preprocessor():
         else:
             operating_cls = np.zeros(df['high_v'].shape,dtype='int')
 
-        # df.loc[:, 'operating_cls'] = 0
+        df.loc[:, 'operating_cls'] = -2
         operating_cls[np.logical_and(
             np.logical_not(df['high_v']),
             np.logical_not(df['daytime']))] = -1
