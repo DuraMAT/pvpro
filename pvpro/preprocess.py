@@ -35,7 +35,8 @@ class Preprocessor():
                  techonology: str = None,
                  alpha_isc : float =None,
                  cells_in_series : int =None,
-                 ignore_warning: bool = False
+                 ignore_warning: bool = False,
+                 Glimit: float = 200
                  ):
 
         # Initialize datahandler object.
@@ -52,6 +53,7 @@ class Preprocessor():
         self._ran_sdt = False
         self.freq = freq
         self.solver = solver
+        self.Glimit = Glimit
         self.technology = techonology
         self.cells_in_series = cells_in_series
         self.alpha_isc = alpha_isc # alpha_isc is in units of A/C
@@ -89,6 +91,7 @@ class Preprocessor():
                 max_val : bool =None,
                 verbose : bool =True,
                 use_sdt: bool = False,
+                calc_cell_T: bool = True,
                 return_dh: bool = False):
         
         """
@@ -109,7 +112,10 @@ class Preprocessor():
         self.check_data_keys(df)
 
         # Calculate cell temperature from module temperature
-        self.calc_cell_temp_from_module_temp(df, delta_T=3) 
+        if calc_cell_T:
+            self.calc_cell_temp_from_module_temp(df, delta_T=3)
+        else:
+            df.loc[:,'temperature_cell'] = df[self.temperature_module_key]
 
         # Make normalized power column
         df['power_dc'] = df[self.voltage_dc_key] * df[
@@ -214,10 +220,10 @@ class Preprocessor():
             df[self.voltage_dc_key], 0.98)
 
         df.loc[:,'missing_data'] = np.logical_or.reduce((
-            np.isnan(df[self.voltage_dc_key]),
-            np.isnan(df[self.current_dc_key]),
-            np.isnan(df[self.irradiance_poa_key]),
-            np.isnan(df[self.temperature_module_key])))
+            np.isnan(df[self.voltage_dc_key].to_list()),
+            np.isnan(df[self.current_dc_key].to_list()),
+            np.isnan(df[self.irradiance_poa_key].to_list()),
+            np.isnan(df[self.temperature_module_key].to_list())))
 
         df.loc[:,'no_errors'] = np.logical_not(df['missing_data'])
 
@@ -412,7 +418,7 @@ class Preprocessor():
         if sample_weight is None:
             sample_weight = np.ones_like(x)
 
-        mask = np.logical_and(np.isfinite(x), np.isfinite(y))
+        mask = np.logical_and(np.isfinite(x.to_list()), np.isfinite(y.to_list()))
 
         if np.sum(mask) <= 2:
             print('Need more than two points for linear regression.')
@@ -451,9 +457,10 @@ class Preprocessor():
                                             points_per_iteration : int =20000,
                                             epsilon : float =2.5,
                                             ):
+        
         outliers = np.zeros_like(x).astype('bool')
 
-        isfinite = np.logical_and(np.isfinite(x), np.isfinite(y))
+        isfinite = np.logical_and(np.isfinite(x.to_list()), np.isfinite(y.to_list()))
         lower_iter_idx = []
         upper_iter_idx = []
 
@@ -601,7 +608,7 @@ class Preprocessor():
 
         current_irradiance_filter = self.find_linear_model_outliers_timeseries(
             x=df[self.irradiance_poa_key],
-            y=df[self.current_dc_key] / self.parallel_strings,
+            y=df[self.current_dc_key]/ self.parallel_strings,
             boolean_mask=boolean_mask,
             fit_intercept=False,
             epsilon=epsilon,

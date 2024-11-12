@@ -23,6 +23,38 @@ from matplotlib.ticker import FuncFormatter
 Functions to plot pre-processing results
 """
 
+def plot_GTIV(df, irradiance_poa_key, temperature_module_key, current_dc_key, voltage_dc_key):
+    """
+    Plot time-series irradiance, temperature, current and voltage 
+
+    :param df: raw df
+    :param irradiance_poa_key: Variable containing the column name (str) in `df` representing the irradiance on the plane of array (POA).
+    :param temperature_module_key: Variable containing the column name (str) in `df` representing the module temperature.
+    :param current_dc_key: Variable containing the column name (str) in `df` representing the DC current.
+    :param voltage_dc_key: Variable containing the column name (str) in `df` representing the DC voltage.
+    :return: A matplotlib figure object containing the 2x2 grid of scatter plots.
+
+    """
+
+    keys = [irradiance_poa_key, temperature_module_key, current_dc_key, voltage_dc_key]
+    titles = ['Irradiance POA', 'Temperature Module', 'DC Current', 'DC Voltage']
+    y_labels = ['G (W/m2)', 'Tm (ºC)', 'Current (A)', 'Voltage (V)']
+
+    # Set up the 2x2 grid of subplots
+    fig, axs = plt.subplots(2, 2, figsize=(8, 6), dpi=150)
+    fig.tight_layout(pad=4.0)
+
+    # Loop through keys, titles, and y_labels to plot
+    for ax, key, title, ylabel in zip(axs.ravel(), keys, titles, y_labels):
+        ax.scatter(df.index, df[key], s=1)
+        ax.set_title(title)
+        if ylabel:
+            ax.set_ylabel(ylabel, fontweight='bold')
+        ax.tick_params(axis='x', rotation=30)
+        ax.grid()
+
+    plt.gcf().set_dpi(120)
+
 def plot_operating_condition(df):
 
     """
@@ -177,7 +209,10 @@ def plot_results_timeseries(pfit : pd.DataFrame,
                             ncol : int = 3,
                             cal_error_synthetic : bool = False,
                             cal_error_real : bool = False,
-                            show_CI : bool = False):
+                            show_CI : bool = False,
+                            keys_to_plot : list = None,
+                            linear_fit: bool = False,
+                            title : str = None):
 
     """
     Plot trend of extracted parameters vs time.
@@ -208,58 +243,73 @@ def plot_results_timeseries(pfit : pd.DataFrame,
             'v_oc_ref': 'Voc_ref (V)',
             'i_mp_ref': 'Imp_ref (A)',
             'p_mp_ref': 'Pmp_ref (W)',
-            'v_mp_ref': 'Vmp_ref (V)'
+            'v_mp_ref': 'Vmp_ref (V)',
+            'residual': 'Residual'
             }
     
-    keys = ['Isc', 'Voc', 'Imp', 'Vmp', 'Pmp', 'Iph', 'I0', 'n', 'Rs', 'Rsh']
-
-    keys_to_plot = [
-            'i_sc_ref', 'v_oc_ref', 'i_mp_ref', 'v_mp_ref', 'p_mp_ref',
-            'photocurrent_ref','saturation_current_ref', 'diode_factor',
-        'resistance_series_ref', 'resistance_shunt_ref']
+    keys_short = {'diode_factor': 'n',
+            'photocurrent_ref': 'Iph_ref',
+            'saturation_current_ref': 'I0_ref',
+            'resistance_series_ref': 'Rs_ref',
+            'resistance_shunt_ref': 'Rsh_ref',
+            'i_sc_ref': 'Isc_ref',
+            'v_oc_ref': 'Voc_ref',
+            'i_mp_ref': 'Imp_ref',
+            'p_mp_ref': 'Pmp_ref',
+            'v_mp_ref': 'Vmp_ref',
+            'residual': 'Residual'
+            }
+    if keys_to_plot is None:
+        keys_to_plot = [
+                'i_sc_ref', 'v_oc_ref', 'i_mp_ref', 'v_mp_ref', 'p_mp_ref',
+                'photocurrent_ref','saturation_current_ref', 'diode_factor',
+            'resistance_series_ref', 'resistance_shunt_ref']
 
     warnings.filterwarnings("ignore")
 
-    _, ax_all = plt.subplots(2, 5, figsize=[18,6])
+    fig, ax_all = plt.subplots(2, 5, figsize=[18,6])
     plt.subplots_adjust(wspace=0.4, hspace=0.3)
 
-    for key_id in range(0, 10):
+    # show linear results if yoy_results is none
+    if yoy_result is None:
+        linear_fit = True
 
-        para_show = keys[key_id]
+    for key_id in range(0, 10):
 
         if key_id < 5:
             ax = ax_all[0,key_id]
         else:
             ax = ax_all[1,key_id-5]
 
-        k = keys_to_plot[key_id]
+        key = keys_to_plot[key_id]
+        key_short = keys_short[key]
 
-        if k in pfit:
+        if key in pfit:
 
             x_show = pfit['t_years']
-            ax.scatter(x_show, pfit[k], 20,
+            ax.scatter(x_show, pfit[key], 20,
                     color='#00A0FF', alpha = 0.8, edgecolor = 'None',
                     label='PVPRO')
 
-            ylims = np.array([np.nanmin(pfit[k]), np.nanmax(pfit[k])])
+            ylims = np.array([np.nanmin(pfit[key]), np.nanmax(pfit[key])])
 
             if compare is not None:
                 x_real_show = compare['t_years']
-                if k in compare:
-                    ax.plot(x_real_show, compare[k],
+                if key in compare:
+                    ax.plot(x_real_show, compare[key],
                             '.',
                             color = 'deepskyblue',
                             label = 'True value',
                             )
 
-                    ylims[0] = np.min([ylims[0], np.nanmin(compare[k])])
-                    ylims[1] = np.max([ylims[1], np.nanmax(compare[k])])
+                    ylims[0] = np.min([ylims[0], np.nanmin(compare[key])])
+                    ylims[1] = np.max([ylims[1], np.nanmax(compare[key])])
 
-            if k in ['diode_factor']:
+            if key in ['diode_factor']:
                 ylims[0] = np.nanmin([0.9, ylims[0]])
                 ylims[1] = np.nanmax([1.2, ylims[1]])
 
-            if k in ['saturation_current_ref']:
+            if key in ['saturation_current_ref']:
                 ylims = ylims * np.array([0.5, 1.5])
             else:
                 ylims = ylims + 0.1 * np.array([-1, 1]) * (ylims[1] - ylims[0])
@@ -276,25 +326,45 @@ def plot_results_timeseries(pfit : pd.DataFrame,
             if cal_error_real:
                 error_df = calculate_error_real(pfit, compare)
 
-            if (yoy_result is not None) and yoy_plot:
+            # linear fitted line
+            if linear_fit:
+                inx = ~np.isnan(pfit[key])
+                slope, intercept = np.polyfit(x_show[inx], pfit[key][inx], 1)
+                rate = slope/np.nanmedian(pfit[key])*100
+                fitted_line = slope * x_show + intercept
+                ax.plot(x_show, fitted_line,'--',
+                        linewidth = 4,
+                        color='#CE54FF',
+                        label = 'Linear fit')
+            
+                ax.text(0.02, 0.15, f'Linear fit: {rate:.1f}%/yr',
+                            transform=ax.transAxes,
+                            color = '#903DD0',
+                            bbox=dict(facecolor='white', alpha=0.5, edgecolor='none'),
+                            fontsize=12,
+                            fontweight='bold',
+                            horizontalalignment = 'left')
+
+            if (yoy_result != None) and yoy_plot and (key != 'residual'):
                 t_smooth = np.linspace(x_show.min(), x_show.max(), 20)
                 t_mean = np.mean(x_show)
 
                 ax.plot(t_smooth,
-                        pfit[k].median() * (1 + (t_smooth - t_mean) * (
-                        yoy_result[k]['percent_per_year'] * 1e-2)),'--',
+                        pfit[key].median() * (1 + (t_smooth - t_mean) * (
+                        yoy_result[key]['percent_per_year'] * 1e-2)),'--',
                         linewidth = 4,
                         color='#F8891D',
                         label = 'YOY trend')
                 
-                if show_CI & (k != 'diode_factor'):
+                
+                if show_CI & (key != 'diode_factor'):
                     ax.plot(t_smooth,
-                            pfit[k].median() * (1 + (t_smooth - t_mean) * (
+                            pfit[key].median() * (1 + (t_smooth - t_mean) * (
                             yoy_result['photocurrent_ref']['percent_per_year_CI'][0] * 1e-2)),'--',
                             linewidth = 4,
                             color='#FF973C', alpha=0.5)
                     ax.plot(t_smooth,
-                            pfit[k].median() * (1 + (t_smooth - t_mean) * (
+                            pfit[key].median() * (1 + (t_smooth - t_mean) * (
                             yoy_result['photocurrent_ref']['percent_per_year_CI'][1] * 1e-2)),'--',
                             linewidth = 4,
                             color='#FF973C', alpha=0.5, label = 'CI of YOY trend')
@@ -312,19 +382,20 @@ def plot_results_timeseries(pfit : pd.DataFrame,
                                         \nRate: {:.2f}%/yr\
                                         '.\
                             format(
-                                error_df['rms_rela'][k]*100,
-                                error_df['corr_coef'][k],
-                            yoy_result[k]['percent_per_year']),
+                                error_df['rms_rela'][key]*100,
+                                error_df['corr_coef'][key],
+                            yoy_result[key]['percent_per_year']),
                             transform=ax.transAxes,
                             backgroundcolor=[1, 1, 1, 0],
                             fontsize=11,
                             horizontalalignment = hori)
                 else:
-                    ax.text(posi[0], posi[1], 'Rate: {:.2f}%/yr'.\
-                            format(yoy_result[k]['percent_per_year']),
+                    ax.text(posi[0], posi[1], 'YOY: {:.1f}%/yr'.\
+                            format(yoy_result[key]['percent_per_year']),
                             transform=ax.transAxes,
+                            color = '#BD5E15',
                             bbox=dict(facecolor='white', alpha=0.5, edgecolor='none'),
-                            fontsize=11,
+                            fontsize=12,
                             fontweight='bold',
                             horizontalalignment = hori)
                     
@@ -332,12 +403,16 @@ def plot_results_timeseries(pfit : pd.DataFrame,
             label_rotation = 0
             if length_year > 4:
                 label_rotation = 30
-                    
+
+            ax.set_xlim(x_show.min(), x_show.max())     
             ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
             ax.tick_params(axis='y', labelsize=11)
             ax.tick_params(axis='x', rotation=label_rotation)
-            ax.set_ylabel(ylabel[k], fontsize=12)
-            ax.set_title('{}_ref'.format(para_show),weight='bold',fontsize = 13)
+            ax.set_ylabel(ylabel[key], fontsize=12)
+            ax.set_title(key_short, weight='bold',fontsize = 13)
+            if title:
+                fig.suptitle(title, weight='bold',fontsize = 13)
+
             ax.grid()
 
             if key_id == 6:
@@ -458,6 +533,42 @@ def plot_post_processed_results(df_post, model = 'smooth_monotonic'):
         plt.tight_layout()
         plt.gcf().set_dpi(150)
 
+
+def plot_GTIV_filtered(df, irradiance_poa_key, temperature_module_key, current_dc_key, voltage_dc_key):
+    """
+    Plot filtered time-series data for irradiance, temperature, current, and voltage in a 2x2 grid of scatter plots.
+
+    :param df: DataFrame containing the processed data with time-series information.
+    :param irradiance_poa_key: Variable containing the column name (str) in `df` representing the irradiance on the plane of array (POA).
+    :param temperature_module_key: Variable containing the column name (str) in `df` representing the module temperature.
+    :param current_dc_key: Variable containing the column name (str) in `df` representing the DC current.
+    :param voltage_dc_key: Variable containing the column name (str) in `df` representing the DC voltage.
+    :return: A matplotlib figure object containing the 2x2 grid of scatter plots.
+    """
+    boolean_mask = np.logical_and.reduce((
+                                       np.logical_not(df['current_irradiance_outliers']),
+                                       np.logical_not(df['voltage_temperature_outliers']),
+                                       df['operating_cls']==0
+                                    ))
+
+    keys = [irradiance_poa_key, temperature_module_key, current_dc_key, voltage_dc_key]
+    titles = ['Irradiance POA', 'Temperature Module', 'DC Current', 'DC Voltage']
+    y_labels = ['G (W/m2)', 'Tm (ºC)', 'Current (A)', 'Voltage (V)']
+
+    # Set up the 2x2 grid of subplots
+    fig, axs = plt.subplots(2, 2, figsize=(8, 6), dpi=150)
+    fig.tight_layout(pad=4.0)
+
+    # Loop through keys, titles, and y_labels to plot
+    for ax, key, title, ylabel in zip(axs.ravel(), keys, titles, y_labels):
+        ax.scatter(df.index[boolean_mask], df[key][boolean_mask], s=1)
+        ax.set_title(f'{title} (filtered)')
+        if ylabel:
+            ax.set_ylabel(ylabel, fontweight='bold')
+        ax.tick_params(axis='x', rotation=30)
+        ax.grid()
+
+    plt.gcf().set_dpi(120)
 
 """
 Functions to plot irradiance-to-power conversion results

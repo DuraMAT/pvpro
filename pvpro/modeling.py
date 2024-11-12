@@ -37,14 +37,14 @@ def single_diode_predict(pvbasics,
     return voltage, current
 
 def estimate_Eg_dEgdT(technology : str):
-    allEg = {'multi-Si': 1.121,
-                        'mono-Si': 1.121,
+    allEg = {'multi-c-Si': 1.121,
+                        'mono-c-Si': 1.121,
                         'GaAs': 1.424,
                         'CIGS': 1.15, 
                         'CdTe':  1.475}
 
-    alldEgdT = {'multi-Si': -0.0002677,
-                        'mono-Si': -0.0002677,
+    alldEgdT = {'multi-c-Si': -0.0002677,
+                        'mono-c-Si': -0.0002677,
                         'GaAs': -0.000433,
                         'CIGS': -0.00001, 
                         'CdTe': -0.0003}

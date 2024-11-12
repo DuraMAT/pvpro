@@ -46,7 +46,8 @@ class PvProHandler:
                  technology : str =None,
                  days_per_run: int = 14,
                  disable_tqdm: bool = False,
-                 include_operating_cls: bool = True
+                 include_operating_cls: bool = True,
+                 Glimit : float = 200,
                  ):
 
         # Initialize datahandler object.
@@ -70,6 +71,7 @@ class PvProHandler:
         self.days_per_run = days_per_run
         self.disable_tqdm = disable_tqdm
         self.include_operating_cls = include_operating_cls
+        self.Glimit = Glimit
 
         self.p0 = dict(
             diode_factor=1.03,
@@ -920,19 +922,33 @@ class PvProHandler:
 
         return text_str
 
-    def remove_outliers(self, pfit : pd.DataFrame, nstd: int = 3):
+    def remove_outliers(self, pfit : pd.DataFrame,
+                         nstd: int = 3, 
+                         use_residual: bool = False,
+                         residual_limit : float = 1):
 
         """
         Remove outliers whose difference to the mean value > nstd * std value
 
         """
+        
 
         for k in ['photocurrent_ref', 'saturation_current_ref',
                 'resistance_series_ref', 'resistance_shunt_ref', 'i_sc_ref',
                 'v_oc_ref', 'i_mp_ref', 'v_mp_ref', 'p_mp_ref']:
             
             res = pfit[k]
-            pfit[k] = res[np.abs(res-np.nanmean(res))< nstd * np.nanstd(res)]
+
+            if use_residual:
+                residual = pfit['residual']
+                inx = (np.abs(residual-np.nanmean(residual))< nstd * np.nanstd(residual)) & (residual<residual_limit)
+            else:
+                inx = np.abs(res-np.nanmean(res))< nstd * np.nanstd(res)
+
+            pfit[k] = res[inx]
+
+        if use_residual:
+            pfit['residual'] = pfit['residual'][inx]
 
         return pfit
 
@@ -947,26 +963,31 @@ class PvProHandler:
         """
         out = {}
 
-        for k in ['photocurrent_ref', 'saturation_current_ref',
-                'resistance_series_ref', 'resistance_shunt_ref','diode_factor', 'i_sc_ref',
-                'v_oc_ref', 'i_mp_ref', 'v_mp_ref', 'p_mp_ref']:
-                   
-            if k in pfit:
+        try:
 
-                res = pfit[k]
-                Rd_pct, Rd_CI, calc_info = degradation_year_on_year(pd.Series(res[~np.isnan(res)]),
-                                                                    recenter=False)
-                renorm = np.nanmedian(pfit[k])
-                if renorm == 0:
-                    renorm = np.nan
+            for k in ['photocurrent_ref', 'saturation_current_ref',
+                    'resistance_series_ref', 'resistance_shunt_ref','diode_factor', 'i_sc_ref',
+                    'v_oc_ref', 'i_mp_ref', 'v_mp_ref', 'p_mp_ref']:
+                    
+                if k in pfit:
 
-                out[k] = {
-                    'change_per_year': Rd_pct * 1e-2,
-                    'percent_per_year': Rd_pct / renorm,
-                    'change_per_year_CI': np.array(Rd_CI) * 1e-2,
-                    'percent_per_year_CI': np.array(Rd_CI) / renorm,
-                    'calc_info': calc_info,
-                    'median': np.nanmedian(pfit[k])}
+                    res = pfit[k]
+                    Rd_pct, Rd_CI, calc_info = degradation_year_on_year(pd.Series(res[~np.isnan(res)]),
+                                                                        recenter=False)
+                    renorm = np.nanmedian(pfit[k])
+                    if renorm == 0:
+                        renorm = np.nan
+
+                    out[k] = {
+                        'change_per_year': Rd_pct * 1e-2,
+                        'percent_per_year': Rd_pct / renorm,
+                        'change_per_year_CI': np.array(Rd_CI) * 1e-2,
+                        'percent_per_year_CI': np.array(Rd_CI) / renorm,
+                        'calc_info': calc_info,
+                        'median': np.nanmedian(pfit[k])}
+        except:
+            print('YoY analysis failed. Use linear fitting instead')
+            out = None
 
         return out
 
@@ -984,14 +1005,14 @@ class PvProHandler:
             boolean_mask = np.logical_and.reduce((
                                        np.logical_not(df['current_irradiance_outliers']),
                                        np.logical_not(df['voltage_temperature_outliers']),
-                                       df[self.irradiance_poa_key]>100,
+                                       df[self.irradiance_poa_key]>self.Glimit,
                                        df['operating_cls']==0
                                     ))
 
         else:
             boolean_mask = np.logical_and.reduce((np.logical_not(df['current_irradiance_outliers']),
                                         np.logical_not(df['voltage_temperature_outliers']),
-                                        df[self.irradiance_poa_key]>100
+                                        df[self.irradiance_poa_key]>self.Glimit
                                         ))
         
         # Estimate initial parameters
@@ -1020,7 +1041,7 @@ class PvProHandler:
         lower_bounds = dict(
                     diode_factor=0.1,
                     photocurrent_ref=0.01,
-                    saturation_current_ref=5e-12,
+                    saturation_current_ref=1e-20,
                     resistance_series_ref=0.1,
                     conductance_shunt_extra=0,
                     resistance_shunt_ref=100
@@ -1719,11 +1740,11 @@ class EstimateInitial:
         return diode_factor.real
 
     def estimate_photocurrent_ref_simple(self, imp_ref: pd.Series, technology : str ='mono-Si'):
-        photocurrent_imp_ratio = {'multi-Si': 1.0746167586063207,
-                                'mono-Si': 1.0723051517913444,
+        photocurrent_imp_ratio = {'multi-c-Si': 1.0746167586063207,
+                                'mono-c-Si': 1.0723051517913444,
                                 'thin-film': 1.1813401654607967,
                                 'CIGS': 1.1706462692015707,
-                                'cdte': 1.1015249105470803}
+                                'CdTe': 1.1015249105470803}
 
         photocurrent_ref = imp_ref * photocurrent_imp_ratio[technology]
 
@@ -1764,19 +1785,19 @@ class EstimateInitial:
         """
 
         voc_cell = {'thin-film': 0.7477344670083659,
-                    'multi-Si': 0.6207941068112764,
+                    'multi-c-Si': 0.6207941068112764,
                     'CIGS': 0.4972842261904762,
-                    'mono-Si': 0.6327717834732666,
-                    'cdte': 0.8227840909090908}
+                    'mono-c-Si': 0.6327717834732666,
+                    'CdTe': 0.8227840909090908}
 
         return int(voc_ref / voc_cell[technology])
 
     def estimate_voc_ref(self, vmp_ref : pd.Series, technology : str):
         voc_vmp_ratio = {'thin-film': 1.3069503474012514,
-                        'multi-Si': 1.2365223483476515,
+                        'multi-c-Si': 1.2365223483476515,
                         'CIGS': 1.2583291018540534,
-                        'mono-Si': 1.230866745147029,
-                        'cdte': 1.2188176469944012}
+                        'mono-c-Si': 1.230866745147029,
+                        'CdTe': 1.2188176469944012}
         voc_ref = vmp_ref * voc_vmp_ratio[technology]
         
 
@@ -1784,29 +1805,29 @@ class EstimateInitial:
 
     def estimate_beta_voc(self, beta_vmp : float, technology : str ='mono-Si'):
         beta_voc_to_beta_vmp_ratio = {'thin-film': 0.9594252453485964,
-                                    'multi-Si': 0.9782579114165342,
+                                    'multi-c-Si': 0.9782579114165342,
                                     'CIGS': 0.9757373267198366,
-                                    'mono-Si': 0.9768254239046427,
-                                    'cdte': 0.9797816054754396}
+                                    'mono-c-Si': 0.9768254239046427,
+                                    'CdTe': 0.9797816054754396}
         beta_voc = beta_vmp * beta_voc_to_beta_vmp_ratio[technology]
         return beta_voc
 
     def estimate_alpha_isc(self, isc : pd.Series, technology : str):
-        alpha_isc_to_isc_ratio = {'multi-Si': 0.0005864523754010862,
-                                'mono-Si': 0.0005022410194560715,
+        alpha_isc_to_isc_ratio = {'multi-c-Si': 0.0005864523754010862,
+                                'mono-c-Si': 0.0005022410194560715,
                                 'thin-film': 0.00039741211251133725,
                                 'CIGS': -8.422066533574996e-05,
-                                'cdte': 0.0005573603056215652}
+                                'CdTe': 0.0005573603056215652}
 
         alpha_isc = isc * alpha_isc_to_isc_ratio[technology]
         return alpha_isc
 
     def estimate_isc_ref(self, imp_ref : pd.Series, technology: str):
-        isc_to_imp_ratio = {'multi-Si': 1.0699135787527263,
-                            'mono-Si': 1.0671785412770871,
+        isc_to_imp_ratio = {'multi-c-Si': 1.0699135787527263,
+                            'mono-c-Si': 1.0671785412770871,
                             'thin-film': 1.158663685900219,
                             'CIGS': 1.1566217151572733, 
-                            'cdte': 1.0962996330688608}
+                            'CdTe': 1.0962996330688608}
 
         isc_ref = imp_ref * isc_to_imp_ratio[technology]
 
