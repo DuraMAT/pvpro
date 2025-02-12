@@ -855,11 +855,26 @@ class PvProHandler:
             return out
 
     def estimate_p0(self,
-                    verbose : bool =False,
-                    boolean_mask : bool =None,
-                    technology : str =None):
+                verbose: bool = False,
+                boolean_mask: bool = None,
+                technology: str = None,
+                imp_model: str = 'temperature', 
+                vmp_model: str = 'sandia1'):
         """
-        Make a rough estimate of the startpoint for fitting the single diodemodel.
+        Generates an initial estimate of parameters for fitting the single-diode model (SDM).
+
+        This function provides a rough starting point for the parameter extraction process 
+        based on the selected implicit (Imp) and maximum power point voltage (Vmp) models.
+
+        :param verbose: If True, prints detailed logs during estimation (default: False).
+        :param boolean_mask: Optional boolean mask to filter the data before estimation.
+        :param technology: Optional string specifying the PV technology type.
+        :param imp_model: The model used for implicit parameter estimation
+                        Options: 'sandia' or 'temperature' (default).
+        :param vmp_model: The model used for maximum power point voltage estimation
+                        Options: 'sandia1' (default) or 'temperature'.
+
+        :return: A rough initial estimate of SDM parameters.
         """
         pvesti = EstimateInitial()
 
@@ -871,6 +886,8 @@ class PvProHandler:
                 imp=self.df[self.current_key] / self.parallel_strings,
                 cells_in_series=self.cells_in_series,
                 # delta_T=self.delta_T,
+                imp_model=imp_model,
+                vmp_model=vmp_model,
                 technology=technology,
                 verbose=verbose
             )
@@ -886,6 +903,8 @@ class PvProHandler:
                 cells_in_series=self.cells_in_series,
                 # delta_T=self.delta_T,
                 technology=technology,
+                imp_model=imp_model,
+                vmp_model=vmp_model,
                 verbose=verbose
             )
 
@@ -991,13 +1010,19 @@ class PvProHandler:
 
         return out
 
-    def run_pipeline(self):
+    def run_pipeline(self, imp_model : str ='temperature', vmp_model : str ='sandia1'):
         """
-        Run pipeline of parameter extraction
+        Executes the pipeline for extracting single-diode model (SDM) parameters.
 
-        :param remove_outliers: remove outliers
-        :return pfit: dataframe containing extracted SDM parameters
-        
+        This function processes the input data to estimate SDM parameters using the 
+        specified models for implicit (Imp) and maximum power point voltage (Vmp) estimation.
+
+        :param imp_model: The model used for implicit parameter estimation. 
+                      Options: 'sandia' or 'temperature' (default).
+        :param vmp_model: The model used for maximum power point voltage estimation
+                      Options: 'sandia1' (default) or 'temperature'.
+
+        :return: A DataFrame containing the extracted SDM parameters.
         """
 
         df = self.df
@@ -1016,7 +1041,9 @@ class PvProHandler:
                                         ))
         
         # Estimate initial parameters
-        self.estimate_p0(boolean_mask=boolean_mask, technology = self.technology)
+        self.estimate_p0(boolean_mask=boolean_mask, technology = self.technology,
+                         imp_model=imp_model,
+                         vmp_model=vmp_model)
         
         # Diode factor is set constant
         self.p0['diode_factor'] = 1
@@ -1299,12 +1326,12 @@ class EstimateInitial:
                      temperature_ref : float =25,
                      figure : bool =False,
                      figure_number : int =20 ,
-                     model : str ='sandia',
+                     model : str ='temperature',
                      solver : str ='huber',
                      epsilon : float =1.5,
                      ):
         """
-        Estimate imp_ref and beta_imp using operation data.
+        Estimate imp_ref and alpha_imp using operation data.
 
         Model forms taken from Ref. [1]
 
@@ -1437,7 +1464,7 @@ class EstimateInitial:
                 }
         else:
             raise Exception(
-                'Vmp model not recognized, valid options are "sandia" and "temperature"')
+                'Imp model not recognized, valid options are "sandia" and "temperature"')
 
         if figure:
             plt.figure(figure_number)
