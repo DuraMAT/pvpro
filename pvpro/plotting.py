@@ -319,7 +319,7 @@ def plot_results_timeseries(pfit : pd.DataFrame,
             # calculate error 
             
             Nrolling = 1
-            error_df = np.NaN
+            error_df = np.nan
             if cal_error_synthetic:
                 error_df = calculate_error_synthetic(pfit,df,Nrolling)
 
