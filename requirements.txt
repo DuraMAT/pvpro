@@ -28,5 +28,5 @@ sklearn==0.0
 threadpoolctl==2.1.0
 tornado==6.0.4
 tqdm
-urllib3==1.26.5
+urllib3==2.8.0
 pvlib
